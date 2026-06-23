@@ -8,7 +8,7 @@ Architecture & Building Permit Management System — track every project from si
 |-------|------------|
 | Framework | Next.js 16 (App Router) |
 | UI | React 19, Tailwind CSS 4, shadcn/ui |
-| Database | PostgreSQL (via `postgres` driver) |
+| Database | MYSQL |
 | Charts | Recharts |
 | Auth | Cookie-based session (`ao_session`) |
 
