@@ -4,45 +4,59 @@ import mysql from "mysql2/promise"
 // Connection config
 // ---------------------------------------------------------------------------
 
-function parseMysqlConfig(): mysql.PoolOptions {
-  const url = process.env.DATABASE_URL || process.env.MYSQL_URL
-
-  if (url) {
-    const normalized = url.replace(/^mysql2:\/\//, "mysql://")
-    try {
-      const u = new URL(normalized)
-      return {
-        host: u.hostname,
-        port: Number.parseInt(u.port || "3306", 10),
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: u.pathname.slice(1).split("?")[0],
-      }
-    } catch {
-      // fall through to individual env vars
-    }
-  }
-
+function readIndividualMysqlParams(): mysql.PoolOptions | null {
   const host = process.env.MYSQL_HOST || process.env.DB_HOST
-  const user = process.env.MYSQL_USER || process.env.DB_USER || process.env.MYSQL_USERNAME
+  const user =
+    process.env.MYSQL_USER || process.env.DB_USER || process.env.MYSQL_USERNAME
   const password = process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD
-  const database = process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.DB_NAME
+  const database =
+    process.env.MYSQL_DATABASE || process.env.MYSQL_DB || process.env.DB_NAME
 
-  if (!host || !user || !database) {
-    throw new Error(
-      "No database connection found. " +
-        "Set DATABASE_URL (mysql://user:pass@host:3306/db) " +
-        "or MYSQL_HOST / MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE.",
-    )
-  }
+  if (!host || !user || !database) return null
 
   return {
     host,
     port: Number.parseInt(process.env.MYSQL_PORT || "3306", 10),
     user,
-    password: password || "",
+    password: password ?? "",
     database,
   }
+}
+
+function parseMysqlUrl(url: string): mysql.PoolOptions | null {
+  const normalized = url.replace(/^mysql2:\/\//, "mysql://")
+  try {
+    const u = new URL(normalized)
+    const database = u.pathname.slice(1).split("?")[0]
+    if (!u.hostname || !u.username || !database) return null
+    return {
+      host: u.hostname,
+      port: Number.parseInt(u.port || "3306", 10),
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      database,
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseMysqlConfig(): mysql.PoolOptions {
+  // Prefer discrete params — passwords with @, #, etc. break URL parsing.
+  const fromEnv = readIndividualMysqlParams()
+  if (fromEnv) return fromEnv
+
+  const url = process.env.DATABASE_URL || process.env.MYSQL_URL
+  if (url) {
+    const fromUrl = parseMysqlUrl(url)
+    if (fromUrl) return fromUrl
+  }
+
+  throw new Error(
+    "No database connection found. " +
+      "Set MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, and MYSQL_DATABASE " +
+      "(recommended on shared hosting) or DATABASE_URL (mysql://user:pass@host:3306/db).",
+  )
 }
 
 function createPool(): mysql.Pool {
