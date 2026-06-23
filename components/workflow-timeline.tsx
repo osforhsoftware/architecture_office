@@ -1,0 +1,271 @@
+"use client"
+
+import { motion } from "framer-motion"
+import { Check, Circle, Clock, Shield, Sparkles } from "lucide-react"
+import { WORKFLOW_PIPELINE, pipelineIndexForProject } from "@/lib/constants"
+import { HorizontalScrollArea } from "@/components/horizontal-scroll-area"
+import { cn } from "@/lib/utils"
+
+const STAGE_COLORS: Record<
+  string,
+  { ring: string; bg: string; border: string; text: string; fill: string; connector: string }
+> = {
+  planning: {
+    ring: "ring-sky-300/50",
+    bg: "bg-sky-50",
+    border: "border-sky-400",
+    text: "text-sky-700",
+    fill: "bg-sky-500",
+    connector: "bg-sky-400",
+  },
+  review_1: {
+    ring: "ring-violet-300/50",
+    bg: "bg-violet-50",
+    border: "border-violet-400",
+    text: "text-violet-700",
+    fill: "bg-violet-500",
+    connector: "bg-violet-400",
+  },
+  permit: {
+    ring: "ring-amber-300/50",
+    bg: "bg-amber-50",
+    border: "border-amber-400",
+    text: "text-amber-800",
+    fill: "bg-amber-500",
+    connector: "bg-amber-400",
+  },
+  review_2: {
+    ring: "ring-fuchsia-300/50",
+    bg: "bg-fuchsia-50",
+    border: "border-fuchsia-400",
+    text: "text-fuchsia-700",
+    fill: "bg-fuchsia-500",
+    connector: "bg-fuchsia-400",
+  },
+  "3d": {
+    ring: "ring-rose-300/50",
+    bg: "bg-rose-50",
+    border: "border-rose-400",
+    text: "text-rose-700",
+    fill: "bg-rose-500",
+    connector: "bg-rose-400",
+  },
+  review_3: {
+    ring: "ring-purple-300/50",
+    bg: "bg-purple-50",
+    border: "border-purple-400",
+    text: "text-purple-700",
+    fill: "bg-purple-500",
+    connector: "bg-purple-400",
+  },
+  estimation: {
+    ring: "ring-teal-300/50",
+    bg: "bg-teal-50",
+    border: "border-teal-400",
+    text: "text-teal-700",
+    fill: "bg-teal-500",
+    connector: "bg-teal-400",
+  },
+  review_4: {
+    ring: "ring-indigo-300/50",
+    bg: "bg-indigo-50",
+    border: "border-indigo-400",
+    text: "text-indigo-700",
+    fill: "bg-indigo-500",
+    connector: "bg-indigo-400",
+  },
+  billing: {
+    ring: "ring-orange-300/50",
+    bg: "bg-orange-50",
+    border: "border-orange-400",
+    text: "text-orange-800",
+    fill: "bg-orange-500",
+    connector: "bg-orange-400",
+  },
+  completed: {
+    ring: "ring-emerald-300/50",
+    bg: "bg-emerald-50",
+    border: "border-emerald-400",
+    text: "text-emerald-700",
+    fill: "bg-emerald-500",
+    connector: "bg-emerald-400",
+  },
+}
+
+export function WorkflowTimeline({
+  section,
+  status,
+  compact = false,
+  orientation = "horizontal",
+}: {
+  section: string
+  status: string
+  compact?: boolean
+  orientation?: "horizontal" | "vertical"
+}) {
+  const currentIndex = pipelineIndexForProject(section, status)
+
+  if (orientation === "vertical") {
+    return (
+      <div className={cn("relative", compact ? "py-2" : "py-4")}>
+        <div className="flex flex-col gap-0">
+          {WORKFLOW_PIPELINE.map((stage, index) => {
+            const colors = STAGE_COLORS[stage.key]
+            const isComplete = index < currentIndex
+            const isCurrent = index === currentIndex
+            const isUpcoming = index > currentIndex
+            const isReview = stage.type === "review"
+
+            return (
+              <div key={stage.key} className="relative flex gap-3">
+                {index < WORKFLOW_PIPELINE.length - 1 ? (
+                  <div
+                    className={cn(
+                      "absolute left-[15px] top-8 w-0.5",
+                      compact ? "h-6" : "h-10",
+                      isComplete ? colors.connector : "bg-border",
+                    )}
+                  />
+                ) : null}
+
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: index * 0.04 }}
+                  className={cn(
+                    "relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                    isComplete && cn(colors.fill, "border-transparent text-white"),
+                    isCurrent && !isComplete && cn(colors.bg, colors.border, colors.text, "ring-4", colors.ring),
+                    isUpcoming && "border-border bg-muted text-muted-foreground",
+                  )}
+                >
+                  {isComplete ? (
+                    <Check className="size-3.5" strokeWidth={3} />
+                  ) : isCurrent ? (
+                    isReview ? <Shield className="size-3.5" /> : <Clock className="size-3.5" />
+                  ) : (
+                    <Circle className="size-2 fill-current" />
+                  )}
+                </motion.div>
+
+                <div className={cn("min-w-0 pb-4", compact && "pb-3")}>
+                  <p
+                    className={cn(
+                      "text-sm font-medium leading-tight",
+                      isCurrent && colors.text,
+                      isComplete && colors.text,
+                      isUpcoming && "text-muted-foreground",
+                    )}
+                  >
+                    {stage.label}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <HorizontalScrollArea className="pb-1">
+      <div className="flex min-w-max items-start px-1">
+        {WORKFLOW_PIPELINE.map((stage, index) => {
+          const colors = STAGE_COLORS[stage.key]
+          const isComplete = index < currentIndex
+          const isCurrent = index === currentIndex
+          const isUpcoming = index > currentIndex
+          const isReview = stage.type === "review"
+          const isLast = index === WORKFLOW_PIPELINE.length - 1
+
+          return (
+            <div key={stage.key} className="flex items-start">
+              <div className="flex w-[88px] flex-col items-center sm:w-[96px]">
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: index * 0.04 }}
+                  className={cn(
+                    "relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-all",
+                    isComplete && cn(colors.fill, "border-transparent text-white shadow-md"),
+                    isCurrent &&
+                      !isComplete &&
+                      cn(colors.bg, colors.border, colors.text, "ring-4 shadow-md", colors.ring),
+                    isUpcoming && "border-border/80 bg-muted/60 text-muted-foreground",
+                  )}
+                >
+                  {isComplete ? (
+                    <Check className="size-4" strokeWidth={3} />
+                  ) : isCurrent ? (
+                    stage.type === "complete" ? (
+                      <Sparkles className="size-4" />
+                    ) : isReview ? (
+                      <Shield className="size-4" />
+                    ) : (
+                      <Clock className="size-4" />
+                    )
+                  ) : (
+                    <Circle className="size-2.5 fill-current" />
+                  )}
+                </motion.div>
+
+                <p
+                  className={cn(
+                    "mt-2 w-full px-0.5 text-center text-[11px] font-semibold leading-tight sm:text-xs",
+                    isCurrent && colors.text,
+                    isComplete && colors.text,
+                    isUpcoming && "text-muted-foreground",
+                  )}
+                >
+                  {stage.label}
+                </p>
+
+                {!compact ? (
+                  <p
+                    className={cn(
+                      "mt-0.5 text-center text-[10px] leading-tight",
+                      isCurrent ? colors.text : "text-muted-foreground",
+                    )}
+                  >
+                    {isComplete
+                      ? "Done"
+                      : isCurrent
+                        ? isReview
+                          ? "Review"
+                          : "Active"
+                        : "—"}
+                  </p>
+                ) : null}
+
+                {isCurrent ? (
+                  <motion.span
+                    layoutId="current-stage-h"
+                    className={cn(
+                      "mt-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                      colors.bg,
+                      colors.text,
+                    )}
+                  >
+                    Now
+                  </motion.span>
+                ) : null}
+              </div>
+
+              {!isLast ? (
+                <div className="flex h-9 w-4 shrink-0 items-center sm:w-5">
+                  <div
+                    className={cn(
+                      "h-1 w-full rounded-full",
+                      isComplete ? colors.connector : "bg-border/70",
+                    )}
+                  />
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </HorizontalScrollArea>
+  )
+}
