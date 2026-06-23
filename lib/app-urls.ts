@@ -12,10 +12,24 @@ function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "")
 }
 
+function normalizeAbsoluteUrl(value: string): string | undefined {
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`
+  const normalized = trimTrailingSlash(withProtocol)
+
+  try {
+    return new URL(normalized).toString().replace(/\/$/, "")
+  } catch {
+    return undefined
+  }
+}
+
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = process.env[key]?.trim()
-    if (value) return trimTrailingSlash(value)
+    const rawValue = process.env[key]?.trim()
+    if (!rawValue) continue
+
+    const normalizedValue = normalizeAbsoluteUrl(rawValue)
+    if (normalizedValue) return normalizedValue
   }
   return undefined
 }
