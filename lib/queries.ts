@@ -548,8 +548,9 @@ export async function getUnreadCount(userId: number): Promise<number> {
 // ---------------------------------------------------------------------------
 
 export async function getRecentPayments(
-  limit = 5,
+  limitParam = 5,
 ): Promise<(Payment & { project_name: string; project_code: string })[]> {
+  const limit = Number(limitParam) || 5
   return (await sql`
     SELECT pay.*, p.name AS project_name, p.code AS project_code
     FROM payments pay
@@ -559,9 +560,10 @@ export async function getRecentPayments(
   `) as (Payment & { project_name: string; project_code: string })[]
 }
 
-export async function getAllPayments(limit = 50): Promise<
+export async function getAllPayments(limitParam = 50): Promise<
   (Payment & { project_name: string; project_code: string; client_name: string })[]
 > {
+  const limit = Number(limitParam) || 50
   return (await sql`
     SELECT pay.*, p.name AS project_name, p.code AS project_code, c.name AS client_name
     FROM payments pay
@@ -667,7 +669,8 @@ export async function getStaffPerformance(): Promise<
   `) as { name: string; role: string; assigned: number; completed: number }[]
 }
 
-export async function getRecentAuditLogs(limit = 10): Promise<AuditLog[]> {
+export async function getRecentAuditLogs(limitParam = 10): Promise<AuditLog[]> {
+  const limit = Number(limitParam) || 10
   return (await sql`
     SELECT a.*, u.name AS user_name
     FROM audit_logs a

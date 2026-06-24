@@ -145,22 +145,25 @@ function isJsonMarker(v: unknown): v is JsonMarker {
 
 const RETURNING_RE = /\bRETURNING\b[\s\S]*$/i
 
-/** True when the next value should be inlined as LIMIT/OFFSET (not a ? placeholder). */
-function tailsLimitOrOffset(query: string): boolean {
-  const tail = query.trimEnd()
-  return /\bLIMIT\s*$/i.test(tail) || /\bOFFSET\s*$/i.test(tail)
+/** MySQL 8 prepared statements reject LIMIT/OFFSET placeholders (ER_WRONG_ARGUMENTS). */
+function isLimitClause(query: string): boolean {
+  return /\bLIMIT\s*$/i.test(query.trimEnd())
 }
 
-/** Coerce LIMIT/OFFSET values to a non-negative integer for safe SQL inlining. */
-function toNonNegativeInt(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const n = Math.trunc(value)
-    return n >= 0 ? n : null
-  }
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
-    return Number.parseInt(value.trim(), 10)
-  }
-  return null
+function isOffsetClause(query: string): boolean {
+  return /\bOFFSET\s*$/i.test(query.trimEnd())
+}
+
+/** Coerce LIMIT/OFFSET bindings to a safe non-negative integer (never use ? for these). */
+function safeSqlInt(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === "") return fallback
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.trunc(n)
+}
+
+function shouldLogSql(): boolean {
+  return process.env.DEBUG_SQL === "1" || process.env.DEBUG_SQL === "true"
 }
 
 /**
@@ -181,16 +184,29 @@ async function execSql(strings: TemplateStringsArray, ...values: unknown[]): Pro
       if (isJsonMarker(v)) {
         query += "?"
         params.push(JSON.stringify(v.__mysqlJson))
-      } else {
-        // MySQL rejects LIMIT/OFFSET as prepared-statement placeholders
-        // (ER_WRONG_ARGUMENTS) when bindings are not strict integers.
-        const inlineInt = tailsLimitOrOffset(query) ? toNonNegativeInt(v) : null
-        if (inlineInt !== null) {
-          query += String(inlineInt)
-        } else {
-          query += "?"
-          params.push(v ?? null)
+      } else if (isLimitClause(query)) {
+        const limit = safeSqlInt(v, 10)
+        if (shouldLogSql() || limit !== Number(v)) {
+          console.warn("[sql] LIMIT", {
+            value: v,
+            type: typeof v,
+            coerced: limit,
+          })
         }
+        query += String(limit)
+      } else if (isOffsetClause(query)) {
+        const offset = safeSqlInt(v, 0)
+        if (shouldLogSql() || offset !== Number(v)) {
+          console.warn("[sql] OFFSET", {
+            value: v,
+            type: typeof v,
+            coerced: offset,
+          })
+        }
+        query += String(offset)
+      } else {
+        query += "?"
+        params.push(v ?? null)
       }
     }
   }
@@ -199,8 +215,16 @@ async function execSql(strings: TemplateStringsArray, ...values: unknown[]): Pro
   query = query.replace(RETURNING_RE, "").trimEnd()
 
   const pool = getPool()
+  if (shouldLogSql()) {
+    console.log("[sql] execute", {
+      sql: query,
+      params,
+      paramTypes: params.map((p) => (p === null ? "null" : typeof p)),
+    })
+  }
   // mysql2's execute() accepts unknown values at runtime; the cast is safe
   // because our params are always strings, numbers, booleans, or null.
+  // LIMIT/OFFSET are inlined above — never passed as ? placeholders.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result] = await pool.execute(query, params as any)
 
