@@ -145,6 +145,24 @@ function isJsonMarker(v: unknown): v is JsonMarker {
 
 const RETURNING_RE = /\bRETURNING\b[\s\S]*$/i
 
+/** True when the next value should be inlined as LIMIT/OFFSET (not a ? placeholder). */
+function tailsLimitOrOffset(query: string): boolean {
+  const tail = query.trimEnd()
+  return /\bLIMIT\s*$/i.test(tail) || /\bOFFSET\s*$/i.test(tail)
+}
+
+/** Coerce LIMIT/OFFSET values to a non-negative integer for safe SQL inlining. */
+function toNonNegativeInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const n = Math.trunc(value)
+    return n >= 0 ? n : null
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number.parseInt(value.trim(), 10)
+  }
+  return null
+}
+
 /**
  * Tagged template literal that builds a parameterized mysql2 query.
  *
@@ -164,8 +182,15 @@ async function execSql(strings: TemplateStringsArray, ...values: unknown[]): Pro
         query += "?"
         params.push(JSON.stringify(v.__mysqlJson))
       } else {
-        query += "?"
-        params.push(v ?? null)
+        // MySQL rejects LIMIT/OFFSET as prepared-statement placeholders
+        // (ER_WRONG_ARGUMENTS) when bindings are not strict integers.
+        const inlineInt = tailsLimitOrOffset(query) ? toNonNegativeInt(v) : null
+        if (inlineInt !== null) {
+          query += String(inlineInt)
+        } else {
+          query += "?"
+          params.push(v ?? null)
+        }
       }
     }
   }
