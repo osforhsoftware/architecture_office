@@ -1,18 +1,36 @@
 import { cookies } from "next/headers"
-import { isSplitDeployment } from "./app-urls"
+import { getFrontendUrl, isSplitDeployment } from "./app-urls"
 import { isTransientDbError, sql, withDbRetry } from "./db"
 import type { AppUser } from "./types"
 
 const COOKIE_NAME = "ao_session"
 
+/**
+ * Secure cookies are required for HTTPS and cross-site (split) deployments.
+ * Do not tie this to NODE_ENV alone — HTTP VPS / IP demos must allow non-secure cookies.
+ */
+function isCookieSecure(): boolean {
+  const explicit = process.env.COOKIE_SECURE?.trim().toLowerCase()
+  if (explicit === "true") return true
+  if (explicit === "false") return false
+
+  const frontend = getFrontendUrl()
+  if (frontend) {
+    return frontend.startsWith("https://")
+  }
+
+  return isSplitDeployment()
+}
+
 function sessionCookieOptions() {
   const split = isSplitDeployment()
   const domain = process.env.COOKIE_DOMAIN?.trim()
+  const secure = isCookieSecure()
 
   return {
     httpOnly: true,
     sameSite: split ? ("none" as const) : ("lax" as const),
-    secure: split || process.env.NODE_ENV === "production",
+    secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     ...(domain ? { domain } : {}),

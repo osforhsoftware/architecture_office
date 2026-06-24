@@ -17,11 +17,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/assets/osforh-logo.png',
+        url: '/assets/osforh-logo-white.png',
         type: 'image/png',
       },
     ],
-    apple: '/assets/osforh-logo.png',
+    apple: '/assets/osforh-logo-white.png',
   },
 }
 

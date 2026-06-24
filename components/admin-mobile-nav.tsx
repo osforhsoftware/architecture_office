@@ -1,13 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { createPortal } from "react-dom"
 import { useEffect, useState } from "react"
 import { LogOut, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logoutAction } from "@/lib/actions"
 import { ADMIN_NAV, BILLING_STAFF_NAV } from "@/components/admin-sidebar"
+import { BrandLogoHeader } from "@/components/brand-logo"
 import { isBillingStaff } from "@/lib/constants"
 import type { AppUser } from "@/lib/types"
 
@@ -64,20 +64,16 @@ export function AdminMobileNav({
         aria-label="Admin navigation"
         className="fixed inset-y-0 left-0 z-[101] flex w-[min(18rem,85vw)] flex-col bg-sidebar text-sidebar-foreground shadow-xl md:hidden"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-sidebar-border px-5 py-4">
-          <div className="flex items-center gap-3">
-            <Image src="/assets/osforh-logo.png" alt="Osforh" width={32} height={32} />
-            <span className="text-sm font-semibold">Osforh Office</span>
-          </div>
+        <BrandLogoHeader className="border-sidebar-border px-5 py-3">
           <button
             type="button"
             aria-label="Close menu"
-            className="flex size-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground/70 hover:bg-muted"
             onClick={() => onOpenChange(false)}
           >
             <X className="size-5" />
           </button>
-        </div>
+        </BrandLogoHeader>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           <ul className="flex flex-col gap-0.5">
