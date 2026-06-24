@@ -2,8 +2,9 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Building2, FolderKanban, Home, User } from "lucide-react"
+import { FolderKanban, Home, User } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { BrandLogoHeader } from "@/components/brand-logo"
 
 const NAV = [
   { href: "/staff", label: "Home", icon: Home, exact: true },
@@ -16,15 +17,7 @@ export function StaffSidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex items-center gap-3 px-6 py-5">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-          <Building2 className="size-5" />
-        </div>
-        <div className="leading-tight">
-          <p className="text-sm font-semibold">ArchPermit</p>
-          <p className="text-xs text-sidebar-foreground/60">Staff Portal</p>
-        </div>
-      </div>
+      <BrandLogoHeader href="/staff" className="border-sidebar-border" />
 
       <nav className="flex-1 px-3 py-2">
         <ul className="flex flex-col gap-1">

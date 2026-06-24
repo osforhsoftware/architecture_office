@@ -1,9 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +20,7 @@ import {
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { isBillingStaff, type Role } from "@/lib/constants"
+import { BrandLogoHeader } from "@/components/brand-logo"
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -64,30 +64,11 @@ export function AdminSidebar({
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
       className="hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex"
     >
-      <div className={cn("flex items-center gap-3 px-4 py-5", collapsed && "justify-center px-2")}>
-        <Image
-          src="/assets/osforh-logo.png"
-          alt="Osforh"
-          width={36}
-          height={36}
-          className="shrink-0 rounded-lg"
-        />
-        <AnimatePresence>
-          {!collapsed ? (
-            <motion.div
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: "auto" }}
-              exit={{ opacity: 0, width: 0 }}
-              className="min-w-0 overflow-hidden leading-tight"
-            >
-              <p className="text-sm font-semibold">Osforh</p>
-              <p className="text-xs text-sidebar-foreground/60">
-                {isBillingStaff(role) ? "Billing Portal" : "Office Admin"}
-              </p>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
+      <BrandLogoHeader
+        href="/admin"
+        compact={collapsed}
+        className="border-sidebar-border"
+      />
 
       <nav className="flex-1 px-2 py-2">
         <ul className="flex flex-col gap-0.5">
