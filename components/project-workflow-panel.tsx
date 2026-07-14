@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormSelect } from "@/components/form-select"
+import { FormMultiSelect } from "@/components/form-multi-select"
 import {
   Select,
   SelectContent,
@@ -14,35 +15,34 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  advanceStage,
   approveSectionReview,
   assignProject,
   assignToDepartment,
   closeProject,
+  markWorkComplete,
   reassignReturnedProject,
   rejectReview,
   returnProject,
   setProjectStatus,
+  startWork,
   submitForReview,
 } from "@/lib/actions"
-import {
-  PROJECT_STATUSES,
-  RETURN_REASONS,
-  SECTIONS,
-  SECTION_ROLE,
-  WORKFLOW_STAGES,
-  lastStageInSection,
-} from "@/lib/constants"
+import { PROJECT_STATUSES, RETURN_REASONS, SECTIONS, SECTION_ROLE, formatRolesLabel, userHasRole } from "@/lib/constants"
+import { allowsMultiAssignee, roleForStep } from "@/lib/workflow"
+import type { WorkflowStepRecord } from "@/lib/workflow"
 import type { AppUser, Project } from "@/lib/types"
 
 export function ProjectWorkflowPanel({
   project,
+  workflowSteps,
+  currentStep,
   staff,
   isAdmin,
-  userRole,
   readOnly = false,
 }: {
   project: Project
+  workflowSteps: WorkflowStepRecord[]
+  currentStep: WorkflowStepRecord | null
   staff: AppUser[]
   isAdmin: boolean
   userRole: string
@@ -55,17 +55,31 @@ export function ProjectWorkflowPanel({
     setStatus(project.status)
   }, [project.status])
 
-  const stage = WORKFLOW_STAGES[project.current_stage]
-  const atSectionEnd = project.current_stage >= lastStageInSection(project.section)
-  const sectionStaff = staff.filter((s) => SECTION_ROLE[project.section] === s.role)
+  const multiAssign = currentStep ? allowsMultiAssignee(currentStep) : false
+  const stepRole = currentStep ? roleForStep(currentStep) : null
+  const sectionStaff = staff.filter((s) => {
+    if (stepRole) return userHasRole(s, stepRole)
+    const sectionRole = SECTION_ROLE[project.section]
+    return sectionRole ? userHasRole(s, sectionRole) : false
+  })
 
   const sectionStaffOptions = useMemo(
-    () => sectionStaff.map((s) => ({ value: String(s.id), label: s.name })),
+    () =>
+      sectionStaff.map((s) => ({
+        value: String(s.id),
+        label: s.name,
+        description: formatRolesLabel(s),
+      })),
     [sectionStaff],
   )
 
   const allStaffOptions = useMemo(
-    () => staff.map((s) => ({ value: String(s.id), label: `${s.name} (${s.role})` })),
+    () =>
+      staff.map((s) => ({
+        value: String(s.id),
+        label: s.name,
+        description: formatRolesLabel(s),
+      })),
     [staff],
   )
 
@@ -73,6 +87,8 @@ export function ProjectWorkflowPanel({
     () => SECTIONS.map((s) => ({ value: s, label: s })),
     [],
   )
+
+  const completedCount = workflowSteps.filter((s) => s.step_status === "completed").length
 
   function run(action: (fd: FormData) => Promise<{ error?: string; success?: boolean }>, fd: FormData) {
     startTransition(async () => {
@@ -82,13 +98,16 @@ export function ProjectWorkflowPanel({
     })
   }
 
+  const isBillingStep = currentStep?.step_type === "billing"
+  const isReviewActive = project.status === "Pending Review"
+
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg bg-muted/50 p-4">
-        <p className="text-sm font-medium">Current stage</p>
-        <p className="text-lg">{stage?.label ?? "—"}</p>
+        <p className="text-sm font-medium">Current step</p>
+        <p className="text-lg">{currentStep?.label ?? "—"}</p>
         <p className="text-sm text-muted-foreground">
-          {project.section} · Stage {project.current_stage + 1} of {WORKFLOW_STAGES.length}
+          {project.section} · {completedCount} of {workflowSteps.length} steps completed
         </p>
         {project.review_note ? (
           <p className="mt-2 text-sm text-amber-800">Review note: {project.review_note}</p>
@@ -97,7 +116,7 @@ export function ProjectWorkflowPanel({
 
       {isAdmin ? (
         <div className="flex flex-col gap-4">
-          {project.status === "Pending Review" ? (
+          {isReviewActive ? (
             <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30">
               <p className="mb-3 text-sm font-medium">Admin review required</p>
               <form
@@ -107,16 +126,15 @@ export function ProjectWorkflowPanel({
                 <input type="hidden" name="project_id" value={project.id} />
                 <div className="flex flex-col gap-2">
                   <Label>Assign next staff (optional)</Label>
-                  <FormSelect
+                  <FormMultiSelect
                     name="assigned_to"
-                    placeholder="Auto-assign department"
+                    placeholder="Search or select staff for next step..."
+                    searchPlaceholder="Search staff..."
                     options={allStaffOptions}
                   />
                 </div>
                 <Textarea name="note" placeholder="Approval notes" />
-                <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={pending}>Approve & forward</Button>
-                </div>
+                <Button type="submit" disabled={pending}>Approve & assign next</Button>
               </form>
               <form
                 action={(fd) => run(rejectReview, fd)}
@@ -125,7 +143,7 @@ export function ProjectWorkflowPanel({
                 <input type="hidden" name="project_id" value={project.id} />
                 <Textarea name="note" placeholder="Correction feedback (required)" required />
                 <Button type="submit" variant="destructive" disabled={pending}>
-                  Request correction
+                  Reject — correction required
                 </Button>
               </form>
             </div>
@@ -135,42 +153,49 @@ export function ProjectWorkflowPanel({
             <form action={(fd) => run(reassignReturnedProject, fd)} className="flex flex-col gap-2">
               <input type="hidden" name="project_id" value={project.id} />
               <Label>Reassign returned project</Label>
-              <FormSelect
+              <FormMultiSelect
                 name="assigned_to"
                 required
-                placeholder="Select staff"
+                placeholder="Search or select staff..."
+                searchPlaceholder="Search staff..."
                 options={sectionStaffOptions}
               />
               <Button type="submit" disabled={pending}>Reassign</Button>
             </form>
           ) : null}
 
-          <form action={(fd) => run(assignProject, fd)} className="flex flex-col gap-2">
-            <input type="hidden" name="project_id" value={project.id} />
-            <Label>Assign to staff</Label>
-            <FormSelect
-              name="assigned_to"
-              required
-              placeholder="Select staff"
-              options={sectionStaffOptions}
-            />
-            <Button type="submit" variant="outline" disabled={pending}>Assign</Button>
-          </form>
+          {!isReviewActive ? (
+            <form action={(fd) => run(assignProject, fd)} className="flex flex-col gap-2">
+              <input type="hidden" name="project_id" value={project.id} />
+              <Label>{multiAssign ? "Assign team" : "Assign staff"}</Label>
+              {multiAssign ? (
+                <FormMultiSelect
+                  name="assigned_to"
+                  required
+                  placeholder="Search or select staff..."
+                  searchPlaceholder="Search staff..."
+                  options={sectionStaffOptions}
+                  defaultSelected={(project.site_assignee_ids ?? []).map(String)}
+                />
+              ) : (
+                <FormSelect
+                  name="assigned_to"
+                  required
+                  placeholder="Select staff"
+                  options={sectionStaffOptions}
+                />
+              )}
+              <Button type="submit" variant="outline" disabled={pending}>
+                {multiAssign ? "Assign team" : "Assign"}
+              </Button>
+            </form>
+          ) : null}
 
           <form action={(fd) => run(assignToDepartment, fd)} className="flex flex-col gap-2">
             <input type="hidden" name="project_id" value={project.id} />
-            <Label>Move to department</Label>
-            <FormSelect
-              name="section"
-              required
-              placeholder="Department"
-              options={sectionOptions}
-            />
-            <FormSelect
-              name="assigned_to"
-              placeholder="Optional staff"
-              options={allStaffOptions}
-            />
+            <Label>Move to department (admin override)</Label>
+            <FormSelect name="section" required placeholder="Department" options={sectionOptions} />
+            <FormSelect name="assigned_to" placeholder="Optional staff" options={allStaffOptions} />
             <Button type="submit" variant="outline" disabled={pending}>Move department</Button>
           </form>
 
@@ -189,7 +214,7 @@ export function ProjectWorkflowPanel({
             <Button type="submit" variant="outline" disabled={pending}>Update status</Button>
           </form>
 
-          {project.section === "Billing" ? (
+          {isBillingStep ? (
             <form action={(fd) => run(closeProject, fd)}>
               <input type="hidden" name="project_id" value={project.id} />
               <Button type="submit" disabled={pending || project.payment_status !== "Paid"}>
@@ -200,16 +225,25 @@ export function ProjectWorkflowPanel({
         </div>
       ) : readOnly ? null : (
         <div className="flex flex-col gap-3">
-          {!atSectionEnd && project.section !== "Billing" ? (
-            <form action={(fd) => run(advanceStage, fd)}>
+          {["Assigned", "Correction Required"].includes(project.status) ? (
+            <form action={(fd) => run(startWork, fd)}>
               <input type="hidden" name="project_id" value={project.id} />
-              <Button type="submit" disabled={pending} className="w-full">
-                Advance to next stage
+              <Button type="submit" disabled={pending} variant="outline" className="w-full">
+                Start work
               </Button>
             </form>
           ) : null}
 
-          {atSectionEnd && project.status !== "Pending Review" && project.section !== "Billing" ? (
+          {["Assigned", "In Progress", "Correction Required"].includes(project.status) ? (
+            <form action={(fd) => run(markWorkComplete, fd)}>
+              <input type="hidden" name="project_id" value={project.id} />
+              <Button type="submit" disabled={pending} className="w-full">
+                Mark work completed
+              </Button>
+            </form>
+          ) : null}
+
+          {["Work Completed", "In Progress"].includes(project.status) && !isReviewActive ? (
             <form action={(fd) => run(submitForReview, fd)} className="flex flex-col gap-2">
               <input type="hidden" name="project_id" value={project.id} />
               <Textarea name="note" placeholder="Notes for admin review" />

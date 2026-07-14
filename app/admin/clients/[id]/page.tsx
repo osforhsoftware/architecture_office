@@ -47,9 +47,15 @@ export default async function ClientDetailPage({
                   </span>
                 ) : null}
               </div>
-              {client.address ? (
+              {client.address || client.street || client.district ? (
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <MapPin className="size-3.5" /> {client.address}
+                  <MapPin className="size-3.5" />
+                  {[client.address, client.street, client.district].filter(Boolean).join(", ")}
+                </p>
+              ) : null}
+              {client.aadhaar_numbers?.length ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Aadhaar: {client.aadhaar_numbers.join(", ")}
                 </p>
               ) : null}
             </div>

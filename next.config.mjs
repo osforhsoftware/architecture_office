@@ -6,7 +6,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  allowedDevOrigins: ["192.168.220.47"],
+  allowedDevOrigins: ["192.168.220.51", "192.168.220.47", "192.168.220.*"],
   /**
    * Inline non-sensitive connection metadata at build time so Hostinger's Node
    * wrapper (which drops runtime process.env) still has host/user/database.

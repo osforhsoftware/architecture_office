@@ -11,13 +11,11 @@ import {
   Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { isBillingStaff, type Role } from "@/lib/constants"
+import { isBillingStaff, isSuperAdmin, type Role } from "@/lib/constants"
 
-const ADMIN_NAV = [
-  { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
+const OFFICE_ADMIN_NAV = [
   { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
-  { href: "/admin/clients", label: "Clients", icon: Users, exact: false },
-  { href: "/admin/billing", label: "Billing", icon: CreditCard, exact: false },
+  { href: "/admin/staff", label: "Staff", icon: Users, exact: false },
 ]
 
 const BILLING_STAFF_NAV = [
@@ -27,9 +25,22 @@ const BILLING_STAFF_NAV = [
   { href: "/admin/notifications", label: "Alerts", icon: Bell, exact: false },
 ]
 
+const SUPER_ADMIN_NAV = [
+  { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
+  { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
+  { href: "/admin/users", label: "Users", icon: Users, exact: false },
+  { href: "/admin/billing", label: "Billing", icon: CreditCard, exact: false },
+]
+
+function bottomNavForRole(role: Role) {
+  if (isBillingStaff(role)) return BILLING_STAFF_NAV
+  if (isSuperAdmin(role)) return SUPER_ADMIN_NAV
+  return OFFICE_ADMIN_NAV
+}
+
 export function AdminBottomNav({ role = "Admin" }: { role?: Role }) {
   const pathname = usePathname()
-  const nav = isBillingStaff(role) ? BILLING_STAFF_NAV : ADMIN_NAV
+  const nav = bottomNavForRole(role)
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

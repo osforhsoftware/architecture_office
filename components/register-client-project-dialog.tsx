@@ -1,40 +1,54 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { UserPlus } from "lucide-react"
 import { toast } from "sonner"
+import { Dialog, DialogTrigger } from "@/components/ui/dialog"
+import { AadhaarFields } from "@/components/aadhaar-fields"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  FormDialogBody,
+  FormDialogFooter,
+  FormDialogShell,
+} from "@/components/form-dialog-shell"
+import { FormSelect } from "@/components/form-select"
+import { FormField, FormSection, formControlClass, formTextareaClass } from "@/components/form-section"
+import { ResidentialPropertyFields } from "@/components/residential-details-section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { DrawingNumberField } from "@/components/project-drawing-number-panel"
 import { registerClientWithProject } from "@/lib/actions"
-import { PRIORITIES } from "@/lib/constants"
+import { KERALA_DISTRICTS, PRIORITIES, PROJECT_TYPES, showsResidentialDetails } from "@/lib/constants"
 
-const PROJECT_TYPES = ["Residential", "Commercial", "Industrial", "Institutional", "Renovation"]
+const DISTRICT_OPTIONS = KERALA_DISTRICTS.map((d) => ({ value: d, label: d }))
+const TYPE_OPTIONS = PROJECT_TYPES.map((t) => ({ value: t, label: t }))
+const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }))
 
 export function RegisterClientProjectDialog() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [district, setDistrict] = useState<string | null>(null)
+  const [projectType, setProjectType] = useState("Residential")
+  const [aadhaarNumbers, setAadhaarNumbers] = useState<string[]>([""])
+
+  const isResidential = showsResidentialDetails(projectType)
+
+  useEffect(() => {
+    if (!open) return
+    setDistrict(null)
+    setProjectType("Residential")
+    setAadhaarNumbers([""])
+    setError(null)
+  }, [open])
 
   function onSubmit(formData: FormData) {
     setError(null)
+    formData.set(
+      "aadhaar_numbers",
+      JSON.stringify(aadhaarNumbers.map((n) => n.trim()).filter(Boolean)),
+    )
     startTransition(async () => {
       const res = await registerClientWithProject(formData)
       if (res?.error) {
@@ -55,81 +69,168 @@ export function RegisterClientProjectDialog() {
           </Button>
         }
       />
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Register client & project</DialogTitle>
-          <DialogDescription>
-            Creates a client record and first project with auto-generated IDs.
-          </DialogDescription>
-        </DialogHeader>
-        <form action={onSubmit} className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="reg-name">Client name</Label>
-              <Input id="reg-name" name="client_name" required />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="reg-phone">Phone</Label>
-              <Input id="reg-phone" name="phone" required />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="reg-email">Email</Label>
-              <Input id="reg-email" name="email" type="email" />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="reg-address">Address</Label>
-              <Textarea id="reg-address" name="address" />
-            </div>
-          </div>
-          <hr className="border-border" />
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="reg-project-name">Project name</Label>
-            <Input id="reg-project-name" name="project_name" required />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="reg-location">Project location</Label>
-              <Input id="reg-location" name="location" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Type</Label>
-              <Select name="type" defaultValue="Residential">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PROJECT_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Priority</Label>
-              <Select name="priority" defaultValue="Medium">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PRIORITIES.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="reg-due">Due date</Label>
-              <Input id="reg-due" name="due_date" type="date" />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="reg-amount">Project amount (₹)</Label>
-              <Input id="reg-amount" name="project_amount" type="number" min="0" step="1000" defaultValue="0" />
-            </div>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Registering..." : "Register"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+      <FormDialogShell
+        title="Register Client & Project"
+        description="Creates a client record and first project with auto-generated IDs."
+      >
+        {open ? (
+          <form action={onSubmit} className="flex min-h-0 flex-1 flex-col">
+            <FormDialogBody>
+              <div className="flex flex-col gap-5">
+                <FormSection title="Client Information">
+                  <div className="flex flex-col gap-3">
+                    <FormField label="Client name" htmlFor="reg-name">
+                      <Input
+                        id="reg-name"
+                        name="client_name"
+                        required
+                        className={formControlClass}
+                      />
+                    </FormField>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <FormField label="Phone" htmlFor="reg-phone">
+                        <Input
+                          id="reg-phone"
+                          name="phone"
+                          required
+                          className={formControlClass}
+                        />
+                      </FormField>
+                      <FormField label="Email" htmlFor="reg-email">
+                        <Input
+                          id="reg-email"
+                          name="email"
+                          type="email"
+                          className={formControlClass}
+                        />
+                      </FormField>
+                    </div>
+
+                    <FormField label="Address" htmlFor="reg-address">
+                      <Textarea
+                        id="reg-address"
+                        name="address"
+                        className={formTextareaClass}
+                      />
+                    </FormField>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <FormField label="Street" htmlFor="reg-street">
+                        <Input id="reg-street" name="street" className={formControlClass} />
+                      </FormField>
+                      <FormField label="District" htmlFor="reg-district">
+                        <FormSelect
+                          id="reg-district"
+                          name="district"
+                          placeholder="Select district"
+                          options={DISTRICT_OPTIONS}
+                          value={district}
+                          onValueChange={setDistrict}
+                          className={formControlClass}
+                        />
+                      </FormField>
+                    </div>
+
+                    <AadhaarFields values={aadhaarNumbers} onChange={setAadhaarNumbers} />
+                  </div>
+                </FormSection>
+
+                <FormSection title="Project Information">
+                  <div className="flex flex-col gap-3">
+                    <FormField label="Project name" htmlFor="reg-project-name">
+                      <Input
+                        id="reg-project-name"
+                        name="project_name"
+                        required
+                        className={formControlClass}
+                      />
+                    </FormField>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <FormField label="Location" htmlFor="reg-location">
+                        <Input
+                          id="reg-location"
+                          name="location"
+                          placeholder="City, State"
+                          className={formControlClass}
+                        />
+                      </FormField>
+                      <FormField label="Project type" htmlFor="reg-type">
+                        <FormSelect
+                          id="reg-type"
+                          name="type"
+                          value={projectType}
+                          onValueChange={(value) => setProjectType(value ?? "Residential")}
+                          options={TYPE_OPTIONS}
+                          className={formControlClass}
+                        />
+                      </FormField>
+                    </div>
+
+                    <DrawingNumberField idPrefix="reg-" />
+
+                    <AnimatePresence initial={false}>
+                      {isResidential ? (
+                        <motion.div
+                          key="residential-property-fields"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <ResidentialPropertyFields idPrefix="reg-" />
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Timeline & Budget">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <FormField label="Priority" htmlFor="reg-priority">
+                      <FormSelect
+                        id="reg-priority"
+                        name="priority"
+                        defaultValue="Medium"
+                        options={PRIORITY_OPTIONS}
+                        className={formControlClass}
+                      />
+                    </FormField>
+                    <FormField label="Due date" htmlFor="reg-due">
+                      <Input
+                        id="reg-due"
+                        name="due_date"
+                        type="date"
+                        className={formControlClass}
+                      />
+                    </FormField>
+                    <FormField label="Budget (₹)" htmlFor="reg-amount">
+                      <Input
+                        id="reg-amount"
+                        name="project_amount"
+                        type="number"
+                        min="0"
+                        step="1000"
+                        defaultValue="0"
+                        className={formControlClass}
+                      />
+                    </FormField>
+                  </div>
+                </FormSection>
+
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              </div>
+            </FormDialogBody>
+
+            <FormDialogFooter
+              submitLabel={pending ? "Registering..." : "Register"}
+              pending={pending}
+            />
+          </form>
+        ) : null}
+      </FormDialogShell>
     </Dialog>
   )
 }

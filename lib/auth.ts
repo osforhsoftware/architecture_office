@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { getFrontendUrl, isSplitDeployment } from "./app-urls"
 import { isTransientDbError, sql, withDbRetry } from "./db"
+import { attachUserRoles } from "./staff-roles"
 import type { AppUser } from "./types"
 
 const COOKIE_NAME = "ao_session"
@@ -47,10 +48,15 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   try {
     const rows = (await withDbRetry(
       () => sql`
-        SELECT id, username, role, name FROM app_users WHERE id = ${userId} LIMIT 1
+        SELECT id, username, role, name, email, phone, active, created_at
+        FROM app_users
+        WHERE id = ${userId}
+        LIMIT 1
       `,
     )) as AppUser[]
-    return rows[0] ?? null
+    const user = rows[0]
+    if (!user) return null
+    return attachUserRoles(user)
   } catch (error) {
     if (isTransientDbError(error)) {
       console.error("[auth] Database unavailable:", error)

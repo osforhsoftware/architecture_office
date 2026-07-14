@@ -18,10 +18,24 @@ Architecture & Building Permit Management System — track every project from si
 
 ### Authentication & Roles
 
-- Login with username/password
-- Role-based redirect: **Admin** → `/admin`, staff → `/staff`
-- Five user roles: Admin, Planning Staff, Permit Staff, 3D Staff, Estimation Staff
+- Login with username/password (bcrypt-hashed credentials in the database)
+- Role hierarchy: **Super Admin** → **Admin** → Staff roles
+- Role-based redirect: Super Admin / Admin → `/admin`, Billing Staff → `/admin/billing`, other staff → `/staff`
+- Roles: Super Admin, Admin, Planning Staff, Permit Staff, 3D Staff, Estimation Staff, Billing Staff
+- Default Super Admin / Admin accounts are seeded from environment variables (`SUPER_ADMIN_*`, `ADMIN_*`) — never hardcoded
 - Secure HTTP-only session cookie (7-day expiry)
+- Audit logging for privileged actions (login, logout, clients, projects, settings, billing)
+
+### Super Admin
+
+- Full system control: settings, security, audit logs, user management, admin management, reports
+- Create / edit / delete Admin and Staff accounts
+
+### Admin (office manager)
+
+- Staff: add staff accounts only
+- Projects: add projects only
+- No access to clients, departments, billing, invoices, notifications, or system settings
 
 ### Admin Dashboard
 
@@ -178,20 +192,15 @@ The app also accepts `POSTGRES_URL`, `DATABASE_URL_UNPOOLED`, or `POSTGRES_URL_N
 
 ```bash
 npm install
-npm run db:setup    # Create tables and default users
-npm run db:seed     # Optional: load sample clients and projects
-npm run dev         # Start at http://localhost:3000
+# Ensure SUPER_ADMIN_* and ADMIN_* are set in .env (see .env.example)
+npm run db:setup         # Create tables and default users from env
+# OR for existing databases:
+npm run db:migrate-rbac  # Add Super Admin / Admin roles + audit columns
+npm run db:seed          # Optional: load sample clients and projects
+npm run dev              # Start at http://localhost:3000
 ```
 
-### Default Login Credentials
-
-| Username | Password | Role |
-|----------|----------|------|
-| `admin` | `admin123` | Admin |
-| `planning` | `plan123` | Planning Staff |
-| `permit` | `permit123` | Permit Staff |
-| `3d` | `3d123` | 3D Staff |
-| `estimate` | `est123` | Estimation Staff |
+Default privileged logins use the usernames/passwords from your `.env` — they are never hardcoded in source.
 
 ---
 
@@ -226,7 +235,8 @@ scripts/
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
-| `npm run db:setup` | Drop/recreate tables and default users |
+| `npm run db:setup` | Drop/recreate tables and default users from env |
+| `npm run db:migrate-rbac` | Migrate existing DB to Super Admin / Admin RBAC |
 | `npm run db:seed` | Insert sample clients and projects |
 
 ---
@@ -234,6 +244,15 @@ scripts/
 ## Changelog
 
 > **Update this section with every change** — add a new dated entry at the top describing what was added, changed, or fixed.
+
+### 2026-07-13 — Super Admin / Admin RBAC refactor
+
+- **Added** Super Admin role above Admin with full system control
+- **Changed** Admin to office-manager scope (clients, projects, staff assignment, billing; no settings/security/admin CRUD)
+- **Added** permission guards: `requireSuperAdmin`, `requireAdminOrSuperAdmin`, `requireBillingAccess`, `requireStaffAccess`
+- **Added** Super Admin pages: Admin Management, User Management, Security, Audit Logs
+- **Changed** default privileged credentials to env vars (`SUPER_ADMIN_*`, `ADMIN_*`); bcrypt-hashed in DB
+- **Added** audit log fields (`role`, `ip_address`) and login/logout auditing
 
 ### 2026-06-17 — P0 implementation (workflow, projects UI, staff portal)
 

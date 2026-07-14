@@ -3,6 +3,7 @@
 import { LogOut } from "lucide-react"
 import { logoutAction } from "@/lib/actions"
 import type { AppUser } from "@/lib/types"
+import { formatRolesLabel } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
@@ -23,7 +24,7 @@ export function UserMenu({
           <p className="max-w-[10rem] truncate text-sm font-medium md:max-w-[12rem]">
             {user.name}
           </p>
-          <p className="truncate text-xs text-muted-foreground">{user.role}</p>
+          <p className="truncate text-xs text-muted-foreground">{formatRolesLabel(user)}</p>
         </div>
       </div>
       <form action={logoutAction}>

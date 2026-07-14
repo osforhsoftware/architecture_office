@@ -2,8 +2,9 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { StaffProjectCard } from "@/components/staff-project-card"
 import { getCurrentUser } from "@/lib/auth"
+import { formatRolesLabel, rolesOf } from "@/lib/constants"
 import {
-  getDepartmentQueue,
+  getDepartmentQueueForRoles,
   getProjectsForUser,
   getStaffDashboardStats,
 } from "@/lib/queries"
@@ -14,26 +15,30 @@ export default async function StaffHomePage() {
 
   const [assigned, queue, stats] = await Promise.all([
     getProjectsForUser(user.id),
-    getDepartmentQueue(user.role),
+    getDepartmentQueueForRoles(rolesOf(user)),
     getStaffDashboardStats(user.id, user.name),
   ])
+
+  const kpiItems = [
+    { label: "My Assigned", value: stats.assigned },
+    { label: "Awaiting Action", value: stats.awaiting_action },
+    { label: "In Review", value: stats.submitted_review },
+    { label: "Corrections", value: stats.correction },
+    { label: "Overdue", value: stats.overdue },
+    { label: "Completed", value: stats.completed },
+  ]
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
       <div>
         <h2 className="text-xl font-semibold">Welcome, {user.name.split(" ")[0]}</h2>
         <p className="text-sm text-muted-foreground">
-          {user.role} · {stats.active} active {stats.active === 1 ? "project" : "projects"}
+          {formatRolesLabel(user)} · {stats.active} active {stats.active === 1 ? "project" : "projects"}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Active", value: stats.active },
-          { label: "Returned", value: stats.returned },
-          { label: "In Review", value: stats.pending_review },
-          { label: "Total", value: stats.total },
-        ].map((item) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {kpiItems.map((item) => (
           <Card key={item.label} className="shadow-none">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-semibold tabular-nums">{item.value}</p>

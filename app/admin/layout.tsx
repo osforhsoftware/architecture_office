@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessBilling } from "@/lib/constants"
+import { userCanAccessAdminPortal } from "@/lib/constants"
 import { getNotifications, getUnreadCount } from "@/lib/queries"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminTopbar } from "@/components/admin-topbar"
 import { AdminBottomNav } from "@/components/admin-bottom-nav"
-import { BillingStaffRouteGuard } from "@/components/billing-staff-route-guard"
+import { AdminRouteGuard } from "@/components/billing-staff-route-guard"
 
 export default async function AdminLayout({
   children,
@@ -14,7 +14,7 @@ export default async function AdminLayout({
 }) {
   const user = await getCurrentUser()
   if (!user) redirect("/login")
-  if (!canAccessBilling(user.role)) redirect("/staff")
+  if (!userCanAccessAdminPortal(user)) redirect("/staff")
 
   const [notifications, unreadCount] = await Promise.all([
     getNotifications(user.id),
@@ -22,7 +22,7 @@ export default async function AdminLayout({
   ])
 
   return (
-    <BillingStaffRouteGuard role={user.role}>
+    <AdminRouteGuard role={user.role}>
       <div className="flex min-h-screen overflow-x-hidden bg-background">
         <AdminSidebar role={user.role} unreadCount={unreadCount} />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -31,6 +31,6 @@ export default async function AdminLayout({
         </div>
         <AdminBottomNav role={user.role} />
       </div>
-    </BillingStaffRouteGuard>
+    </AdminRouteGuard>
   )
 }

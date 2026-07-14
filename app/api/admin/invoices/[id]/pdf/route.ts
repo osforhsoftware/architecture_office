@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { apiOptionsResponse, withApiCors } from "@/lib/api-cors"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessBilling } from "@/lib/constants"
+import { userCanAccessBilling } from "@/lib/constants"
 import { logAudit } from "@/lib/project-access"
 import { getInvoice, getOfficeProfile } from "@/lib/queries"
 import { resolveOfficeLogoForPdf } from "@/lib/logo-utils"
@@ -22,8 +22,8 @@ export async function GET(
 ) {
   try {
     const user = await getCurrentUser()
-    if (!user || !canAccessBilling(user.role)) {
-      return withApiCors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }))
+    if (!user || !userCanAccessBilling(user)) {
+      return withApiCors(NextResponse.json({ error: "Forbidden" }, { status: 403 }))
     }
 
     const { id } = await params

@@ -17,13 +17,25 @@ CREATE TABLE IF NOT EXISTS app_users (
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Multiple department roles per staff member (app_users.role = primary/legacy).
+CREATE TABLE IF NOT EXISTS staff_roles (
+  user_id   INT NOT NULL,
+  role_key  VARCHAR(50) NOT NULL,
+  PRIMARY KEY (user_id, role_key),
+  CONSTRAINT fk_staff_roles_user
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS clients (
-  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  name        VARCHAR(500) NOT NULL,
-  phone       VARCHAR(50) NOT NULL,
-  email       VARCHAR(255),
-  address     TEXT,
-  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name             VARCHAR(500) NOT NULL,
+  phone            VARCHAR(50) NOT NULL,
+  email            VARCHAR(255),
+  address          TEXT,
+  street           VARCHAR(500),
+  district         VARCHAR(100),
+  aadhaar_numbers  JSON,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -44,20 +56,116 @@ CREATE TABLE IF NOT EXISTS projects (
   invoice_number   VARCHAR(100),
   payment_status   VARCHAR(50)  DEFAULT 'Unpaid',
   review_note      TEXT,
+  building_number  VARCHAR(100),
+  building_permit_number VARCHAR(100),
+  drawing_number   VARCHAR(100),
+  req_architectural_plan TINYINT(1) DEFAULT 0,
+  req_building_permit    TINYINT(1) DEFAULT 0,
+  req_regularization     TINYINT(1) DEFAULT 0,
+  project_package        VARCHAR(50) DEFAULT 'full',
+  current_workflow_step_id INT,
+  work_completed_at      DATETIME,
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_projects_client   FOREIGN KEY (client_id)   REFERENCES clients(id),
   CONSTRAINT fk_projects_assigned FOREIGN KEY (assigned_to) REFERENCES app_users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS project_assignees (
+  project_id  INT NOT NULL,
+  user_id     INT NOT NULL,
+  stage_key   VARCHAR(100) NOT NULL DEFAULT 'site_visit',
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (project_id, user_id, stage_key),
+  CONSTRAINT fk_pa_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pa_user FOREIGN KEY (user_id) REFERENCES app_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS services (
+  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  service_key VARCHAR(100) UNIQUE NOT NULL,
+  label       VARCHAR(255) NOT NULL,
+  section     VARCHAR(100) NOT NULL,
+  role        VARCHAR(100) NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0,
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS project_services (
+  project_id   INT NOT NULL,
+  service_key  VARCHAR(100) NOT NULL,
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (project_id, service_key),
+  CONSTRAINT fk_ps_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS workflow_steps (
+  id            INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  project_id    INT NOT NULL,
+  step_type     VARCHAR(50) NOT NULL,
+  step_key      VARCHAR(100) NOT NULL,
+  label         VARCHAR(255) NOT NULL,
+  section       VARCHAR(100) NOT NULL,
+  service_key   VARCHAR(100),
+  sort_order    INT NOT NULL,
+  step_status   VARCHAR(50) NOT NULL DEFAULT 'pending',
+  assigned_to   INT,
+  started_at    DATETIME,
+  completed_at  DATETIME,
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_workflow_step (project_id, step_key),
+  CONSTRAINT fk_ws_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ws_assignee FOREIGN KEY (assigned_to) REFERENCES app_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS workflow_reviews (
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  project_id       INT NOT NULL,
+  workflow_step_id INT NOT NULL,
+  decision         VARCHAR(50) NOT NULL,
+  note             TEXT,
+  reviewed_by      INT,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_wr_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wr_step FOREIGN KEY (workflow_step_id) REFERENCES workflow_steps(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wr_reviewer FOREIGN KEY (reviewed_by) REFERENCES app_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS workflow_assignments (
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  project_id       INT NOT NULL,
+  workflow_step_id INT NOT NULL,
+  user_id          INT NOT NULL,
+  assigned_by      INT,
+  note             TEXT,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_wa_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wa_step FOREIGN KEY (workflow_step_id) REFERENCES workflow_steps(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wa_user FOREIGN KEY (user_id) REFERENCES app_users(id),
+  CONSTRAINT fk_wa_assigner FOREIGN KEY (assigned_by) REFERENCES app_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS checklist_items (
   id             INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   project_id     INT NOT NULL,
   item_key       VARCHAR(255) NOT NULL,
+  service_key    VARCHAR(100),
   checked        TINYINT(1) DEFAULT 0,
+  filed          TINYINT(1) DEFAULT 0,
   review_status  VARCHAR(50) DEFAULT 'Pending',
   UNIQUE KEY uq_checklist (project_id, item_key),
   CONSTRAINT fk_checklist_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS project_kmap_areas (
+  id            INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  project_id    INT NOT NULL,
+  floor_key     VARCHAR(50) NOT NULL,
+  plinth_area   DECIMAL(12,2),
+  floor_area    DECIMAL(12,2),
+  UNIQUE KEY uq_kmap_floor (project_id, floor_key),
+  CONSTRAINT fk_kmap_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS status_history (
@@ -120,10 +228,12 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE TABLE IF NOT EXISTS audit_logs (
   id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id      INT,
+  role         VARCHAR(100),
   action       VARCHAR(255) NOT NULL,
   entity_type  VARCHAR(100) NOT NULL,
   entity_id    INT,
   details      JSON,
+  ip_address   VARCHAR(100),
   created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES app_users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

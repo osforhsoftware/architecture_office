@@ -32,9 +32,9 @@ function formatPdfCurrency(value: number | string): string {
 
 function formatPdfQuantity(value: number | string): string {
   const n = typeof value === "string" ? Number.parseFloat(value) : value
-  if (!Number.isFinite(n)) return "0"
+  if (!Number.isFinite(n)) return "0.00"
   return new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)
 }
@@ -207,34 +207,31 @@ export function buildInvoicePdfBuffer(
 
   autoTable(doc, {
     startY: y,
-    head: [["Description", "Qty", "Unit Price", "Amount"]],
+    head: [["DESCRIPTION", "SQFT / M2", "RATE", "AMOUNT"]],
     body: tableBody.length ? tableBody : [["-", "-", "-", "-"]],
-    theme: "striped",
+    theme: "grid",
     showHead: "firstPage",
     rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
       fontSize: 9,
-      cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
-      textColor: [40, 40, 40],
-      lineColor: [230, 232, 236],
-      lineWidth: 0.1,
+      cellPadding: { top: 3, right: 3, bottom: 3, left: 3 },
+      textColor: [0, 0, 0],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
     },
     headStyles: {
       font: "helvetica",
-      fillColor: [45, 55, 72],
-      textColor: [255, 255, 255],
+      fillColor: [220, 220, 220],
+      textColor: [0, 0, 0],
       fontStyle: "bold",
-      halign: "left",
+      halign: "center",
     },
     columnStyles: {
       0: { cellWidth: 88 },
-      1: { halign: "center", cellWidth: 18 },
-      2: { halign: "right", cellWidth: 38 },
-      3: { halign: "right", cellWidth: 38 },
-    },
-    alternateRowStyles: {
-      fillColor: [250, 251, 253],
+      1: { halign: "right", cellWidth: 28 },
+      2: { halign: "right", cellWidth: 32 },
+      3: { halign: "right", cellWidth: 32 },
     },
     margin: { left: margin, right: margin },
   })

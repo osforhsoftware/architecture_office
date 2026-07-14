@@ -116,16 +116,21 @@ declare global {
 }
 
 /** Bump when pool options (e.g. typeCast) change so dev HMR recreates the pool. */
-const MYSQL_POOL_VERSION = 2
+const MYSQL_POOL_VERSION = 3
+
+function poolConfigKey(): string {
+  const c = parseMysqlConfig()
+  return `${c.host}:${c.port}:${c.user}:${c.database}:v${MYSQL_POOL_VERSION}`
+}
 
 function getPool(): mysql.Pool {
-  if (
-    !globalThis.__mysqlPool ||
-    globalThis.__mysqlPoolVersion !== MYSQL_POOL_VERSION
-  ) {
+  const key = poolConfigKey()
+  const prevKey = (globalThis as { __mysqlPoolKey?: string }).__mysqlPoolKey
+  if (!globalThis.__mysqlPool || prevKey !== key) {
     void globalThis.__mysqlPool?.end()
     globalThis.__mysqlPool = createPool()
     globalThis.__mysqlPoolVersion = MYSQL_POOL_VERSION
+    ;(globalThis as { __mysqlPoolKey?: string }).__mysqlPoolKey = key
   }
   return globalThis.__mysqlPool
 }

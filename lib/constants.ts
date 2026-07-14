@@ -1,10 +1,30 @@
 export type Role =
+  | "Super Admin"
   | "Admin"
   | "Planning Staff"
   | "Permit Staff"
   | "3D Staff"
   | "Estimation Staff"
   | "Billing Staff"
+
+/** Machine-style role keys used by middleware / guards */
+export const ROLE_KEYS = {
+  SUPER_ADMIN: "SUPER_ADMIN",
+  ADMIN: "ADMIN",
+  PLANNING_STAFF: "PLANNING_STAFF",
+  PERMIT_STAFF: "PERMIT_STAFF",
+  THREED_STAFF: "THREED_STAFF",
+  ESTIMATION_STAFF: "ESTIMATION_STAFF",
+  BILLING_STAFF: "BILLING_STAFF",
+} as const
+
+export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS]
+
+export const SUPER_ADMIN_ROLE = "Super Admin" as const
+export const ADMIN_ROLE = "Admin" as const
+export const BILLING_STAFF_ROLE = "Billing Staff" as const
+
+export const PRIVILEGED_ROLES: readonly Role[] = [SUPER_ADMIN_ROLE, ADMIN_ROLE]
 
 export const STAFF_ROLES: Role[] = [
   "Planning Staff",
@@ -14,7 +34,16 @@ export const STAFF_ROLES: Role[] = [
   "Billing Staff",
 ]
 
-export const BILLING_STAFF_ROLE = "Billing Staff" as const
+export const ALL_ROLES: Role[] = [SUPER_ADMIN_ROLE, ADMIN_ROLE, ...STAFF_ROLES]
+
+/** SQL-safe list for excluding Super Admin + Admin from staff directories */
+export const PRIVILEGED_ROLE_SQL = `'Super Admin', 'Admin'`
+
+/** Routes office Admin may access under /admin (staff + projects only) */
+export const ADMIN_ROUTE_PREFIXES = [
+  "/admin/staff",
+  "/admin/projects",
+] as const
 
 /** Routes Billing Staff may access under /admin */
 export const BILLING_STAFF_ROUTE_PREFIXES = [
@@ -24,12 +53,171 @@ export const BILLING_STAFF_ROUTE_PREFIXES = [
   "/admin/notifications",
 ] as const
 
+/** Routes only Super Admin may access under /admin */
+export const SUPER_ADMIN_ONLY_ROUTE_PREFIXES = [
+  "/admin/admins",
+  "/admin/users",
+  "/admin/security",
+  "/admin/audit",
+  "/admin/settings",
+  "/admin/reports",
+] as const
+
+export function roleToKey(role: string): RoleKey | null {
+  switch (role) {
+    case SUPER_ADMIN_ROLE:
+      return ROLE_KEYS.SUPER_ADMIN
+    case ADMIN_ROLE:
+      return ROLE_KEYS.ADMIN
+    case "Planning Staff":
+      return ROLE_KEYS.PLANNING_STAFF
+    case "Permit Staff":
+      return ROLE_KEYS.PERMIT_STAFF
+    case "3D Staff":
+      return ROLE_KEYS.THREED_STAFF
+    case "Estimation Staff":
+      return ROLE_KEYS.ESTIMATION_STAFF
+    case BILLING_STAFF_ROLE:
+      return ROLE_KEYS.BILLING_STAFF
+    default:
+      return null
+  }
+}
+
+export function keyToRole(key: string): Role | null {
+  switch (key) {
+    case ROLE_KEYS.SUPER_ADMIN:
+      return SUPER_ADMIN_ROLE
+    case ROLE_KEYS.ADMIN:
+      return ADMIN_ROLE
+    case ROLE_KEYS.PLANNING_STAFF:
+      return "Planning Staff"
+    case ROLE_KEYS.PERMIT_STAFF:
+      return "Permit Staff"
+    case ROLE_KEYS.THREED_STAFF:
+      return "3D Staff"
+    case ROLE_KEYS.ESTIMATION_STAFF:
+      return "Estimation Staff"
+    case ROLE_KEYS.BILLING_STAFF:
+      return BILLING_STAFF_ROLE
+    default:
+      return null
+  }
+}
+
+/** Resolve all roles for a user (multi-role with single-role fallback). */
+export function rolesOf(user: { role: string; roles?: readonly string[] }): string[] {
+  if (user.roles && user.roles.length > 0) return [...user.roles]
+  return user.role ? [user.role] : []
+}
+
+export function userHasRole(
+  user: { role: string; roles?: readonly string[] },
+  role: string,
+): boolean {
+  return rolesOf(user).includes(role)
+}
+
+export function userHasAnyRole(
+  user: { role: string; roles?: readonly string[] },
+  candidates: readonly string[],
+): boolean {
+  const set = new Set(rolesOf(user))
+  return candidates.some((role) => set.has(role))
+}
+
+export function formatRolesLabel(user: { role: string; roles?: readonly string[] }): string {
+  const list = rolesOf(user)
+  return list.length ? list.join(", ") : user.role
+}
+
+export function isSuperAdmin(role: string): boolean {
+  return role === SUPER_ADMIN_ROLE
+}
+
+export function isOfficeAdmin(role: string): boolean {
+  return role === SUPER_ADMIN_ROLE || role === ADMIN_ROLE
+}
+
+export function isPrivilegedRole(role: string): boolean {
+  return isOfficeAdmin(role)
+}
+
+export function isStaffRole(role: string): boolean {
+  return (STAFF_ROLES as readonly string[]).includes(role)
+}
+
 export function isBillingStaff(role: string): boolean {
   return role === BILLING_STAFF_ROLE
 }
 
+export function canAccessAdminPortal(role: string): boolean {
+  return isOfficeAdmin(role) || isBillingStaff(role)
+}
+
+/** Multi-role aware: Billing Staff among roles OR office admin. */
+export function userCanAccessAdminPortal(user: {
+  role: string
+  roles?: readonly string[]
+}): boolean {
+  return isOfficeAdmin(user.role) || userHasRole(user, BILLING_STAFF_ROLE)
+}
+
 export function canAccessBilling(role: string): boolean {
-  return role === "Admin" || role === BILLING_STAFF_ROLE
+  return isSuperAdmin(role) || isBillingStaff(role)
+}
+
+/** Multi-role aware billing access. */
+export function userCanAccessBilling(user: {
+  role: string
+  roles?: readonly string[]
+}): boolean {
+  return isSuperAdmin(user.role) || userHasRole(user, BILLING_STAFF_ROLE)
+}
+
+export function canManageAdmins(role: string): boolean {
+  return isSuperAdmin(role)
+}
+
+export function canAccessSystemSettings(role: string): boolean {
+  return isSuperAdmin(role)
+}
+
+export function canViewAuditLogs(role: string): boolean {
+  return isSuperAdmin(role)
+}
+
+export function canManageUsers(role: string): boolean {
+  return isSuperAdmin(role)
+}
+
+export function canAccessReports(role: string): boolean {
+  return isSuperAdmin(role)
+}
+
+/** Admin may only add staff / projects (not full office management) */
+export function canAddStaffAndProjects(role: string): boolean {
+  return isOfficeAdmin(role)
+}
+
+/** True when the user has at least one department staff role (any of STAFF_ROLES). */
+export function userIsStaffRole(user: { role: string; roles?: readonly string[] }): boolean {
+  return userHasAnyRole(user, STAFF_ROLES)
+}
+
+export function userIsBillingStaff(user: {
+  role: string
+  roles?: readonly string[]
+}): boolean {
+  return userHasRole(user, BILLING_STAFF_ROLE)
+}
+
+/** True when the user has Planning Staff among their department roles. */
+export function userIsPlanningStaff(user: {
+  role: string
+  roles?: readonly string[]
+}): boolean {
+  return userHasRole(user, "Planning Staff")
 }
 
 export function isBillingStaffRouteAllowed(pathname: string): boolean {
@@ -38,8 +226,21 @@ export function isBillingStaffRouteAllowed(pathname: string): boolean {
   )
 }
 
+export function isAdminRouteAllowed(pathname: string): boolean {
+  return ADMIN_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
+}
+
+export function isSuperAdminOnlyRoute(pathname: string): boolean {
+  return SUPER_ADMIN_ONLY_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
+}
+
 export function homePathForRole(role: string): string {
-  if (role === "Admin") return "/admin"
+  if (isSuperAdmin(role)) return "/admin"
+  if (role === ADMIN_ROLE) return "/admin/projects"
   if (role === BILLING_STAFF_ROLE) return "/admin/billing"
   return "/staff"
 }
@@ -99,7 +300,14 @@ export function pipelineIndexForProject(section: string, status: string): number
   return SECTION_TO_PIPELINE_INDEX[section] ?? 0
 }
 
-export function projectProgressPercent(currentStage: number): number {
+export function workflowProgressPercent(steps: { step_status: string }[]): number {
+  if (!steps.length) return 0
+  const done = steps.filter((s) => s.step_status === "completed").length
+  return Math.round((done / steps.length) * 100)
+}
+
+export function projectProgressPercent(currentStage: number, workflowSteps?: { step_status: string }[]): number {
+  if (workflowSteps?.length) return workflowProgressPercent(workflowSteps)
   if (!WORKFLOW_STAGES.length) return 0
   return Math.round(((currentStage + 1) / WORKFLOW_STAGES.length) * 100)
 }
@@ -112,20 +320,91 @@ export const SECTION_ROLE: Record<string, Role> = {
   Billing: "Billing Staff",
 }
 
+export const ROLE_SECTION: Record<string, string> = {
+  "Planning Staff": "Planning & Design",
+  "Permit Staff": "Building Permit",
+  "3D Staff": "3D & Interior",
+  "Estimation Staff": "Estimation & Construction",
+  "Billing Staff": "Billing",
+}
+
+export function departmentForRole(role: string): string | null {
+  return ROLE_SECTION[role] ?? null
+}
+
 export const PROJECT_STATUSES = [
   "New",
+  "Awaiting Assignment",
   "Assigned",
   "In Progress",
-  "Pending",
+  "Work Completed",
   "Pending Review",
+  "Approved",
   "Correction Required",
-  "Waiting For Documents",
   "Returned",
+  "Waiting for Client",
+  "Waiting for Documents",
+  "Waiting for Government Approval",
+  "Waiting for Payment",
+  "On Hold",
   "Completed",
   "Closed",
+  "Cancelled",
 ] as const
 
 export const PRIORITIES = ["Low", "Medium", "High"] as const
+
+export const PROJECT_TYPES = [
+  "Residential",
+  "Commercial",
+  "Industrial",
+  "Institutional",
+  "Renovation",
+] as const
+
+export type ProjectType = (typeof PROJECT_TYPES)[number]
+
+/** Project types that show the residential details form section. Extend this list to enable for other types. */
+export const PROJECT_TYPES_WITH_RESIDENTIAL_DETAILS: readonly ProjectType[] = ["Residential"]
+
+export function showsResidentialDetails(type: string | null | undefined): boolean {
+  return !!type && (PROJECT_TYPES_WITH_RESIDENTIAL_DETAILS as readonly string[]).includes(type)
+}
+
+export const RESIDENTIAL_SERVICE_TYPES = [
+  {
+    key: "architectural_plan",
+    label: "Architectural Plan",
+    fieldName: "req_architectural_plan",
+  },
+  {
+    key: "building_permit",
+    label: "Building Permit",
+    fieldName: "req_building_permit",
+  },
+  {
+    key: "regularization",
+    label: "Regularization",
+    fieldName: "req_regularization",
+  },
+] as const
+
+export type ResidentialServiceKey = (typeof RESIDENTIAL_SERVICE_TYPES)[number]["key"]
+
+/** Use `"single"` for one service only, or `"multiple"` to allow several. */
+export const RESIDENTIAL_SERVICE_SELECTION_MODE: "single" | "multiple" = "multiple"
+
+/** Services that reveal building number and permit number fields. */
+export const RESIDENTIAL_SERVICES_WITH_PROPERTY_FIELDS: readonly ResidentialServiceKey[] = [
+  "architectural_plan",
+  "building_permit",
+]
+
+export function showsResidentialPropertyFields(services: readonly ResidentialServiceKey[]): boolean {
+  return services.some((service) =>
+    (RESIDENTIAL_SERVICES_WITH_PROPERTY_FIELDS as readonly string[]).includes(service),
+  )
+}
 
 export const PAYMENT_STATUSES = ["Unpaid", "Partially Paid", "Paid"] as const
 
@@ -143,17 +422,24 @@ export const DEFAULT_INVOICE_TERMS =
   "Payment is due within 15 days of invoice date. Late payments may incur additional charges. All amounts are in INR."
 
 export const CHECKLIST_ITEMS = [
+  "Possession",
+  "Land Tax",
+  "Deed",
+  "One Time Tax",
+  "Building Cess",
+  "Plot Sketch",
   "Aadhaar Card",
-  "PAN Card",
-  "Title Deed",
-  "Possession Certificate",
-  "Land Tax Receipt",
-  "Location Sketch",
-  "Survey Sketch",
-  "Site Plan",
-  "Ownership Certificate",
-  "Other Documents",
-]
+  "Consent",
+  "Permit",
+  "Labour Cess",
+] as const
+
+export const KMAP_FLOOR_ROWS = [
+  { key: "ground_floor", label: "Ground Floor" },
+  { key: "first_floor", label: "First Floor" },
+  { key: "second_floor", label: "Second Floor" },
+  { key: "third_floor", label: "Third Floor" },
+] as const
 
 export const RETURN_REASONS = [
   "Missing Documents",
@@ -188,6 +474,15 @@ export function firstStageInSection(section: string): number {
   return idx >= 0 ? idx : 0
 }
 
+export const SITE_VISIT_STAGE_KEY = "site_visit"
+
+export function isSiteVisitStage(section: string, currentStage: number): boolean {
+  return (
+    section === "Planning & Design" &&
+    WORKFLOW_STAGES[currentStage]?.key === SITE_VISIT_STAGE_KEY
+  )
+}
+
 export function lastStageInSection(section: string): number {
   let last = 0
   for (let i = 0; i < WORKFLOW_STAGES.length; i++) {
@@ -209,6 +504,25 @@ export function nextSection(current: string): string | null {
   return order[idx + 1]
 }
 
+export const KERALA_DISTRICTS = [
+  "Alappuzha",
+  "Ernakulam",
+  "Idukki",
+  "Kannur",
+  "Kasaragod",
+  "Kollam",
+  "Kottayam",
+  "Kozhikode",
+  "Malappuram",
+  "Palakkad",
+  "Pathanamthitta",
+  "Thiruvananthapuram",
+  "Thrissur",
+  "Wayanad",
+] as const
+
+export type KeralaDistrict = (typeof KERALA_DISTRICTS)[number]
+
 export function formatClientId(id: number): string {
   const year = new Date().getFullYear()
   return `CLI-${year}-${String(id).padStart(4, "0")}`
@@ -229,9 +543,9 @@ export function balanceAmount(projectAmount: number | string, paid: number | str
   return Math.max(0, (Number.isFinite(total) ? total : 0) - (Number.isFinite(received) ? received : 0))
 }
 
-export function checklistCompletion(items: { checked: boolean }[]): number {
+export function checklistCompletion(items: { checked: boolean; filed?: boolean }[]): number {
   if (!items.length) return 0
-  const done = items.filter((i) => i.checked).length
+  const done = items.filter((i) => (i.filed ?? i.checked)).length
   return Math.round((done / items.length) * 100)
 }
 
@@ -239,24 +553,38 @@ export function statusColor(status: string): string {
   switch (status) {
     case "New":
       return "bg-slate-100 text-slate-700 border-slate-200"
+    case "Awaiting Assignment":
+      return "bg-sky-100 text-sky-800 border-sky-200"
     case "Assigned":
       return "bg-blue-100 text-blue-700 border-blue-200"
     case "In Progress":
       return "bg-amber-100 text-amber-800 border-amber-200"
-    case "Pending":
-      return "bg-orange-100 text-orange-800 border-orange-200"
+    case "Work Completed":
+      return "bg-teal-100 text-teal-800 border-teal-200"
     case "Pending Review":
       return "bg-violet-100 text-violet-800 border-violet-200"
+    case "Approved":
+      return "bg-indigo-100 text-indigo-800 border-indigo-200"
     case "Correction Required":
       return "bg-rose-100 text-rose-800 border-rose-200"
-    case "Waiting For Documents":
+    case "Waiting for Client":
+      return "bg-orange-100 text-orange-800 border-orange-200"
+    case "Waiting for Documents":
       return "bg-yellow-100 text-yellow-900 border-yellow-200"
+    case "Waiting for Government Approval":
+      return "bg-purple-100 text-purple-800 border-purple-200"
+    case "Waiting for Payment":
+      return "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200"
+    case "On Hold":
+      return "bg-gray-100 text-gray-700 border-gray-200"
     case "Returned":
       return "bg-red-100 text-red-700 border-red-200"
     case "Completed":
       return "bg-green-100 text-green-700 border-green-200"
     case "Closed":
       return "bg-emerald-100 text-emerald-800 border-emerald-200"
+    case "Cancelled":
+      return "bg-neutral-100 text-neutral-600 border-neutral-200"
     default:
       return "bg-slate-100 text-slate-700 border-slate-200"
   }

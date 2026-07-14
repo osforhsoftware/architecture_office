@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { ArrowLeft, Mail, MapPin, Phone, User } from "lucide-react"
 import { BillingStaffProjectView } from "@/components/billing-staff-project-view"
 import { ProjectChecklist } from "@/components/project-checklist"
+import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
+import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
 import { ProjectPaymentsPanel } from "@/components/project-payments-panel"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
@@ -15,20 +17,23 @@ import { getCurrentUser } from "@/lib/auth"
 import {
   formatClientId,
   formatCurrency,
-  isBillingStaff,
+  isOfficeAdmin,
   projectProgressPercent,
-  WORKFLOW_STAGES,
+  userIsBillingStaff,
 } from "@/lib/constants"
 import {
   getChecklist,
   getClient,
+  getCurrentWorkflowStep,
   getInvoicesByProject,
   getPayments,
   getProject,
   getProjectFiles,
+  getProjectKmapAreas,
   getReturnHistory,
   getStaffUsers,
   getStatusHistory,
+  getWorkflowSteps,
 } from "@/lib/queries"
 
 export default async function AdminProjectDetailPage({
@@ -37,16 +42,17 @@ export default async function AdminProjectDetailPage({
   params: Promise<{ id: string }>
 }) {
   const user = await getCurrentUser()
-  if (!user || (!isBillingStaff(user.role) && user.role !== "Admin")) notFound()
+  if (!user || (!userIsBillingStaff(user) && !isOfficeAdmin(user.role))) notFound()
 
   const { id } = await params
   const projectId = Number(id)
   const project = await getProject(projectId)
   if (!project) notFound()
 
-  if (isBillingStaff(user.role) && project.section !== "Billing") notFound()
+  const billingOnly = userIsBillingStaff(user) && user.role === "Billing Staff"
+  if (billingOnly && project.section !== "Billing") notFound()
 
-  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory] =
+  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep] =
     await Promise.all([
       getClient(project.client_id),
       getStaffUsers(),
@@ -56,12 +62,15 @@ export default async function AdminProjectDetailPage({
       getInvoicesByProject(projectId),
       getStatusHistory(projectId),
       getReturnHistory(projectId),
+      getProjectKmapAreas(projectId),
+      getWorkflowSteps(projectId),
+      getCurrentWorkflowStep(projectId),
     ])
 
-  const progress = projectProgressPercent(project.current_stage)
-  const stageLabel = WORKFLOW_STAGES[project.current_stage]?.label ?? "—"
+  const progress = projectProgressPercent(project.current_stage, workflowSteps)
+  const stageLabel = currentStep?.label ?? "—"
 
-  if (isBillingStaff(user.role)) {
+  if (billingOnly) {
     return (
       <BillingStaffProjectView project={project} payments={payments} invoices={invoices} />
     )
@@ -173,7 +182,7 @@ export default async function AdminProjectDetailPage({
         <h3 className="text-sm font-semibold">Workflow Timeline</h3>
         <p className="text-xs text-muted-foreground">End-to-end project pipeline</p>
         <div className="mt-4">
-          <WorkflowTimeline section={project.section} status={project.status} />
+          <WorkflowTimeline workflowSteps={workflowSteps} status={project.status} />
         </div>
       </div>
 
@@ -198,6 +207,10 @@ export default async function AdminProjectDetailPage({
                 <dt className="text-muted-foreground">Stage</dt>
                 <dd className="max-w-[140px] truncate text-right font-medium">{stageLabel}</dd>
               </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Drawing No.</dt>
+                <dd className="font-medium">{project.drawing_number ?? "—"}</dd>
+              </div>
             </dl>
           </div>
 
@@ -212,10 +225,16 @@ export default async function AdminProjectDetailPage({
                   {project.assignee_name ?? "Unassigned"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {project.assignee_name ? "Current assignee" : "Awaiting assignment"}
+                  {project.assignee_name ? "Primary assignee" : "Awaiting assignment"}
                 </p>
               </div>
             </div>
+            {project.site_assignee_names && project.site_assignee_names.length > 1 ? (
+              <div className="mt-4 rounded-lg bg-muted/50 p-3">
+                <p className="text-xs font-medium text-muted-foreground">Assigned team</p>
+                <p className="mt-1 text-sm">{project.site_assignee_names.join(", ")}</p>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
@@ -237,10 +256,23 @@ export default async function AdminProjectDetailPage({
             <h3 className="text-sm font-semibold">Department Progress</h3>
             <ProjectWorkflowPanel
               project={project}
+              workflowSteps={workflowSteps}
+              currentStep={currentStep}
               staff={staff}
               isAdmin
               userRole={user.role}
             />
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
+            <ProjectDrawingNumberPanel
+              projectId={projectId}
+              drawingNumber={project.drawing_number}
+            />
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
+            <ProjectKmapPanel projectId={projectId} areas={kmapAreas} />
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
@@ -251,7 +283,7 @@ export default async function AdminProjectDetailPage({
                 <TabsTrigger value="billing">Billing</TabsTrigger>
               </TabsList>
               <TabsContent value="checklist">
-                <ProjectChecklist items={checklist} projectId={projectId} isAdmin />
+                <ProjectChecklist items={checklist} projectId={projectId} />
               </TabsContent>
               <TabsContent value="files">
                 <ProjectFilesPanel files={files} projectId={projectId} />

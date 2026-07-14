@@ -1,0 +1,2 @@
+ALTER TABLE checklist_items
+  ADD COLUMN filed TINYINT(1) NOT NULL DEFAULT 0 AFTER checked;

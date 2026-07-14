@@ -246,29 +246,4 @@
   nav.fixed {
     display: none !important;
   }
-
-  .invoice-preview-wrapper {
-    overflow: visible !important;
-    border: none !important;
-    background: white !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  #invoice-preview {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    page-break-after: avoid;
-    break-inside: avoid;
-  }
-
-  #invoice-preview > div {
-    border: none !important;
-    padding: 0 !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
 }
