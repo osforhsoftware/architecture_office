@@ -6,9 +6,8 @@ import { useEffect, useState } from "react"
 import { LogOut, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logoutAction } from "@/lib/actions"
-import { ADMIN_NAV, BILLING_STAFF_NAV } from "@/components/admin-sidebar"
+import { adminNavForRole } from "@/lib/admin-nav"
 import { BrandLogoHeader } from "@/components/brand-logo"
-import { isBillingStaff } from "@/lib/constants"
 import type { AppUser } from "@/lib/types"
 
 export function AdminMobileNav({
@@ -48,7 +47,7 @@ export function AdminMobileNav({
 
   if (!mounted || !open) return null
 
-  const nav = isBillingStaff(role) ? BILLING_STAFF_NAV : ADMIN_NAV
+  const nav = adminNavForRole(role)
 
   return createPortal(
     <>

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:lan": "node scripts/dev-lan.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -11,7 +12,16 @@
     "db:seed": "node scripts/seed-db.mjs",
     "db:indexes": "node scripts/add-search-indexes.mjs",
     "db:migrate-staff": "node scripts/migrate-staff-fields.mjs",
+    "db:migrate-client": "node scripts/migrate-client-fields.mjs",
+    "db:migrate-checklist": "node scripts/migrate-checklist-filed.mjs",
+    "db:migrate-kmap": "node scripts/migrate-project-kmap.mjs",
+    "db:migrate-residential": "node scripts/migrate-project-residential.mjs",
+    "db:migrate-drawing-number": "node scripts/migrate-project-drawing-number.mjs",
     "db:migrate-invoices": "node scripts/migrate-invoices.mjs",
+    "db:migrate-assignees": "node scripts/migrate-project-assignees.mjs",
+    "db:migrate-workflow": "node scripts/migrate-workflow.mjs",
+    "db:migrate-rbac": "node scripts/migrate-rbac-roles.mjs",
+    "db:migrate-staff-roles": "node scripts/migrate-staff-roles.mjs",
     "db:migrate-pg": "node scripts/migrate-pg-to-mysql.mjs"
   },
   "dependencies": {

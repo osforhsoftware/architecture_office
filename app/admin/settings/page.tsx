@@ -1,7 +1,13 @@
+import { redirect } from "next/navigation"
+import { getCurrentUser } from "@/lib/auth"
+import { canAccessSystemSettings } from "@/lib/constants"
 import { OfficeProfileSettings } from "@/components/office-profile-settings"
 import { getOfficeProfile } from "@/lib/queries"
 
 export default async function AdminSettingsPage() {
+  const user = await getCurrentUser()
+  if (!user || !canAccessSystemSettings(user.role)) redirect("/admin")
+
   const profile = await getOfficeProfile()
 
   return (
@@ -10,7 +16,7 @@ export default async function AdminSettingsPage() {
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">Configuration</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground">
-          Office preferences and system configuration.
+          Company profile and system configuration. Super Admin only.
         </p>
       </div>
 

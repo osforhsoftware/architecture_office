@@ -7,7 +7,7 @@ import { InvoicesDataTable } from "@/components/invoices-data-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { formatCurrency, isBillingStaff } from "@/lib/constants"
+import { formatCurrency, userIsBillingStaff } from "@/lib/constants"
 import {
   getBillingOverview,
   getInvoiceOverview,
@@ -28,7 +28,7 @@ export default async function AdminBillingPage({
   }>
 }) {
   const user = await getCurrentUser()
-  const billingStaff = user ? isBillingStaff(user.role) : false
+  const billingStaff = user ? userIsBillingStaff(user) : false
 
   const params = await searchParams
   const search = params.search ?? ""
@@ -46,7 +46,7 @@ export default async function AdminBillingPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">Finance</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -58,7 +58,7 @@ export default async function AdminBillingPage({
               : "Payments, invoices, and revenue across all projects"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/admin/invoices/new"
             className={cn(buttonVariants({ variant: "default", size: "sm" }))}
@@ -67,7 +67,7 @@ export default async function AdminBillingPage({
           </Link>
           <Link
             href="/admin/invoices"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/50"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             <FileText className="size-4" /> Manage Invoices
           </Link>

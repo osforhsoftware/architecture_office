@@ -10,29 +10,29 @@ const frontendUrl = getFrontendUrl()
 
 export const metadata: Metadata = {
   metadataBase: frontendUrl ? new URL(frontendUrl) : undefined,
-  title: 'ArchPermit — Architecture & Building Permit Office',
+  title: {
+    default: 'Acmmo Architects',
+    template: '%s | Acmmo Architects',
+  },
   description:
     'Manage architecture projects, building permits, and client workflows from intake to handover.',
   generator: 'v0.app',
   icons: {
     icon: [
       {
-        url: '/assets/osforh-logo-white.png',
+        url: '/assets/fav_acmmo.png',
         type: 'image/png',
       },
     ],
-    apple: '/assets/osforh-logo-white.png',
+    apple: '/assets/fav_acmmo.png',
   },
 }
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  colorScheme: 'light dark',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'white' },
-    { media: '(prefers-color-scheme: dark)', color: 'black' },
-  ],
+  colorScheme: 'light',
+  themeColor: '#147484',
 }
 
 export default function RootLayout({
@@ -43,7 +43,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} bg-background`}
+      className={`light ${GeistSans.variable} ${GeistMono.variable} bg-background`}
     >
       <body className="overflow-x-hidden font-sans antialiased" suppressHydrationWarning>
         {children}

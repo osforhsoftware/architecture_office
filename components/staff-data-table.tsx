@@ -16,16 +16,20 @@ import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
 import { Badge } from "@/components/ui/badge"
 import type { PaginatedResult } from "@/lib/pagination"
+import { formatRolesLabel } from "@/lib/constants"
 import type { AppUser } from "@/lib/types"
 
 interface StaffDataTableProps {
   result: PaginatedResult<AppUser>
   search: string
+  /** When false, hide edit/delete (Admin add-only mode) */
+  canManageStaff?: boolean
 }
 
-function StaffTableInner({ result, search }: StaffDataTableProps) {
+function StaffTableInner({ result, search, canManageStaff = true }: StaffDataTableProps) {
   const columns = useMemo<ColumnDef<AppUser>[]>(
-    () => [
+    () => {
+      const cols: ColumnDef<AppUser>[] = [
       {
         accessorKey: "name",
         header: "Name",
@@ -44,9 +48,9 @@ function StaffTableInner({ result, search }: StaffDataTableProps) {
       },
       {
         accessorKey: "role",
-        header: "Role",
-        cell: ({ getValue }) => (
-          <span className="text-sm">{getValue() as string}</span>
+        header: "Department Roles",
+        cell: ({ row }) => (
+          <span className="text-sm">{formatRolesLabel(row.original)}</span>
         ),
       },
       {
@@ -91,18 +95,24 @@ function StaffTableInner({ result, search }: StaffDataTableProps) {
           )
         },
       },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-2">
-            <StaffDialog staff={row.original} />
-            <StaffDeleteDialog staff={row.original} />
-          </div>
-        ),
-      },
-    ],
-    [],
+      ]
+
+      if (canManageStaff) {
+        cols.push({
+          id: "actions",
+          header: "",
+          cell: ({ row }) => (
+            <div className="flex items-center justify-end gap-2">
+              <StaffDialog staff={row.original} />
+              <StaffDeleteDialog staff={row.original} />
+            </div>
+          ),
+        })
+      }
+
+      return cols
+    },
+    [canManageStaff],
   )
 
   const table = useReactTable({

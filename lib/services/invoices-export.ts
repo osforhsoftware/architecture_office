@@ -31,7 +31,7 @@ function autoSizeColumns(sheet: ExcelJS.Worksheet): void {
 
 export async function buildInvoicesExcelBuffer(invoices: InvoiceListRow[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = "Architecture Office"
+  workbook.creator = "Acmmo Architects"
   workbook.created = new Date()
 
   const sheet = workbook.addWorksheet("Invoices")

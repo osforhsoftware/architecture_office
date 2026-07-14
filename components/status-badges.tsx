@@ -5,7 +5,7 @@ function Pill({ className, children }: { className: string; children: React.Reac
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium leading-none",
         className,
       )}
     >

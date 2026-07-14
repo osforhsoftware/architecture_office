@@ -1,44 +1,125 @@
 import type { InvoiceLineItem, InvoiceStatus } from "./types"
 
-/** Bounds for invoice line items and totals (prevents overflow / layout breakage). */
+/** Bounds for invoice line items, totals, and form fields (prevents overflow / DB errors). */
 export const INVOICE_LIMITS = {
   maxLineItems: 50,
   maxDescriptionLength: 500,
+  maxUnitLength: 50,
   minQuantity: 0,
   maxQuantity: 99_999,
   minUnitPrice: 0,
-  maxUnitPrice: 999_999_999,
-  maxLineAmount: 999_999_999_999,
-  maxInvoiceTotal: 999_999_999_999,
+  /** Matches MySQL DECIMAL(12,2) on invoice_line_items.unit_price */
+  maxUnitPrice: 9_999_999_999.99,
+  maxLineAmount: 9_999_999_999.99,
+  maxInvoiceTotal: 9_999_999_999.99,
+  minTaxPercent: 0,
+  maxTaxPercent: 100,
+  minDiscountPercent: 0,
+  maxDiscountPercent: 100,
+  maxInvoiceNumberLength: 100,
+  maxClientNameLength: 500,
+  maxClientAddressLength: 2000,
+  maxClientEmailLength: 255,
+  maxClientPhoneLength: 50,
+  maxClientTaxIdLength: 100,
+  maxProjectNameLength: 500,
+  maxNotesLength: 5000,
+  maxTermsLength: 5000,
+  minPaymentAmount: 0.01,
+  maxPaymentAmount: 9_999_999_999.99,
+  maxPaymentNotesLength: 2000,
 } as const
+
+export interface InvoiceFormFields {
+  invoiceNumber: string
+  clientName: string
+  clientAddress: string
+  clientEmail: string
+  clientPhone: string
+  clientTaxId: string
+  projectName: string
+  notes: string
+  terms: string
+}
 
 export interface LineItemInput {
   description: string
   quantity: number
   unit?: string
   unit_price: number
+  amount: number
 }
 
-export function clampInvoiceNumber(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min
-  return Math.min(max, Math.max(min, value))
+export function sanitizeInvoiceText(value: string | null | undefined, maxLength: number): string {
+  return String(value ?? "").slice(0, maxLength)
 }
 
-export function sanitizeLineItemInput(item: LineItemInput): LineItemInput {
-  const unit = (item.unit ?? "Nos").trim().slice(0, 24) || "Nos"
+export function sanitizeInvoiceFormFields(raw: Partial<InvoiceFormFields>): InvoiceFormFields {
+  return {
+    invoiceNumber: sanitizeInvoiceText(raw.invoiceNumber, INVOICE_LIMITS.maxInvoiceNumberLength),
+    clientName: sanitizeInvoiceText(raw.clientName, INVOICE_LIMITS.maxClientNameLength),
+    clientAddress: sanitizeInvoiceText(raw.clientAddress, INVOICE_LIMITS.maxClientAddressLength),
+    clientEmail: sanitizeInvoiceText(raw.clientEmail, INVOICE_LIMITS.maxClientEmailLength),
+    clientPhone: sanitizeInvoiceText(raw.clientPhone, INVOICE_LIMITS.maxClientPhoneLength),
+    clientTaxId: sanitizeInvoiceText(raw.clientTaxId, INVOICE_LIMITS.maxClientTaxIdLength),
+    projectName: sanitizeInvoiceText(raw.projectName, INVOICE_LIMITS.maxProjectNameLength),
+    notes: sanitizeInvoiceText(raw.notes, INVOICE_LIMITS.maxNotesLength),
+    terms: sanitizeInvoiceText(raw.terms, INVOICE_LIMITS.maxTermsLength),
+  }
+}
+
+export function validateInvoiceForm(fields: InvoiceFormFields): string | null {
+  if (!fields.clientName.trim()) return "Client name is required."
+  if (fields.clientName.trim().length > INVOICE_LIMITS.maxClientNameLength) {
+    return `Client name cannot exceed ${INVOICE_LIMITS.maxClientNameLength} characters.`
+  }
+  return null
+}
+
+export function sanitizePaymentAmount(value: number | string): number {
+  return clampInvoiceNumber(value, INVOICE_LIMITS.minPaymentAmount, INVOICE_LIMITS.maxPaymentAmount)
+}
+
+export function parseInvoiceInputNumber(raw: string): number {
+  const n = Number.parseFloat(raw)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function clampInvoiceNumber(value: number | string, min: number, max: number): number {
+  const n = typeof value === "string" ? Number.parseFloat(value) : value
+  if (!Number.isFinite(n)) return min
+  return Math.min(max, Math.max(min, n))
+}
+
+export function sanitizeInvoicePercent(value: number | string): number {
+  return clampInvoiceNumber(value, INVOICE_LIMITS.minTaxPercent, INVOICE_LIMITS.maxTaxPercent)
+}
+
+export function formatInvoicePercent(value: number | string): string {
+  const n = sanitizeInvoicePercent(value)
+  return n.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+}
+
+export function sanitizeLineItemInput(
+  item: Omit<LineItemInput, "amount"> & { amount?: number },
+): LineItemInput {
+  const unit = sanitizeInvoiceText(item.unit ?? "Nos", INVOICE_LIMITS.maxUnitLength).trim() || "Nos"
+  const quantity = clampInvoiceNumber(
+    Math.round(Number(item.quantity) * 100) / 100,
+    INVOICE_LIMITS.minQuantity,
+    INVOICE_LIMITS.maxQuantity,
+  )
+  const unit_price = clampInvoiceNumber(
+    Math.round(Number(item.unit_price) * 100) / 100,
+    INVOICE_LIMITS.minUnitPrice,
+    INVOICE_LIMITS.maxUnitPrice,
+  )
   return {
     description: item.description.slice(0, INVOICE_LIMITS.maxDescriptionLength),
-    quantity: clampInvoiceNumber(
-      Math.round(item.quantity * 100) / 100,
-      INVOICE_LIMITS.minQuantity,
-      INVOICE_LIMITS.maxQuantity,
-    ),
+    quantity,
     unit,
-    unit_price: clampInvoiceNumber(
-      Math.round(item.unit_price * 100) / 100,
-      INVOICE_LIMITS.minUnitPrice,
-      INVOICE_LIMITS.maxUnitPrice,
-    ),
+    unit_price,
+    amount: lineItemAmount(quantity, unit_price),
   }
 }
 
@@ -77,19 +158,48 @@ export function lineItemAmount(quantity: number, unitPrice: number): number {
   )
 }
 
+function formatInvoiceDecimal(value: number): string {
+  if (!Number.isFinite(value)) return "0.00"
+  return value.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/** Currency with 2 decimal places for invoice line items (e.g. ₹13,919.10). */
+export function formatInvoiceCurrency(value: number | string): string {
+  const n = typeof value === "string" ? Number.parseFloat(value) : value
+  return `₹${formatInvoiceDecimal(Number.isFinite(n) ? n : 0)}`
+}
+
+function safeMoneyAmount(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(INVOICE_LIMITS.maxInvoiceTotal, Math.max(0, Math.round(value * 100) / 100))
+}
+
 export function calculateInvoiceTotals(
   lineItems: LineItemInput[],
   taxPercent: number,
   discountPercent: number,
 ): InvoiceTotals {
-  const subtotal = lineItems.reduce(
-    (sum, item) => sum + lineItemAmount(item.quantity, item.unit_price),
-    0,
+  const safeTaxPercent = sanitizeInvoicePercent(taxPercent)
+  const safeDiscountPercent = sanitizeInvoicePercent(discountPercent)
+
+  const subtotal = safeMoneyAmount(
+    lineItems.reduce(
+      (sum, item) =>
+        sum + (Number.isFinite(item.amount) ? item.amount : lineItemAmount(item.quantity, item.unit_price)),
+      0,
+    ),
   )
-  const discountAmount = Math.round(subtotal * (discountPercent / 100) * 100) / 100
-  const taxableBase = subtotal - discountAmount
-  const taxAmount = Math.round(taxableBase * (taxPercent / 100) * 100) / 100
-  const total = Math.round((taxableBase + taxAmount) * 100) / 100
+
+  const discountAmount = safeMoneyAmount(
+    Math.min(subtotal, subtotal * (safeDiscountPercent / 100)),
+  )
+  const taxableBase = safeMoneyAmount(subtotal - discountAmount)
+  const taxAmount = safeMoneyAmount(taxableBase * (safeTaxPercent / 100))
+  const total = safeMoneyAmount(taxableBase + taxAmount)
+
   return { subtotal, discountAmount, taxAmount, total }
 }
 
@@ -134,7 +244,9 @@ export function parseLineItemsJson(raw: string): LineItemInput[] {
 
 export function toStoredLineItems(items: LineItemInput[]): Omit<InvoiceLineItem, "id" | "invoice_id">[] {
   return items.map((item, index) => {
-    const amount = lineItemAmount(item.quantity, item.unit_price)
+    const amount = Number.isFinite(item.amount)
+      ? item.amount
+      : lineItemAmount(item.quantity, item.unit_price)
     return {
       description: item.description,
       quantity: String(item.quantity),

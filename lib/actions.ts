@@ -5,57 +5,111 @@ import { redirect } from "next/navigation"
 import { sql } from "./db"
 import { clearSession, getCurrentUser, setSession } from "./auth"
 import {
-  CHECKLIST_ITEMS,
+  allowsMultiAssignee,
+  isReviewStep,
+  isWorkStep,
+  parseSelectedServices,
+  roleForStep,
+  type ProjectPackage,
+} from "./workflow"
+import {
+  activateWorkflowStep,
+  completeCurrentStep,
+  getCurrentWorkflowStep,
+  recordWorkflowAssignment,
+  recordWorkflowReview,
+  seedProjectWorkflow,
+} from "./workflow-db"
+import {
   DEFAULT_INVOICE_TERMS,
   INVOICE_STATUSES,
+  KMAP_FLOOR_ROWS,
   RETURN_REASONS,
   SECTION_ROLE,
   STAFF_ROLES,
-  WORKFLOW_STAGES,
+  ADMIN_ROLE,
+  SUPER_ADMIN_ROLE,
   firstStageInSection,
-  lastStageInSection,
-  nextSection,
-  sectionForStage,
-  canAccessBilling,
   homePathForRole,
+  isOfficeAdmin,
+  isPrivilegedRole,
+  roleToKey,
+  showsResidentialDetails,
+  userHasRole,
 } from "./constants"
 import { hashPassword, verifyPassword } from "./password"
 import {
   calculateInvoiceTotals,
   INVOICE_LIMITS,
   parseLineItemsJson,
+  sanitizeInvoiceFormFields,
+  sanitizeInvoicePercent,
+  sanitizeInvoiceText,
+  sanitizePaymentAmount,
   toStoredLineItems,
+  validateInvoiceForm,
   validateInvoiceLineItems,
 } from "./invoice-utils"
 import { getOfficeProfile, persistOfficeProfile } from "./queries"
+import { parseStaffRoles, syncStaffRoles } from "./staff-roles"
 import { staffDeleteConfirmationPhrase } from "./staff-utils"
 import {
   getProjectOrThrow,
   isAdmin,
   logAudit,
+  logAuditForUser,
   requireStaffProjectAccess,
-  staffOwnsProject,
 } from "./project-access"
+import {
+  requireAdminOrSuperAdmin,
+  requireBillingAccess,
+  requireSuperAdmin,
+  requireUser,
+} from "./permissions"
 import type { AppUser, InvoiceStatus, OfficeProfile } from "./types"
+import { headers } from "next/headers"
 
 // ---------- Auth ----------
 
+async function clientIpAddress(): Promise<string | null> {
+  try {
+    const h = await headers()
+    const forwarded = h.get("x-forwarded-for")
+    if (forwarded) return forwarded.split(",")[0]?.trim() || null
+    return h.get("x-real-ip")
+  } catch {
+    return null
+  }
+}
+
+async function notifyOfficeAdmins(type: string, title: string, message: string) {
+  const admins = (await sql`
+    SELECT id FROM app_users
+    WHERE role IN ('Super Admin', 'Admin') AND active = true
+  `) as { id: number }[]
+  for (const a of admins) {
+    await notify(a.id, type, title, message)
+  }
+}
+
 export async function loginAction(_prev: unknown, formData: FormData) {
-  const username = String(formData.get("username") || "").trim()
+  const loginId = String(formData.get("username") || "").trim()
   const password = String(formData.get("password") || "")
 
-  if (!username || !password) {
-    return { error: "Please enter username and password." }
+  if (!loginId || !password) {
+    return { error: "Please enter your email or username and password." }
   }
 
   const rows = (await sql`
     SELECT id, username, password, role, name, active FROM app_users
-    WHERE username = ${username} LIMIT 1
+    WHERE username = ${loginId}
+       OR (email IS NOT NULL AND LOWER(email) = LOWER(${loginId}))
+    LIMIT 1
   `) as (AppUser & { password: string; active: boolean })[]
 
   const user = rows[0]
   if (!user || !(await verifyPassword(password, user.password))) {
-    return { error: "Invalid username or password." }
+    return { error: "Invalid email/username or password." }
   }
 
   if (user.active === false) {
@@ -63,34 +117,19 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   }
 
   await setSession(user.id)
+  const ip = await clientIpAddress()
+  await logAuditForUser(user, "auth.login", "user", user.id, { username: user.username }, ip)
   redirect(homePathForRole(user.role))
 }
 
 export async function logoutAction() {
+  const user = await getCurrentUser()
+  if (user) {
+    const ip = await clientIpAddress()
+    await logAuditForUser(user, "auth.logout", "user", user.id, { username: user.username }, ip)
+  }
   await clearSession()
   redirect("/login")
-}
-
-async function requireAdmin(): Promise<AppUser> {
-  const user = await getCurrentUser()
-  if (!user || user.role !== "Admin") {
-    throw new Error("Unauthorized")
-  }
-  return user
-}
-
-async function requireBillingAccess(): Promise<AppUser> {
-  const user = await getCurrentUser()
-  if (!user || !canAccessBilling(user.role)) {
-    throw new Error("Unauthorized")
-  }
-  return user
-}
-
-async function requireUser(): Promise<AppUser> {
-  const user = await getCurrentUser()
-  if (!user) throw new Error("Unauthorized")
-  return user
 }
 
 async function notify(userId: number, type: string, title: string, message: string) {
@@ -101,8 +140,16 @@ async function notify(userId: number, type: string, title: string, message: stri
 }
 
 async function notifyRole(role: string, title: string, message: string) {
+  const roleKey = roleToKey(role)
   const staff = (await sql`
-    SELECT id FROM app_users WHERE role = ${role} AND active = true
+    SELECT DISTINCT u.id
+    FROM app_users u
+    LEFT JOIN staff_roles sr ON sr.user_id = u.id
+    WHERE u.active = true
+      AND (
+        u.role = ${role}
+        OR (${roleKey} IS NOT NULL AND sr.role_key = ${roleKey})
+      )
   `) as { id: number }[]
   for (const s of staff) {
     await notify(s.id, "Department Queue", title, message)
@@ -130,6 +177,35 @@ function revalidateProjectPaths(projectId: number) {
   revalidatePath(`/staff/projects/${projectId}`)
 }
 
+function parseAssignedStaffIds(formData: FormData): number[] {
+  const raw = formData.getAll("assigned_to")
+  const ids = raw
+    .map((value) => Number(value))
+    .filter((id) => Number.isFinite(id) && id > 0)
+  return [...new Set(ids)]
+}
+
+async function clearSiteAssignees(projectId: number, stageKey?: string) {
+  if (stageKey) {
+    await sql`
+      DELETE FROM project_assignees
+      WHERE project_id = ${projectId} AND stage_key = ${stageKey}
+    `
+    return
+  }
+  await sql`DELETE FROM project_assignees WHERE project_id = ${projectId}`
+}
+
+async function syncSiteAssignees(projectId: number, userIds: number[], stageKey: string) {
+  await clearSiteAssignees(projectId, stageKey)
+  for (const userId of userIds) {
+    await sql`
+      INSERT INTO project_assignees (project_id, user_id, stage_key)
+      VALUES (${projectId}, ${userId}, ${stageKey})
+    `
+  }
+}
+
 function revalidateBillingPaths(invoiceId?: number) {
   revalidatePath("/admin/billing")
   revalidatePath("/admin/invoices")
@@ -145,12 +221,35 @@ function revalidateClientPaths(clientId?: number) {
   if (clientId) revalidatePath(`/admin/clients/${clientId}`)
 }
 
+function parseClientAadhaarNumbers(formData: FormData): string[] {
+  const raw = String(formData.get("aadhaar_numbers") || "").trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function parseClientAddressFields(formData: FormData) {
+  return {
+    street: String(formData.get("street") || "").trim() || null,
+    district: String(formData.get("district") || "").trim() || null,
+    aadhaarNumbers: parseClientAadhaarNumbers(formData),
+  }
+}
+
 export async function createClient(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
+  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
 
   if (!name || !phone) return { error: "Name and phone are required." }
 
@@ -161,8 +260,8 @@ export async function createClient(formData: FormData) {
 
   // RETURNING removed — wrapper returns [{ id: lastInsertId }] automatically
   const rows = (await sql`
-    INSERT INTO clients (name, phone, email, address)
-    VALUES (${name}, ${phone}, ${email}, ${address})
+    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers)
+    VALUES (${name}, ${phone}, ${email}, ${address}, ${street}, ${district}, ${sql.json(aadhaarNumbers)})
   `) as { id: number }[]
 
   await logAudit(admin.id, "client.create", "client", rows[0].id, { name, phone })
@@ -171,17 +270,25 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClient(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
+  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
 
   if (!id || !name || !phone) return { error: "Name and phone are required." }
 
   await sql`
-    UPDATE clients SET name = ${name}, phone = ${phone}, email = ${email}, address = ${address}
+    UPDATE clients SET
+      name = ${name},
+      phone = ${phone},
+      email = ${email},
+      address = ${address},
+      street = ${street},
+      district = ${district},
+      aadhaar_numbers = ${sql.json(aadhaarNumbers)}
     WHERE id = ${id}
   `
   await logAudit(admin.id, "client.update", "client", id, { name })
@@ -190,12 +297,13 @@ export async function updateClient(formData: FormData) {
 }
 
 export async function registerClientWithProject(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const clientName = String(formData.get("client_name") || "").trim()
   const projectName = String(formData.get("project_name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
+  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
 
   if (!clientName || !phone) return { error: "Client name and phone are required." }
   if (!projectName) return { error: "Project name is required." }
@@ -206,8 +314,8 @@ export async function registerClientWithProject(formData: FormData) {
   if (existing.length) return { error: "A client with this phone already exists." }
 
   const clientRows = (await sql`
-    INSERT INTO clients (name, phone, email, address)
-    VALUES (${clientName}, ${phone}, ${email}, ${address})
+    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers)
+    VALUES (${clientName}, ${phone}, ${email}, ${address}, ${street}, ${district}, ${sql.json(aadhaarNumbers)})
   `) as { id: number }[]
 
   const clientId = clientRows[0].id
@@ -236,21 +344,27 @@ function isValidStaffRole(role: string): role is (typeof STAFF_ROLES)[number] {
 }
 
 export async function createStaff(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const username = String(formData.get("username") || "").trim()
   const password = String(formData.get("password") || "")
-  const role = String(formData.get("role") || "").trim()
+  const roles = parseStaffRoles(formData)
+  const legacyRole = String(formData.get("role") || "").trim()
+  if (!roles.length && isValidStaffRole(legacyRole)) {
+    roles.push(legacyRole)
+  }
   const email = String(formData.get("email") || "").trim() || null
   const phone = String(formData.get("phone") || "").trim() || null
   const active = parseStaffActive(formData)
 
-  if (!name || !username || !password || !role) {
-    return { error: "Name, username, password, and role are required." }
+  if (!name || !username || !password || !roles.length) {
+    return { error: "Name, username, password, and at least one department role are required." }
   }
   if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
   if (password.length < 6) return { error: "Password must be at least 6 characters." }
-  if (!isValidStaffRole(role)) return { error: "Invalid staff role." }
+  if (roles.some((role) => !isValidStaffRole(role))) return { error: "Invalid staff role." }
+
+  const primaryRole = roles[0]
 
   const existing = (await sql`
     SELECT id FROM app_users WHERE username = ${username} LIMIT 1
@@ -260,42 +374,56 @@ export async function createStaff(formData: FormData) {
   const hash = await hashPassword(password)
   const rows = (await sql`
     INSERT INTO app_users (username, password, role, name, email, phone, active)
-    VALUES (${username}, ${hash}, ${role}, ${name}, ${email}, ${phone}, ${active})
+    VALUES (${username}, ${hash}, ${primaryRole}, ${name}, ${email}, ${phone}, ${active})
   `) as { id: number }[]
 
-  await logAudit(admin.id, "staff.create", "user", rows[0].id, { name, username, role })
+  const staffId = rows[0].id
+  await syncStaffRoles(staffId, roles)
+
+  await logAudit(admin.id, "staff.create", "user", staffId, {
+    name,
+    username,
+    role: primaryRole,
+    roles,
+  })
   revalidatePath("/admin/staff")
   revalidatePath("/admin/departments")
   revalidatePath("/admin/projects")
-  return { success: true, staffId: rows[0].id }
+  return { success: true, staffId }
 }
 
 export async function updateStaff(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") || "").trim()
   const username = String(formData.get("username") || "").trim()
   const password = String(formData.get("password") || "")
-  const role = String(formData.get("role") || "").trim()
+  const roles = parseStaffRoles(formData)
+  const legacyRole = String(formData.get("role") || "").trim()
+  if (!roles.length && isValidStaffRole(legacyRole)) roles.push(legacyRole)
   const email = String(formData.get("email") || "").trim() || null
   const phone = String(formData.get("phone") || "").trim() || null
   const active = parseStaffActive(formData)
 
-  if (!id || !name || !username || !role) {
-    return { error: "Name, username, and role are required." }
+  if (!id || !name || !username || !roles.length) {
+    return { error: "Name, username, and at least one department role are required." }
   }
   if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
   if (password && password.length < 6) return { error: "Password must be at least 6 characters." }
-  if (!isValidStaffRole(role)) return { error: "Invalid staff role." }
+  if (roles.some((role) => !isValidStaffRole(role))) return { error: "Invalid staff role." }
   if (id === admin.id && !active) {
     return { error: "You cannot deactivate your own account." }
   }
+
+  const primaryRole = roles[0]
 
   const current = (await sql`
     SELECT id, role, password FROM app_users WHERE id = ${id} LIMIT 1
   `) as { id: number; role: string; password: string }[]
   if (!current.length) return { error: "Staff member not found." }
-  if (current[0].role === "Admin") return { error: "Admin accounts cannot be edited here." }
+  if (isPrivilegedRole(current[0].role)) {
+    return { error: "Admin accounts cannot be edited here. Use Admin Management." }
+  }
 
   const duplicate = (await sql`
     SELECT id FROM app_users WHERE username = ${username} AND id <> ${id} LIMIT 1
@@ -306,12 +434,19 @@ export async function updateStaff(formData: FormData) {
 
   await sql`
     UPDATE app_users
-    SET username = ${username}, password = ${hash}, role = ${role}, name = ${name},
+    SET username = ${username}, password = ${hash}, role = ${primaryRole}, name = ${name},
         email = ${email}, phone = ${phone}, active = ${active}
     WHERE id = ${id}
   `
+  await syncStaffRoles(id, roles)
 
-  await logAudit(admin.id, "staff.update", "user", id, { name, username, role, active })
+  await logAudit(admin.id, "staff.update", "user", id, {
+    name,
+    username,
+    role: primaryRole,
+    roles,
+    active,
+  })
   revalidatePath("/admin/staff")
   revalidatePath("/admin/departments")
   revalidatePath("/admin/projects")
@@ -319,7 +454,7 @@ export async function updateStaff(formData: FormData) {
 }
 
 export async function deleteStaff(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("id"))
   const confirmation = String(formData.get("confirmation") || "").trim()
 
@@ -329,7 +464,9 @@ export async function deleteStaff(formData: FormData) {
     SELECT id, username, role, name FROM app_users WHERE id = ${id} LIMIT 1
   `) as { id: number; username: string; role: string; name: string }[]
   if (!current.length) return { error: "Staff member not found." }
-  if (current[0].role === "Admin") return { error: "Admin accounts cannot be removed here." }
+  if (isPrivilegedRole(current[0].role)) {
+    return { error: "Admin accounts cannot be removed here. Use Admin Management." }
+  }
   if (id === admin.id) return { error: "You cannot remove your own account." }
 
   const expected = staffDeleteConfirmationPhrase(current[0].username)
@@ -338,6 +475,7 @@ export async function deleteStaff(formData: FormData) {
   }
 
   await sql`UPDATE projects SET assigned_to = NULL WHERE assigned_to = ${id}`
+  await sql`DELETE FROM project_assignees WHERE user_id = ${id}`
   await sql`UPDATE project_files SET uploaded_by = NULL WHERE uploaded_by = ${id}`
   await sql`UPDATE payments SET recorded_by = NULL WHERE recorded_by = ${id}`
   await sql`UPDATE invoice_payments SET recorded_by = NULL WHERE recorded_by = ${id}`
@@ -353,6 +491,166 @@ export async function deleteStaff(formData: FormData) {
   revalidatePath("/admin/staff")
   revalidatePath("/admin/departments")
   revalidatePath("/admin/projects")
+  return { success: true }
+}
+
+// ---------- Admin account management (Super Admin only) ----------
+
+export async function createAdminAccount(formData: FormData) {
+  const actor = await requireSuperAdmin()
+  const name = String(formData.get("name") || "").trim()
+  const username = String(formData.get("username") || "").trim()
+  const password = String(formData.get("password") || "")
+  const email = String(formData.get("email") || "").trim() || null
+  const phone = String(formData.get("phone") || "").trim() || null
+  const active = parseStaffActive(formData)
+
+  if (!name || !username || !password) {
+    return { error: "Name, username, and password are required." }
+  }
+  if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
+  if (password.length < 8) return { error: "Password must be at least 8 characters." }
+
+  const existing = (await sql`
+    SELECT id FROM app_users WHERE username = ${username} LIMIT 1
+  `) as { id: number }[]
+  if (existing.length) return { error: "A user with this username already exists." }
+
+  const hash = await hashPassword(password)
+  const rows = (await sql`
+    INSERT INTO app_users (username, password, role, name, email, phone, active)
+    VALUES (${username}, ${hash}, ${ADMIN_ROLE}, ${name}, ${email}, ${phone}, ${active})
+  `) as { id: number }[]
+
+  await logAuditForUser(actor, "admin.create", "user", rows[0].id, {
+    name,
+    username,
+    role: ADMIN_ROLE,
+  })
+  revalidatePath("/admin/admins")
+  revalidatePath("/admin/users")
+  return { success: true, adminId: rows[0].id }
+}
+
+export async function updateAdminAccount(formData: FormData) {
+  const actor = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  const name = String(formData.get("name") || "").trim()
+  const username = String(formData.get("username") || "").trim()
+  const password = String(formData.get("password") || "")
+  const email = String(formData.get("email") || "").trim() || null
+  const phone = String(formData.get("phone") || "").trim() || null
+  const active = parseStaffActive(formData)
+
+  if (!id || !name || !username) {
+    return { error: "Name and username are required." }
+  }
+  if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
+  if (password && password.length < 8) return { error: "Password must be at least 8 characters." }
+  if (id === actor.id && !active) {
+    return { error: "You cannot deactivate your own account." }
+  }
+
+  const current = (await sql`
+    SELECT id, role, password FROM app_users WHERE id = ${id} LIMIT 1
+  `) as { id: number; role: string; password: string }[]
+  if (!current.length) return { error: "Admin account not found." }
+  if (current[0].role !== ADMIN_ROLE) {
+    return { error: "Only Admin accounts can be edited here." }
+  }
+
+  const duplicate = (await sql`
+    SELECT id FROM app_users WHERE username = ${username} AND id <> ${id} LIMIT 1
+  `) as { id: number }[]
+  if (duplicate.length) return { error: "A user with this username already exists." }
+
+  const hash = password ? await hashPassword(password) : current[0].password
+
+  await sql`
+    UPDATE app_users
+    SET username = ${username}, password = ${hash}, name = ${name},
+        email = ${email}, phone = ${phone}, active = ${active}
+    WHERE id = ${id}
+  `
+
+  await logAuditForUser(actor, "admin.update", "user", id, {
+    name,
+    username,
+    role: ADMIN_ROLE,
+    active,
+  })
+  revalidatePath("/admin/admins")
+  revalidatePath("/admin/users")
+  return { success: true }
+}
+
+export async function deleteAdminAccount(formData: FormData) {
+  const actor = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  const confirmation = String(formData.get("confirmation") || "").trim()
+
+  if (!id) return { error: "Admin account is required." }
+  if (id === actor.id) return { error: "You cannot remove your own account." }
+
+  const current = (await sql`
+    SELECT id, username, role, name FROM app_users WHERE id = ${id} LIMIT 1
+  `) as { id: number; username: string; role: string; name: string }[]
+  if (!current.length) return { error: "Admin account not found." }
+  if (current[0].role !== ADMIN_ROLE) {
+    return { error: "Only Admin accounts can be removed here." }
+  }
+
+  const expected = staffDeleteConfirmationPhrase(current[0].username)
+  if (confirmation !== expected) {
+    return { error: `Type ${expected} exactly to confirm removal.` }
+  }
+
+  await sql`UPDATE projects SET assigned_to = NULL WHERE assigned_to = ${id}`
+  await sql`DELETE FROM project_assignees WHERE user_id = ${id}`
+  await sql`UPDATE project_files SET uploaded_by = NULL WHERE uploaded_by = ${id}`
+  await sql`UPDATE payments SET recorded_by = NULL WHERE recorded_by = ${id}`
+  await sql`UPDATE invoice_payments SET recorded_by = NULL WHERE recorded_by = ${id}`
+  await sql`UPDATE invoices SET created_by = NULL WHERE created_by = ${id}`
+  await sql`UPDATE audit_logs SET user_id = NULL WHERE user_id = ${id}`
+  await sql`DELETE FROM app_users WHERE id = ${id}`
+
+  await logAuditForUser(actor, "admin.delete", "user", id, {
+    name: current[0].name,
+    username: current[0].username,
+    role: current[0].role,
+  })
+  revalidatePath("/admin/admins")
+  revalidatePath("/admin/users")
+  return { success: true }
+}
+
+export async function setUserActive(formData: FormData) {
+  const actor = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  const active = parseStaffActive(formData)
+
+  if (!id) return { error: "User is required." }
+  if (id === actor.id && !active) {
+    return { error: "You cannot deactivate your own account." }
+  }
+
+  const current = (await sql`
+    SELECT id, username, role, name FROM app_users WHERE id = ${id} LIMIT 1
+  `) as { id: number; username: string; role: string; name: string }[]
+  if (!current.length) return { error: "User not found." }
+  if (current[0].role === SUPER_ADMIN_ROLE && !active) {
+    return { error: "Super Admin accounts cannot be deactivated here." }
+  }
+
+  await sql`UPDATE app_users SET active = ${active} WHERE id = ${id}`
+  await logAuditForUser(actor, "user.set_active", "user", id, {
+    username: current[0].username,
+    role: current[0].role,
+    active,
+  })
+  revalidatePath("/admin/users")
+  revalidatePath("/admin/admins")
+  revalidatePath("/admin/staff")
   return { success: true }
 }
 
@@ -386,8 +684,32 @@ async function nextInvoiceNumber(): Promise<string> {
   return `INV-${year}-${String(next).padStart(4, "0")}`
 }
 
+function parseResidentialDetails(formData: FormData, type: string | null) {
+  if (!showsResidentialDetails(type)) {
+    return {
+      buildingNumber: null,
+      buildingPermitNumber: null,
+      reqArchitecturalPlan: false,
+      reqBuildingPermit: false,
+      reqRegularization: false,
+    }
+  }
+  const selectedServices = new Set(formData.getAll("services").map((value) => String(value)))
+  return {
+    buildingNumber: String(formData.get("building_number") || "").trim() || null,
+    buildingPermitNumber: String(formData.get("building_permit_number") || "").trim() || null,
+    reqArchitecturalPlan:
+      formData.get("req_architectural_plan") === "true" ||
+      selectedServices.has("architectural_plan"),
+    reqBuildingPermit:
+      formData.get("req_building_permit") === "true" || selectedServices.has("building_permit"),
+    reqRegularization:
+      formData.get("req_regularization") === "true" || selectedServices.has("regularization"),
+  }
+}
+
 export async function createProject(formData: FormData) {
-  await requireAdmin()
+  await requireAdminOrSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const clientId = Number(formData.get("client_id"))
   const location = String(formData.get("location") || "").trim() || null
@@ -395,32 +717,56 @@ export async function createProject(formData: FormData) {
   const priority = String(formData.get("priority") || "Medium")
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
+  const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const projectPackage = (String(formData.get("project_package") || "full") as ProjectPackage)
+  const residential = parseResidentialDetails(formData, type)
+  const selectedServices = parseSelectedServices(formData, projectPackage)
 
   if (!name || !clientId) return { error: "Project name and client are required." }
+  if (
+    !selectedServices.length &&
+    !residential.reqArchitecturalPlan &&
+    !residential.reqBuildingPermit &&
+    !residential.reqRegularization
+  ) {
+    return { error: "Select at least one project service." }
+  }
 
   const code = await nextProjectCode()
   const invoice = await nextInvoiceNumber()
 
   const rows = (await sql`
-    INSERT INTO projects (code, name, client_id, location, type, priority, status, section, current_stage, due_date, project_amount, invoice_number)
-    VALUES (${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'New', 'Planning & Design', 0, ${dueDate}, ${amount}, ${invoice})
+    INSERT INTO projects (
+      code, name, client_id, location, type, priority, status, section, current_stage,
+      due_date, project_amount, invoice_number, project_package,
+      building_number, building_permit_number, drawing_number,
+      req_architectural_plan, req_building_permit, req_regularization
+    )
+    VALUES (
+      ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
+      ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
+      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber},
+      ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
+    )
   `) as { id: number }[]
 
   const projectId = rows[0].id
-  for (const item of CHECKLIST_ITEMS) {
-    // INSERT IGNORE skips the row when (project_id, item_key) already exists
+  await seedProjectWorkflow(projectId, selectedServices)
+
+  for (const floor of KMAP_FLOOR_ROWS) {
     await sql`
-      INSERT IGNORE INTO checklist_items (project_id, item_key, checked, review_status)
-      VALUES (${projectId}, ${item}, false, 'Pending')
+      INSERT IGNORE INTO project_kmap_areas (project_id, floor_key)
+      VALUES (${projectId}, ${floor.key})
     `
   }
   await appendStatus(projectId, "New", "Project created", "Office Admin")
+  await appendStatus(projectId, "Awaiting Assignment", "Workflow generated from selected services", "Office Admin")
   revalidateProjectPaths(projectId)
   return { success: true, projectId }
 }
 
 export async function updateProjectDetails(formData: FormData) {
-  await requireAdmin()
+  await requireSuperAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") || "").trim()
   const location = String(formData.get("location") || "").trim() || null
@@ -428,13 +774,22 @@ export async function updateProjectDetails(formData: FormData) {
   const priority = String(formData.get("priority") || "Medium")
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
+  const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const residential = parseResidentialDetails(formData, type)
 
   if (!id || !name) return { error: "Project name is required." }
 
   await sql`
     UPDATE projects
     SET name = ${name}, location = ${location}, type = ${type}, priority = ${priority},
-        due_date = ${dueDate}, project_amount = ${amount}, updated_at = now()
+        due_date = ${dueDate}, project_amount = ${amount},
+        building_number = ${residential.buildingNumber},
+        building_permit_number = ${residential.buildingPermitNumber},
+        drawing_number = ${drawingNumber},
+        req_architectural_plan = ${residential.reqArchitecturalPlan},
+        req_building_permit = ${residential.reqBuildingPermit},
+        req_regularization = ${residential.reqRegularization},
+        updated_at = now()
     WHERE id = ${id}
   `
   revalidateProjectPaths(id)
@@ -442,30 +797,68 @@ export async function updateProjectDetails(formData: FormData) {
 }
 
 export async function assignProject(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
-  const assignee = Number(formData.get("assigned_to"))
-  if (!id || !assignee) return { error: "Select a staff member." }
+  if (!id) return { error: "Invalid project." }
 
   const project = await getProjectOrThrow(id)
-  await sql`
-    UPDATE projects SET assigned_to = ${assignee}, status = 'Assigned', updated_at = now()
-    WHERE id = ${id}
-  `
-  await appendStatus(id, "Assigned", `Assigned to staff in ${project.section}`, admin.name)
-  await notify(
-    assignee,
-    "Project Assigned",
-    "New project assigned",
-    `You have been assigned to ${project.name}.`,
-  )
-  await logAudit(admin.id, "project.assign", "project", id, { assignee })
+  const currentStep = await getCurrentWorkflowStep(id)
+  if (!currentStep || !isWorkStep(currentStep)) {
+    return { error: "No active work step to assign." }
+  }
+  if (isReviewStep(currentStep)) {
+    return { error: "Cannot assign staff during admin review." }
+  }
+
+  const multiAssign = allowsMultiAssignee(currentStep)
+  const staffIds = parseAssignedStaffIds(formData)
+
+  if (!staffIds.length) {
+    return { error: multiAssign ? "Select at least one staff member." : "Select a staff member." }
+  }
+  if (!multiAssign && staffIds.length > 1) {
+    return { error: "Only one staff member can be assigned at this stage." }
+  }
+
+  const primaryAssignee = staffIds[0]
+  const stageKey = currentStep.service_key ?? currentStep.step_key
+
+  await activateWorkflowStep(id, currentStep.id, "Assigned", primaryAssignee)
+
+  if (multiAssign) {
+    await syncSiteAssignees(id, staffIds, stageKey)
+  } else {
+    await clearSiteAssignees(id)
+  }
+
+  const assigneeNote =
+    multiAssign && staffIds.length > 1
+      ? `Assigned ${staffIds.length} staff for ${currentStep.label}`
+      : `Assigned to staff for ${currentStep.label}`
+
+  await appendStatus(id, "Assigned", assigneeNote, admin.name)
+
+  for (const assignee of staffIds) {
+    await notify(
+      assignee,
+      "Staff Assigned",
+      multiAssign && staffIds.length > 1 ? "Team assigned" : "New project assigned",
+      `You have been assigned to ${project.name} — ${currentStep.label}.`,
+    )
+    await recordWorkflowAssignment(id, currentStep.id, assignee, admin.id, assigneeNote)
+  }
+
+  await logAudit(admin.id, "project.assign", "project", id, {
+    assignee: primaryAssignee,
+    assignees: staffIds,
+    step: currentStep.step_key,
+  })
   revalidateProjectPaths(id)
   return { success: true }
 }
 
 export async function assignToDepartment(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
   const section = String(formData.get("section") || "")
   const assignee = Number(formData.get("assigned_to")) || null
@@ -476,12 +869,24 @@ export async function assignToDepartment(formData: FormData) {
   let staffId = assignee
 
   if (!staffId && SECTION_ROLE[section]) {
+    const role = SECTION_ROLE[section]
+    const roleKey = roleToKey(role)
     const staff = (await sql`
-      SELECT id FROM app_users WHERE role = ${SECTION_ROLE[section]} ORDER BY id LIMIT 1
+      SELECT DISTINCT u.id
+      FROM app_users u
+      LEFT JOIN staff_roles sr ON sr.user_id = u.id
+      WHERE u.active = true
+        AND (
+          u.role = ${role}
+          OR (${roleKey} IS NOT NULL AND sr.role_key = ${roleKey})
+        )
+      ORDER BY u.id
+      LIMIT 1
     `) as { id: number }[]
     staffId = staff[0]?.id ?? null
   }
 
+  await clearSiteAssignees(id)
   await sql`
     UPDATE projects
     SET section = ${section}, current_stage = ${stage}, assigned_to = ${staffId},
@@ -500,7 +905,7 @@ export async function assignToDepartment(formData: FormData) {
   return { success: true }
 }
 
-export async function advanceStage(formData: FormData) {
+export async function startWork(formData: FormData) {
   const user = await requireUser()
   const id = Number(formData.get("project_id"))
   if (!id) return { error: "Invalid project." }
@@ -509,29 +914,58 @@ export async function advanceStage(formData: FormData) {
     ? await getProjectOrThrow(id)
     : await requireStaffProjectAccess(user, id)
 
-  if (project.section === "Billing") {
-    return { error: "Work stages are complete. Awaiting billing and closure." }
+  if (!["Assigned", "Correction Required"].includes(project.status)) {
+    return { error: "Work can only be started when assigned or after correction." }
   }
 
-  const current = project.current_stage
-  const sectionLast = lastStageInSection(project.section)
-  if (current >= sectionLast) {
-    return { error: "Section work complete. Submit for admin review." }
+  await sql`
+    UPDATE projects SET status = 'In Progress', updated_at = NOW() WHERE id = ${id}
+  `
+  await appendStatus(id, "In Progress", `Work started on ${project.section}`, user.name)
+  await notify(project.assigned_to ?? user.id, "Work Started", "Project in progress", project.name)
+  await logAudit(user.id, "project.start_work", "project", id)
+  revalidateProjectPaths(id)
+  return { success: true }
+}
+
+export async function markWorkComplete(formData: FormData) {
+  const user = await requireUser()
+  const id = Number(formData.get("project_id"))
+  if (!id) return { error: "Invalid project." }
+
+  const project = isAdmin(user)
+    ? await getProjectOrThrow(id)
+    : await requireStaffProjectAccess(user, id)
+
+  const currentStep = await getCurrentWorkflowStep(id)
+  if (!currentStep || !isWorkStep(currentStep)) {
+    return { error: "No active work step." }
   }
 
-  const nextStage = current + 1
-  const newStatus = "In Progress"
-  const stageLabel = WORKFLOW_STAGES[nextStage]?.label ?? "next stage"
+  if (!["Assigned", "In Progress", "Correction Required"].includes(project.status)) {
+    return { error: "Mark work complete only when actively working on this step." }
+  }
 
   await sql`
     UPDATE projects
-    SET current_stage = ${nextStage}, status = ${newStatus}, updated_at = now()
+    SET status = 'Work Completed', work_completed_at = NOW(), updated_at = NOW()
     WHERE id = ${id}
   `
-  await appendStatus(id, newStatus, `Advanced to ${stageLabel}`, user.name)
-  await logAudit(user.id, "project.advance_stage", "project", id, { stage: nextStage })
+  await appendStatus(id, "Work Completed", `Completed ${currentStep.label}`, user.name)
+
+  await notifyOfficeAdmins(
+    "Work Completed",
+    "Staff marked work complete",
+    `${project.name} — ${currentStep.label}`,
+  )
+  await logAudit(user.id, "project.work_completed", "project", id, { step: currentStep.step_key })
   revalidateProjectPaths(id)
   return { success: true }
+}
+
+/** @deprecated Service workflow uses markWorkComplete — kept for compatibility */
+export async function advanceStage(formData: FormData) {
+  return markWorkComplete(formData)
 }
 
 export async function submitForReview(formData: FormData) {
@@ -544,36 +978,56 @@ export async function submitForReview(formData: FormData) {
     ? await getProjectOrThrow(id)
     : await requireStaffProjectAccess(user, id)
 
-  const sectionLast = lastStageInSection(project.section)
-  if (project.current_stage < sectionLast && project.section !== "Billing") {
-    return { error: "Complete all stages in this section before submitting for review." }
+  const currentStep = await getCurrentWorkflowStep(id)
+  if (!currentStep || !isWorkStep(currentStep)) {
+    return { error: "Submit for review from an active work step." }
+  }
+
+  if (!["Work Completed", "In Progress", "Assigned"].includes(project.status)) {
+    return { error: "Complete your work before submitting for admin review." }
   }
 
   await sql`
-    UPDATE projects SET status = 'Pending Review', review_note = ${note}, updated_at = now()
-    WHERE id = ${id}
+    UPDATE workflow_steps
+    SET step_status = 'completed', completed_at = NOW()
+    WHERE id = ${currentStep.id}
   `
-  await appendStatus(id, "Pending Review", note ?? `Submitted from ${project.section}`, user.name)
 
-  const admins = (await sql`SELECT id FROM app_users WHERE role = 'Admin'`) as { id: number }[]
-  for (const a of admins) {
-    await notify(
-      a.id,
-      "Review Required",
-      "Project awaiting admin review",
-      `${project.name} (${project.section}) needs your approval.`,
-    )
+  const reviewStep = (await sql`
+    SELECT id, project_id, step_type, step_key, label, section, service_key, sort_order,
+           step_status, assigned_to, started_at, completed_at
+    FROM workflow_steps
+    WHERE project_id = ${id} AND step_type = 'admin_review' AND sort_order > ${currentStep.sort_order}
+    ORDER BY sort_order ASC
+    LIMIT 1
+  `) as Awaited<ReturnType<typeof getCurrentWorkflowStep>>[]
+
+  const nextReview = reviewStep[0]
+  if (!nextReview) {
+    return { error: "No review step found in workflow." }
   }
-  await logAudit(user.id, "project.submit_review", "project", id, { section: project.section })
+
+  await activateWorkflowStep(id, nextReview.id, "Pending Review", null)
+  await sql`
+    UPDATE projects SET review_note = ${note}, updated_at = NOW() WHERE id = ${id}
+  `
+  await appendStatus(id, "Pending Review", note ?? `Submitted ${currentStep.label} for review`, user.name)
+
+  await notifyOfficeAdmins(
+    "Submitted for Review",
+    "Project awaiting admin review",
+    `${project.name} — ${currentStep.label} needs your approval.`,
+  )
+  await logAudit(user.id, "project.submit_review", "project", id, { step: currentStep.step_key })
   revalidateProjectPaths(id)
   return { success: true }
 }
 
 export async function approveSectionReview(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
-  const assignee = Number(formData.get("assigned_to")) || null
-  const note = String(formData.get("note") || "").trim() || "Admin approved section work"
+  const staffIds = parseAssignedStaffIds(formData)
+  const note = String(formData.get("note") || "").trim() || "Admin approved work"
 
   if (!id) return { error: "Invalid project." }
   const project = await getProjectOrThrow(id)
@@ -581,60 +1035,133 @@ export async function approveSectionReview(formData: FormData) {
     return { error: "Project is not pending review." }
   }
 
-  const following = nextSection(project.section)
-  if (!following) {
-    return { error: "No next section. Use close project instead." }
+  const currentStep = await getCurrentWorkflowStep(id)
+  if (!currentStep || !isReviewStep(currentStep)) {
+    return { error: "No active review step." }
   }
 
-  const stage = following === "Billing" ? project.current_stage : firstStageInSection(following)
-  let staffId = assignee
-  const role = SECTION_ROLE[following]
-
-  if (!staffId && role) {
-    const staff = (await sql`SELECT id FROM app_users WHERE role = ${role} ORDER BY id LIMIT 1`) as {
-      id: number
-    }[]
-    staffId = staff[0]?.id ?? null
-  }
-
-  const newStatus = following === "Billing" ? "Assigned" : staffId ? "Assigned" : "New"
-
+  await recordWorkflowReview(id, currentStep.id, "approved", note, admin.id)
   await sql`
-    UPDATE projects
-    SET section = ${following}, current_stage = ${stage}, assigned_to = ${staffId},
-        status = ${newStatus}, review_note = NULL, updated_at = now()
-    WHERE id = ${id}
+    UPDATE workflow_steps SET step_status = 'completed', completed_at = NOW() WHERE id = ${currentStep.id}
   `
-  await appendStatus(id, newStatus, `${note}. Forwarded to ${following}`, admin.name)
 
-  if (staffId) {
-    await notify(staffId, "Section Handoff", "Project approved and assigned", project.name)
-  } else if (role) {
-    await notifyRole(role, "Department queue updated", `${project.name} is ready in ${following}`)
+  const nextWork = (await sql`
+    SELECT id, project_id, step_type, step_key, label, section, service_key, sort_order,
+           step_status, assigned_to, started_at, completed_at
+    FROM workflow_steps
+    WHERE project_id = ${id} AND step_type IN ('service', 'planning', 'billing')
+      AND sort_order > ${currentStep.sort_order}
+    ORDER BY sort_order ASC
+    LIMIT 1
+  `) as Awaited<ReturnType<typeof getCurrentWorkflowStep>>[]
+
+  const following = nextWork[0]
+  if (!following) {
+    return { error: "No next workflow step. Use close project instead." }
   }
 
-  await logAudit(admin.id, "project.approve_review", "project", id, { nextSection: following })
+  let assignees = staffIds
+  const role = roleForStep(following)
+  if (!assignees.length && role) {
+    const roleKey = roleToKey(role)
+    const staff = (await sql`
+      SELECT DISTINCT u.id
+      FROM app_users u
+      LEFT JOIN staff_roles sr ON sr.user_id = u.id
+      WHERE u.active = true
+        AND (
+          u.role = ${role}
+          OR (${roleKey} IS NOT NULL AND sr.role_key = ${roleKey})
+        )
+      ORDER BY u.id
+      LIMIT 1
+    `) as { id: number }[]
+    if (staff[0]?.id) assignees = [staff[0].id]
+  }
+
+  const primaryAssignee = assignees[0] ?? null
+  const newStatus = primaryAssignee ? "Assigned" : "Awaiting Assignment"
+  const stageKey = following.service_key ?? following.step_key
+
+  await clearSiteAssignees(id)
+  await activateWorkflowStep(id, following.id, newStatus, primaryAssignee)
+  if (assignees.length) {
+    await syncSiteAssignees(id, assignees, stageKey)
+  }
+  await sql`UPDATE projects SET review_note = NULL, updated_at = NOW() WHERE id = ${id}`
+  await appendStatus(id, "Approved", note, admin.name)
+  await appendStatus(id, newStatus, `Next: ${following.label}`, admin.name)
+
+  if (assignees.length) {
+    for (const staffId of assignees) {
+      await notify(
+        staffId,
+        "Approved",
+        assignees.length > 1 ? "Project approved and team assigned" : "Project approved and assigned",
+        `${project.name} — ${following.label}`,
+      )
+      await recordWorkflowAssignment(id, following.id, staffId, admin.id, note)
+    }
+  } else if (role) {
+    await notifyRole(role, "Awaiting Assignment", `${project.name} is ready for ${following.label}`)
+  }
+
+  await logAudit(admin.id, "project.approve_review", "project", id, {
+    nextStep: following.step_key,
+    assignees,
+  })
   revalidateProjectPaths(id)
   return { success: true }
 }
 
 export async function rejectReview(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
   const note = String(formData.get("note") || "").trim()
   if (!id || !note) return { error: "Provide feedback for correction." }
 
   const project = await getProjectOrThrow(id)
+  const currentStep = await getCurrentWorkflowStep(id)
+  if (!currentStep || !isReviewStep(currentStep)) {
+    return { error: "No active review step." }
+  }
+
+  await recordWorkflowReview(id, currentStep.id, "rejected", note, admin.id)
   await sql`
-    UPDATE projects SET status = 'Correction Required', review_note = ${note}, updated_at = now()
-    WHERE id = ${id}
+    UPDATE workflow_steps SET step_status = 'completed', completed_at = NOW() WHERE id = ${currentStep.id}
   `
+
+  const workStep = (await sql`
+    SELECT id, project_id, step_type, step_key, label, section, service_key, sort_order,
+           step_status, assigned_to, started_at, completed_at
+    FROM workflow_steps
+    WHERE project_id = ${id} AND service_key = ${currentStep.service_key}
+      AND step_type IN ('service', 'planning')
+    LIMIT 1
+  `) as Awaited<ReturnType<typeof getCurrentWorkflowStep>>[]
+
+  const priorWork = workStep[0]
+  if (priorWork) {
+    await sql`
+      UPDATE workflow_steps
+      SET step_status = 'active', completed_at = NULL
+      WHERE id = ${priorWork.id}
+    `
+    await activateWorkflowStep(id, priorWork.id, "Correction Required", project.assigned_to)
+  } else {
+    await sql`
+      UPDATE projects SET status = 'Correction Required', review_note = ${note}, updated_at = NOW()
+      WHERE id = ${id}
+    `
+  }
+
+  await sql`UPDATE projects SET review_note = ${note}, updated_at = NOW() WHERE id = ${id}`
   await appendStatus(id, "Correction Required", note, admin.name)
 
   if (project.assigned_to) {
     await notify(
       project.assigned_to,
-      "Correction Required",
+      "Rejected",
       "Admin requested changes",
       `${project.name}: ${note}`,
     )
@@ -645,7 +1172,7 @@ export async function rejectReview(formData: FormData) {
 }
 
 export async function closeProject(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
   if (!id) return { error: "Invalid project." }
 
@@ -654,11 +1181,17 @@ export async function closeProject(formData: FormData) {
     return { error: "Record full payment before closing the project." }
   }
 
+  await clearSiteAssignees(id)
   await sql`
     UPDATE projects SET status = 'Closed', section = 'Billing', assigned_to = NULL, updated_at = now()
     WHERE id = ${id}
   `
+  await sql`
+    UPDATE workflow_steps SET step_status = 'completed', completed_at = NOW()
+    WHERE project_id = ${id} AND step_type = 'billing'
+  `
   await appendStatus(id, "Closed", "Project closed after billing", admin.name)
+  await notifyRole("Billing Staff", "Project Closed", `${project.name} has been closed.`)
   await logAudit(admin.id, "project.close", "project", id)
   revalidateProjectPaths(id)
   return { success: true }
@@ -704,38 +1237,54 @@ export async function returnProject(formData: FormData) {
   `
   await appendStatus(id, "Returned", `Returned: ${reason}${notes ? ` — ${notes}` : ""}`, user.name)
 
-  const admins = (await sql`SELECT id FROM app_users WHERE role = 'Admin'`) as { id: number }[]
-  for (const a of admins) {
-    await notify(
-      a.id,
-      "Project Returned",
-      "Project returned to office",
-      `${project.name} was returned by ${user.name}: ${reason}.`,
-    )
-  }
+  await notifyOfficeAdmins(
+    "Project Returned",
+    "Project returned to office",
+    `${project.name} was returned by ${user.name}: ${reason}.`,
+  )
   await logAudit(user.id, "project.return", "project", id, { reason })
   revalidateProjectPaths(id)
   return { success: true }
 }
 
 export async function reassignReturnedProject(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("project_id"))
-  const assignee = Number(formData.get("assigned_to"))
-  if (!id || !assignee) return { error: "Select staff to reassign." }
+  const staffIds = parseAssignedStaffIds(formData)
+  if (!id || !staffIds.length) return { error: "Select staff to reassign." }
 
-  await sql`
-    UPDATE projects SET assigned_to = ${assignee}, status = 'Assigned', updated_at = now()
-    WHERE id = ${id}
-  `
+  const currentStep = await getCurrentWorkflowStep(id)
+  const primaryAssignee = staffIds[0]
+  const stageKey = currentStep
+    ? currentStep.service_key ?? currentStep.step_key
+    : "planning"
+
+  await clearSiteAssignees(id)
+  if (currentStep && isWorkStep(currentStep)) {
+    await activateWorkflowStep(id, currentStep.id, "Assigned", primaryAssignee)
+  } else {
+    await sql`
+      UPDATE projects SET assigned_to = ${primaryAssignee}, status = 'Assigned', updated_at = now()
+      WHERE id = ${id}
+    `
+  }
+  await syncSiteAssignees(id, staffIds, stageKey)
   await appendStatus(id, "Assigned", "Returned project reassigned", admin.name)
-  await notify(
-    assignee,
-    "Project Assigned",
-    "Returned project reassigned",
-    "A returned project was sent back to you.",
-  )
-  await logAudit(admin.id, "project.reassign_returned", "project", id, { assignee })
+  for (const assignee of staffIds) {
+    await notify(
+      assignee,
+      "Project Assigned",
+      staffIds.length > 1 ? "Returned project team reassigned" : "Returned project reassigned",
+      "A returned project was sent back to you.",
+    )
+    if (currentStep) {
+      await recordWorkflowAssignment(id, currentStep.id, assignee, admin.id, "Returned reassign")
+    }
+  }
+  await logAudit(admin.id, "project.reassign_returned", "project", id, {
+    assignee: primaryAssignee,
+    assignees: staffIds,
+  })
   revalidateProjectPaths(id)
   return { success: true }
 }
@@ -758,8 +1307,100 @@ export async function toggleChecklistItem(formData: FormData) {
   return { success: true }
 }
 
+export async function toggleChecklistFiled(formData: FormData) {
+  const user = await requireUser()
+  const id = Number(formData.get("item_id"))
+  const projectId = Number(formData.get("project_id"))
+  const filed = String(formData.get("filed")) === "true"
+  if (!id || !projectId) return { error: "Invalid item." }
+
+  if (!isAdmin(user)) {
+    await requireStaffProjectAccess(user, projectId)
+  }
+
+  await sql`UPDATE checklist_items SET filed = ${filed}, checked = ${filed} WHERE id = ${id}`
+  revalidateProjectPaths(projectId)
+  return { success: true }
+}
+
+export async function updateProjectKmapAreas(formData: FormData) {
+  const user = await requireUser()
+  const projectId = Number(formData.get("project_id"))
+  if (!projectId) return { error: "Invalid project." }
+
+  if (!isAdmin(user)) {
+    await requireStaffProjectAccess(user, projectId)
+  }
+
+  const raw = String(formData.get("areas") || "")
+  let areas: {
+    floor_key: string
+    plinth_area: number | null
+    floor_area: number | null
+  }[]
+
+  try {
+    areas = JSON.parse(raw)
+  } catch {
+    return { error: "Invalid area data." }
+  }
+
+  if (!Array.isArray(areas)) return { error: "Invalid area data." }
+
+  const allowedKeys = new Set<string>(KMAP_FLOOR_ROWS.map((f) => f.key))
+  for (const row of areas) {
+    if (!allowedKeys.has(row.floor_key)) continue
+    const plinth = row.plinth_area != null ? Number(row.plinth_area) : null
+    const floor = row.floor_area != null ? Number(row.floor_area) : null
+
+    await sql`
+      UPDATE project_kmap_areas
+      SET plinth_area = ${plinth}, floor_area = ${floor}
+      WHERE project_id = ${projectId} AND floor_key = ${row.floor_key}
+    `
+  }
+
+  revalidateProjectPaths(projectId)
+  return { success: true }
+}
+
+export async function updateProjectDrawingNumber(formData: FormData) {
+  const user = await requireUser()
+  const projectId = Number(formData.get("project_id"))
+  const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+
+  if (!projectId) return { error: "Invalid project." }
+
+  const project = await getProjectOrThrow(projectId)
+
+  if (isAdmin(user)) {
+    // Admin can set drawing number at any stage
+  } else if (userHasRole(user, "Planning Staff") || user.role === "Planning Staff") {
+    try {
+      await requireStaffProjectAccess(user, projectId)
+    } catch {
+      return { error: "You do not have access to edit this project." }
+    }
+    if (project.section !== "Planning & Design") {
+      return { error: "Drawing number can only be updated during Planning & Design." }
+    }
+  } else {
+    return { error: "Only Admin or Planning Staff can update the drawing number." }
+  }
+
+  await sql`
+    UPDATE projects SET drawing_number = ${drawingNumber}, updated_at = now()
+    WHERE id = ${projectId}
+  `
+  await logAudit(user.id, "project.update_drawing_number", "project", projectId, {
+    drawingNumber,
+  })
+  revalidateProjectPaths(projectId)
+  return { success: true }
+}
+
 export async function setChecklistReviewStatus(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const id = Number(formData.get("item_id"))
   const projectId = Number(formData.get("project_id"))
   const reviewStatus = String(formData.get("review_status") || "Pending")
@@ -883,23 +1524,34 @@ async function nextDocumentInvoiceNumber(): Promise<string> {
 
 function parseInvoiceForm(formData: FormData) {
   const lineItems = parseLineItemsJson(String(formData.get("line_items") || "[]"))
-  const taxPercent = Number(formData.get("tax_percent") || 0)
-  const discountPercent = Number(formData.get("discount_percent") || 0)
+  const taxPercent = sanitizeInvoicePercent(String(formData.get("tax_percent") || 0))
+  const discountPercent = sanitizeInvoicePercent(String(formData.get("discount_percent") || 0))
   const totals = calculateInvoiceTotals(lineItems, taxPercent, discountPercent)
+  const fields = sanitizeInvoiceFormFields({
+    invoiceNumber: String(formData.get("invoice_number") || "").trim(),
+    clientName: String(formData.get("client_name") || "").trim(),
+    clientAddress: String(formData.get("client_address") || "").trim(),
+    clientEmail: String(formData.get("client_email") || "").trim(),
+    clientPhone: String(formData.get("client_phone") || "").trim(),
+    clientTaxId: String(formData.get("client_tax_id") || "").trim(),
+    projectName: String(formData.get("project_name") || "").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+    terms: String(formData.get("terms") || "").trim(),
+  })
 
   return {
-    invoiceNumber: String(formData.get("invoice_number") || "").trim(),
+    invoiceNumber: fields.invoiceNumber,
     invoiceDate:
       String(formData.get("invoice_date") || "").trim() || new Date().toISOString().slice(0, 10),
     dueDate: String(formData.get("due_date") || "").trim() || null,
-    clientName: String(formData.get("client_name") || "").trim(),
-    clientAddress: String(formData.get("client_address") || "").trim() || null,
-    clientEmail: String(formData.get("client_email") || "").trim() || null,
-    clientPhone: String(formData.get("client_phone") || "").trim() || null,
-    clientTaxId: String(formData.get("client_tax_id") || "").trim() || null,
-    projectName: String(formData.get("project_name") || "").trim() || null,
-    notes: String(formData.get("notes") || "").trim() || null,
-    terms: String(formData.get("terms") || "").trim() || null,
+    clientName: fields.clientName,
+    clientAddress: fields.clientAddress || null,
+    clientEmail: fields.clientEmail || null,
+    clientPhone: fields.clientPhone || null,
+    clientTaxId: fields.clientTaxId || null,
+    projectName: fields.projectName || null,
+    notes: fields.notes || null,
+    terms: fields.terms || null,
     status: String(formData.get("status") || "Draft").trim() as InvoiceStatus,
     projectId: Number(formData.get("project_id") || 0) || null,
     taxPercent,
@@ -975,6 +1627,18 @@ export async function saveInvoice(formData: FormData) {
   const data = parseInvoiceForm(formData)
 
   if (!data.clientName) return { error: "Client name is required." }
+  const formError = validateInvoiceForm({
+    invoiceNumber: data.invoiceNumber,
+    clientName: data.clientName,
+    clientAddress: data.clientAddress ?? "",
+    clientEmail: data.clientEmail ?? "",
+    clientPhone: data.clientPhone ?? "",
+    clientTaxId: data.clientTaxId ?? "",
+    projectName: data.projectName ?? "",
+    notes: data.notes ?? "",
+    terms: data.terms ?? "",
+  })
+  if (formError) return { error: formError }
   const lineItemError = validateInvoiceLineItems(data.lineItems)
   if (lineItemError) return { error: lineItemError }
   if (data.totals.total > INVOICE_LIMITS.maxInvoiceTotal) {
@@ -1069,13 +1733,16 @@ export async function updateInvoiceStatus(formData: FormData) {
 export async function recordInvoicePayment(formData: FormData) {
   const user = await requireBillingAccess()
   const invoiceId = Number(formData.get("invoice_id"))
-  const amount = Number(formData.get("amount") || 0)
-  const method = String(formData.get("method") || "UPI")
+  const amount = sanitizePaymentAmount(String(formData.get("amount") || 0))
+  const method = sanitizeInvoiceText(String(formData.get("method") || "UPI"), 100)
   const paymentDate =
     String(formData.get("payment_date") || "").trim() || new Date().toISOString().slice(0, 10)
-  const notes = String(formData.get("notes") || "").trim() || null
+  const notes =
+    sanitizeInvoiceText(String(formData.get("notes") || ""), INVOICE_LIMITS.maxPaymentNotesLength).trim() || null
 
-  if (!invoiceId || amount <= 0) return { error: "Enter a valid payment amount." }
+  if (!invoiceId || amount < INVOICE_LIMITS.minPaymentAmount) {
+    return { error: "Enter a valid payment amount." }
+  }
 
   await sql`
     INSERT INTO invoice_payments (invoice_id, amount, payment_date, method, notes, recorded_by)
@@ -1121,7 +1788,7 @@ export async function markInvoiceSent(invoiceId: number) {
 }
 
 export async function saveOfficeProfile(formData: FormData) {
-  const admin = await requireAdmin()
+  const admin = await requireSuperAdmin()
   const existing = await getOfficeProfile()
   const logoRaw = String(formData.get("logo_data_url") || "").trim()
 
@@ -1156,5 +1823,50 @@ export async function saveOfficeProfile(formData: FormData) {
   })
   revalidatePath("/admin/settings")
   revalidatePath("/admin/invoices")
+  return { success: true }
+}
+
+export async function updateOwnProfile(formData: FormData) {
+  const user = await requireUser()
+  if (isOfficeAdmin(user.role)) {
+    return { error: "Admins cannot update profile here." }
+  }
+
+  const name = String(formData.get("name") || "").trim()
+  const email = String(formData.get("email") || "").trim() || null
+  const phone = String(formData.get("phone") || "").trim() || null
+  const currentPassword = String(formData.get("current_password") || "")
+  const newPassword = String(formData.get("new_password") || "")
+
+  if (!name) return { error: "Name is required." }
+
+  const rows = (await sql`
+    SELECT password FROM app_users WHERE id = ${user.id} LIMIT 1
+  `) as { password: string }[]
+  const stored = rows[0]?.password
+  if (!stored) return { error: "Account not found." }
+
+  if (newPassword) {
+    if (!currentPassword) return { error: "Enter your current password to set a new one." }
+    if (newPassword.length < 6) return { error: "New password must be at least 6 characters." }
+    const valid = await verifyPassword(currentPassword, stored)
+    if (!valid) return { error: "Current password is incorrect." }
+    const hash = await hashPassword(newPassword)
+    await sql`
+      UPDATE app_users
+      SET name = ${name}, email = ${email}, phone = ${phone}, password = ${hash}
+      WHERE id = ${user.id}
+    `
+  } else {
+    await sql`
+      UPDATE app_users
+      SET name = ${name}, email = ${email}, phone = ${phone}
+      WHERE id = ${user.id}
+    `
+  }
+
+  await logAudit(user.id, "profile.update", "user", user.id, { name })
+  revalidatePath("/staff/profile")
+  revalidatePath("/staff")
   return { success: true }
 }

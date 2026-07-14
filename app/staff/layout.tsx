@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
+import { isOfficeAdmin } from "@/lib/constants"
 import { getNotifications } from "@/lib/queries"
 import { StaffSidebar } from "@/components/staff-sidebar"
 import { StaffTopbar } from "@/components/staff-topbar"
@@ -12,7 +13,7 @@ export default async function StaffLayout({
 }) {
   const user = await getCurrentUser()
   if (!user) redirect("/login")
-  if (user.role === "Admin") redirect("/admin")
+  if (isOfficeAdmin(user.role)) redirect("/admin")
 
   const notifications = await getNotifications(user.id)
 
@@ -21,7 +22,7 @@ export default async function StaffLayout({
       <StaffSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <StaffTopbar user={user} notifications={notifications} />
-        <main className="flex-1 p-4 pb-24 md:pb-6 md:p-6">{children}</main>
+        <main className="blueprint-bg flex-1 p-4 pb-24 md:pb-6 md:p-6">{children}</main>
       </div>
       <StaffBottomNav />
     </div>

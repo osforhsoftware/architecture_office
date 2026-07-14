@@ -1,7 +1,12 @@
 import { Suspense } from "react"
 import { getCurrentUser } from "@/lib/auth"
 import { getClients, getProjectsPaginated } from "@/lib/queries"
-import { PROJECT_STATUSES, SECTIONS, isBillingStaff } from "@/lib/constants"
+import {
+  PROJECT_STATUSES,
+  SECTIONS,
+  isSuperAdmin,
+  userIsBillingStaff,
+} from "@/lib/constants"
 import { ProjectDialog } from "@/components/project-dialog"
 import { ProjectsDataTable } from "@/components/projects-data-table"
 import { ProjectsExportButton } from "@/components/projects-export-button"
@@ -19,7 +24,8 @@ export default async function AdminProjectsPage({
   }>
 }) {
   const user = await getCurrentUser()
-  const billingOnly = user ? isBillingStaff(user.role) : false
+  const billingOnly = user ? userIsBillingStaff(user) && user.role === "Billing Staff" : false
+  const isFullAdmin = user ? isSuperAdmin(user.role) : false
 
   const params = await searchParams
   const search = params.search ?? ""
@@ -51,12 +57,14 @@ export default async function AdminProjectsPage({
           <p className="text-sm text-muted-foreground">
             {billingOnly
               ? "Projects in the billing stage — generate invoices and record payments"
-              : "Manage project pipeline and assignments"}
+              : isFullAdmin
+                ? "Manage project pipeline and assignments"
+                : "Add new projects. Full project management requires Super Admin."}
           </p>
         </div>
         {!billingOnly ? (
           <div className="flex flex-wrap gap-2">
-            <ProjectsExportButton />
+            {isFullAdmin ? <ProjectsExportButton /> : null}
             <ProjectDialog clients={clients} />
           </div>
         ) : null}

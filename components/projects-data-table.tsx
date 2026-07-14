@@ -22,6 +22,7 @@ import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider, useTableParams } from "@/components/use-table-params"
 import { formatCurrency, projectProgressPercent, WORKFLOW_STAGES } from "@/lib/constants"
+import { cn } from "@/lib/utils"
 import type { PaginatedResult } from "@/lib/pagination"
 import type { Project } from "@/lib/types"
 
@@ -218,7 +219,13 @@ function ProjectsTableInner({
                       className="border-b border-border/50 transition-colors hover:bg-muted/40"
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 py-3">
+                        <td
+                          key={cell.id}
+                          className={cn(
+                            "px-4 py-3 align-middle",
+                            cell.column.id === "status" && "whitespace-nowrap",
+                          )}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}

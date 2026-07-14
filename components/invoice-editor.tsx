@@ -12,7 +12,6 @@ import {
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
-import { InvoicePreview, type InvoicePreviewData } from "@/components/invoice-preview"
 import { InvoiceStatusBadge } from "@/components/status-badges"
 import { FormSelect } from "@/components/form-select"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -37,8 +36,12 @@ import { INVOICE_STATUSES, PAYMENT_METHODS, formatCurrency } from "@/lib/constan
 import { apiUrl } from "@/lib/app-urls"
 import {
   calculateInvoiceTotals,
+  formatInvoiceCurrency,
   INVOICE_LIMITS,
-  lineItemAmount,
+  parseInvoiceInputNumber,
+  sanitizeInvoiceFormFields,
+  sanitizeInvoicePercent,
+  sanitizeInvoiceText,
   sanitizeLineItemInput,
   toDateInputValue,
   type LineItemInput,
@@ -47,8 +50,12 @@ import type { InvoicePayment, InvoiceStatus, InvoiceWithDetails, OfficeProfile }
 import type { InvoiceProjectOption } from "@/lib/queries"
 
 function emptyLineItem(): LineItemInput {
-  return { description: "", quantity: 1, unit: "Nos", unit_price: 0 }
+  return { description: "", quantity: 1, unit: "1", unit_price: 0, amount: 0 }
 }
+
+const LINE_ITEM_COLS =
+  "sm:grid-cols-[minmax(0,1fr)_6.5rem_6.5rem_5.5rem_minmax(7.5rem,auto)_2.25rem]"
+const LINE_ITEM_ROW = `grid gap-2 sm:grid sm:items-end sm:gap-x-2 ${LINE_ITEM_COLS}`
 
 function applyProjectToForm(project: InvoiceProjectOption): Pick<
   InvoiceFormState,
@@ -56,14 +63,21 @@ function applyProjectToForm(project: InvoiceProjectOption): Pick<
 > {
   return {
     projectId: project.id,
-    projectName: project.name,
-    clientName: project.client_name,
-    clientPhone: project.client_phone,
-    clientEmail: project.client_email ?? "",
-    clientAddress: project.client_address ?? "",
+    projectName: sanitizeInvoiceText(project.name, INVOICE_LIMITS.maxProjectNameLength),
+    clientName: sanitizeInvoiceText(project.client_name, INVOICE_LIMITS.maxClientNameLength),
+    clientPhone: sanitizeInvoiceText(project.client_phone, INVOICE_LIMITS.maxClientPhoneLength),
+    clientEmail: sanitizeInvoiceText(project.client_email, INVOICE_LIMITS.maxClientEmailLength),
+    clientAddress: sanitizeInvoiceText(project.client_address, INVOICE_LIMITS.maxClientAddressLength),
     clientTaxId: "",
   }
 }
+
+const CLIENT_FIELDS = [
+  ["clientName", "Client Name", "text", INVOICE_LIMITS.maxClientNameLength],
+  ["clientPhone", "Phone", "tel", INVOICE_LIMITS.maxClientPhoneLength],
+  ["clientEmail", "Email", "email", INVOICE_LIMITS.maxClientEmailLength],
+  ["clientTaxId", "GST Number", "text", INVOICE_LIMITS.maxClientTaxIdLength],
+] as const
 
 interface InvoiceFormState {
   invoiceNumber: string
@@ -90,10 +104,8 @@ function buildInitialForm(
   preselectedProject: InvoiceProjectOption | null | undefined,
 ): InvoiceFormState {
   if (invoice) {
-    return {
+    const fields = sanitizeInvoiceFormFields({
       invoiceNumber: invoice.invoice_number ?? suggestedInvoiceNumber ?? "",
-      invoiceDate: toDateInputValue(invoice.invoice_date) || new Date().toISOString().slice(0, 10),
-      dueDate: toDateInputValue(invoice.due_date),
       clientName: invoice.client_name ?? "",
       clientAddress: invoice.client_address ?? "",
       clientEmail: invoice.client_email ?? "",
@@ -102,37 +114,62 @@ function buildInitialForm(
       projectName: invoice.project_name ?? "",
       notes: invoice.notes ?? "",
       terms: invoice.terms ?? profile.termsAndConditions,
-      taxPercent: Number(invoice.tax_percent ?? 18),
-      discountPercent: Number(invoice.discount_percent ?? 0),
+    })
+    return {
+      invoiceNumber: fields.invoiceNumber,
+      invoiceDate: toDateInputValue(invoice.invoice_date) || new Date().toISOString().slice(0, 10),
+      dueDate: toDateInputValue(invoice.due_date),
+      clientName: fields.clientName,
+      clientAddress: fields.clientAddress,
+      clientEmail: fields.clientEmail,
+      clientPhone: fields.clientPhone,
+      clientTaxId: fields.clientTaxId,
+      projectName: fields.projectName,
+      notes: fields.notes,
+      terms: fields.terms,
+      taxPercent: sanitizeInvoicePercent(invoice.tax_percent ?? 18),
+      discountPercent: sanitizeInvoicePercent(invoice.discount_percent ?? 0),
       status: invoice.status ?? "Draft",
       projectId: invoice.project_id ?? null,
     }
   }
   if (preselectedProject) {
+    const fields = sanitizeInvoiceFormFields({
+      ...applyProjectToForm(preselectedProject),
+      notes: "",
+      terms: profile.termsAndConditions,
+    })
     return {
       invoiceNumber: suggestedInvoiceNumber ?? "",
       invoiceDate: new Date().toISOString().slice(0, 10),
       dueDate: "",
-      notes: "",
-      terms: profile.termsAndConditions,
+      notes: fields.notes,
+      terms: fields.terms,
       taxPercent: 18,
       discountPercent: 0,
       status: "Draft",
-      ...applyProjectToForm(preselectedProject),
+      clientName: fields.clientName,
+      clientAddress: fields.clientAddress,
+      clientEmail: fields.clientEmail,
+      clientPhone: fields.clientPhone,
+      clientTaxId: fields.clientTaxId,
+      projectName: fields.projectName,
+      projectId: preselectedProject.id,
     }
   }
+  const emptyFields = sanitizeInvoiceFormFields({})
   return {
     invoiceNumber: suggestedInvoiceNumber ?? "",
     invoiceDate: new Date().toISOString().slice(0, 10),
     dueDate: "",
-    clientName: "",
-    clientAddress: "",
-    clientEmail: "",
-    clientPhone: "",
-    clientTaxId: "",
-    projectName: "",
-    notes: "",
-    terms: profile.termsAndConditions,
+    clientName: emptyFields.clientName,
+    clientAddress: emptyFields.clientAddress,
+    clientEmail: emptyFields.clientEmail,
+    clientPhone: emptyFields.clientPhone,
+    clientTaxId: emptyFields.clientTaxId,
+    projectName: emptyFields.projectName,
+    notes: emptyFields.notes,
+    terms: profile.termsAndConditions.slice(0, INVOICE_LIMITS.maxTermsLength),
     taxPercent: 18,
     discountPercent: 0,
     status: "Draft",
@@ -230,35 +267,23 @@ export function InvoiceEditor({
     [lineItems, form.taxPercent, form.discountPercent],
   )
 
-  const linkedProject = form.projectId
-    ? projects.find((p) => p.id === form.projectId)
-    : null
-
-  const previewData: InvoicePreviewData = {
-    invoiceNumber: form.invoiceNumber,
-    invoiceDate: form.invoiceDate,
-    dueDate: form.dueDate,
-    clientName: form.clientName,
-    clientAddress: form.clientAddress,
-    clientEmail: form.clientEmail,
-    clientPhone: form.clientPhone,
-    clientTaxId: form.clientTaxId,
-    projectName: form.projectName,
-    notes: form.notes,
-    terms: form.terms,
-    taxPercent: form.taxPercent,
-    discountPercent: form.discountPercent,
-    projectCode: invoice?.project_code ?? linkedProject?.code,
-    lineItems: lineItems.filter((i) => i.description.trim()),
-    amountPaid: invoice ? Number(invoice.amount_paid) : 0,
-  }
-
   function updateLineItem(index: number, patch: Partial<LineItemInput>) {
     setLineItems((items) =>
-      items.map((item, i) =>
-        i === index ? sanitizeLineItemInput({ ...item, ...patch }) : item,
-      ),
+      items.map((item, i) => {
+        if (i !== index) return item
+        return sanitizeLineItemInput({ ...item, ...patch })
+      }),
     )
+  }
+
+  function handleQuantityChange(index: number, raw: string) {
+    const quantity = parseInvoiceInputNumber(raw)
+    updateLineItem(index, { quantity })
+  }
+
+  function handleUnitPriceChange(index: number, raw: string) {
+    const unit_price = parseInvoiceInputNumber(raw)
+    updateLineItem(index, { unit_price })
   }
 
   function addLineItem() {
@@ -323,8 +348,8 @@ export function InvoiceEditor({
   const pdfUrl = invoice?.id ? apiUrl(`/api/admin/invoices/${invoice.id}/pdf`) : null
 
   return (
-    <div className="flex flex-col gap-6 print:block print:gap-0">
-      <div className="invoice-editor-toolbar flex flex-wrap items-center justify-between gap-3 print:hidden">
+    <div className="flex flex-col gap-6">
+      <div className="invoice-editor-toolbar flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold tracking-tight">
@@ -345,8 +370,13 @@ export function InvoiceEditor({
                 </>
               ) : null}
             </p>
+          ) : isNew ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Fill in the details below, then create the invoice to download PDF or print.
+            </p>
           ) : null}
         </div>
+
         <div className="flex flex-wrap gap-2">
           {pdfUrl ? (
             <>
@@ -359,6 +389,7 @@ export function InvoiceEditor({
                 <Download className="size-4" /> Download PDF
               </a>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -370,6 +401,7 @@ export function InvoiceEditor({
                 <Printer className="size-4" /> Print
               </Button>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -390,15 +422,14 @@ export function InvoiceEditor({
               </Button>
             </>
           ) : null}
-          <Button onClick={handleSave} disabled={pending}>
+          <Button type="button" onClick={handleSave} disabled={pending} size="sm">
             <Save className="size-4" />
             {pending ? "Saving..." : isNew ? "Create Invoice" : "Save Changes"}
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2 print:block print:gap-0">
-        <div className="invoice-editor-form flex flex-col gap-4 print:hidden">
+      <div className="invoice-editor-form flex flex-col gap-4">
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
             <h3 className="text-sm font-semibold">Invoice Details</h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -430,7 +461,16 @@ export function InvoiceEditor({
                 <Label>Invoice Number</Label>
                 <Input
                   value={form.invoiceNumber}
-                  onChange={(e) => setForm((f) => ({ ...f, invoiceNumber: e.target.value }))}
+                  maxLength={INVOICE_LIMITS.maxInvoiceNumberLength}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      invoiceNumber: sanitizeInvoiceText(
+                        e.target.value,
+                        INVOICE_LIMITS.maxInvoiceNumberLength,
+                      ),
+                    }))
+                  }
                   placeholder="Auto-generated"
                   readOnly={!isNew}
                 />
@@ -484,19 +524,18 @@ export function InvoiceEditor({
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
             <h3 className="text-sm font-semibold">Client Information</h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {[
-                ["clientName", "Client Name", "text"],
-                ["clientPhone", "Phone", "text"],
-                ["clientEmail", "Email", "email"],
-                ["clientTaxId", "GST Number", "text"],
-              ].map(([key, label, type]) => (
+              {CLIENT_FIELDS.map(([key, label, type, maxLength]) => (
                 <div key={key} className="flex flex-col gap-2">
                   <Label>{label}</Label>
                   <Input
                     type={type}
+                    maxLength={maxLength}
                     value={form[key as keyof typeof form] as string}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, [key]: e.target.value }))
+                      setForm((f) => ({
+                        ...f,
+                        [key]: sanitizeInvoiceText(e.target.value, maxLength),
+                      }))
                     }
                   />
                 </div>
@@ -505,7 +544,16 @@ export function InvoiceEditor({
                 <Label>Address</Label>
                 <Textarea
                   value={form.clientAddress}
-                  onChange={(e) => setForm((f) => ({ ...f, clientAddress: e.target.value }))}
+                  maxLength={INVOICE_LIMITS.maxClientAddressLength}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      clientAddress: sanitizeInvoiceText(
+                        e.target.value,
+                        INVOICE_LIMITS.maxClientAddressLength,
+                      ),
+                    }))
+                  }
                   rows={2}
                 />
               </div>
@@ -525,72 +573,89 @@ export function InvoiceEditor({
                 <Plus className="size-4" /> Add Item
               </Button>
             </div>
-            <div className="mt-4 space-y-3">
-              {lineItems.map((item, index) => (
-                <div key={index} className="grid gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
-                  <div className="sm:col-span-4">
-                    <Label className="text-xs">Service Description</Label>
-                    <Input
-                      value={item.description}
-                      maxLength={INVOICE_LIMITS.maxDescriptionLength}
-                      onChange={(e) => updateLineItem(index, { description: e.target.value })}
-                      placeholder="e.g. Architectural Planning & Design"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label className="text-xs">Unit Rate (₹)</Label>
-                    <Input
-                      type="number"
-                      min={INVOICE_LIMITS.minUnitPrice}
-                      max={INVOICE_LIMITS.maxUnitPrice}
-                      step="0.01"
-                      value={item.unit_price}
-                      onChange={(e) =>
-                        updateLineItem(index, { unit_price: Number(e.target.value) || 0 })
-                      }
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label className="text-xs">Quantity</Label>
-                    <Input
-                      type="number"
-                      min={INVOICE_LIMITS.minQuantity}
-                      max={INVOICE_LIMITS.maxQuantity}
-                      step="0.01"
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateLineItem(index, { quantity: Number(e.target.value) || 0 })
-                      }
-                    />
-                  </div>
-                  <div className="sm:col-span-1">
-                    <Label className="text-xs">Unit</Label>
-                    <Input
-                      value={item.unit ?? "Nos"}
-                      maxLength={24}
-                      onChange={(e) => updateLineItem(index, { unit: e.target.value })}
-                      placeholder="Nos"
-                    />
-                  </div>
-                  <div className="flex items-end justify-between gap-2 sm:col-span-3">
-                    <div className="min-w-0 flex-1">
-                      <Label className="text-xs">Total Amount</Label>
-                      <p className="truncate py-2 text-sm font-medium tabular-nums">
-                        {formatCurrency(lineItemAmount(item.quantity, item.unit_price))}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => removeLineItem(index)}
-                      disabled={lineItems.length <= 1}
-                    >
-                      <Trash2 className="size-4 text-muted-foreground" />
-                    </Button>
-                  </div>
+            <div className="mt-4 overflow-x-auto">
+              <div className="min-w-[36rem] space-y-3">
+                <div className={`hidden px-3 sm:grid sm:items-end sm:gap-x-2 ${LINE_ITEM_COLS}`}>
+                  <span className="text-xs font-medium text-muted-foreground">Service Description</span>
+                  <span className="text-xs font-medium text-muted-foreground">Rate (₹)</span>
+                  <span className="text-xs font-medium text-muted-foreground">SQFT / M2</span>
+                  <span className="text-xs font-medium text-muted-foreground">Multiplier</span>
+                  <span className="text-xs font-medium text-muted-foreground text-right">Total Amount</span>
+                  <span className="sr-only">Remove</span>
                 </div>
-              ))}
+                {lineItems.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`rounded-lg border border-border/50 p-3 ${LINE_ITEM_ROW}`}
+                  >
+                    <div>
+                      <Label className="text-xs sm:sr-only">Service Description</Label>
+                      <Input
+                        value={item.description}
+                        maxLength={INVOICE_LIMITS.maxDescriptionLength}
+                        onChange={(e) => updateLineItem(index, { description: e.target.value })}
+                        placeholder="e.g. Architectural Planning & Design"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs sm:sr-only">Rate (₹)</Label>
+                      <Input
+                        type="number"
+                        min={INVOICE_LIMITS.minUnitPrice}
+                        max={INVOICE_LIMITS.maxUnitPrice}
+                        step="0.01"
+                        value={item.unit_price}
+                        onChange={(e) => handleUnitPriceChange(index, e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs sm:sr-only">SQFT / M2</Label>
+                      <Input
+                        type="number"
+                        min={INVOICE_LIMITS.minQuantity}
+                        max={INVOICE_LIMITS.maxQuantity}
+                        step="0.01"
+                        value={item.quantity}
+                        onChange={(e) => handleQuantityChange(index, e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs sm:sr-only">Multiplier</Label>
+                      <Input
+                        value={item.unit ?? "1"}
+                        maxLength={INVOICE_LIMITS.maxUnitLength}
+                        onChange={(e) =>
+                          updateLineItem(index, {
+                            unit: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxUnitLength),
+                          })
+                        }
+                        placeholder="1"
+                        className="min-w-[5rem]"
+                      />
+                    </div>
+                    <div className="flex items-end justify-end gap-2">
+                      <div className="min-w-0 text-right">
+                        <Label className="text-xs sm:sr-only">Total Amount</Label>
+                        <p className="py-2 text-sm font-medium tabular-nums">
+                          {formatInvoiceCurrency(item.amount)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-end justify-end sm:justify-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => removeLineItem(index)}
+                        disabled={lineItems.length <= 1}
+                        aria-label="Remove line item"
+                      >
+                        <Trash2 className="size-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -606,7 +671,7 @@ export function InvoiceEditor({
                   step="0.01"
                   value={form.taxPercent}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, taxPercent: Number(e.target.value) || 0 }))
+                    setForm((f) => ({ ...f, taxPercent: sanitizeInvoicePercent(e.target.value) }))
                   }
                 />
               </div>
@@ -619,7 +684,7 @@ export function InvoiceEditor({
                   step="0.01"
                   value={form.discountPercent}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, discountPercent: Number(e.target.value) || 0 }))
+                    setForm((f) => ({ ...f, discountPercent: sanitizeInvoicePercent(e.target.value) }))
                   }
                 />
               </div>
@@ -651,7 +716,13 @@ export function InvoiceEditor({
                 <Label>Notes</Label>
                 <Textarea
                   value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  maxLength={INVOICE_LIMITS.maxNotesLength}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      notes: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxNotesLength),
+                    }))
+                  }
                   rows={3}
                 />
               </div>
@@ -659,7 +730,13 @@ export function InvoiceEditor({
                 <Label>Terms & Conditions</Label>
                 <Textarea
                   value={form.terms}
-                  onChange={(e) => setForm((f) => ({ ...f, terms: e.target.value }))}
+                  maxLength={INVOICE_LIMITS.maxTermsLength}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      terms: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxTermsLength),
+                    }))
+                  }
                   rows={3}
                 />
               </div>
@@ -693,24 +770,6 @@ export function InvoiceEditor({
               onSubmit={handlePaymentSubmit}
             />
           ) : null}
-        </div>
-
-        <div className="h-fit xl:sticky xl:top-4 xl:self-start print:static">
-          <div className="mb-3 flex items-center justify-between print:hidden">
-            <h3 className="text-sm font-semibold">Live Preview</h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.print()}
-              className="print:hidden"
-            >
-              <Printer className="size-4" /> Print Preview
-            </Button>
-          </div>
-          <div className="invoice-preview-wrapper h-fit overflow-auto rounded-xl border border-border/60 bg-muted/30 p-4 print:overflow-visible print:border-0 print:bg-white print:p-0">
-            <InvoicePreview data={previewData} profile={profile} />
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -734,7 +793,14 @@ function InvoicePaymentsSection({
         <input type="hidden" name="invoice_id" value={invoiceId} />
         <div className="flex flex-col gap-2">
           <Label>Amount Paid</Label>
-          <Input name="amount" type="number" min="1" step="0.01" required />
+          <Input
+            name="amount"
+            type="number"
+            min={INVOICE_LIMITS.minPaymentAmount}
+            max={INVOICE_LIMITS.maxPaymentAmount}
+            step="0.01"
+            required
+          />
         </div>
         <div className="flex flex-col gap-2">
           <Label>Payment Date</Label>
@@ -757,7 +823,11 @@ function InvoicePaymentsSection({
         </div>
         <div className="flex flex-col gap-2 sm:col-span-2">
           <Label>Payment Notes</Label>
-          <Textarea name="notes" placeholder="Transaction reference, etc." />
+          <Textarea
+            name="notes"
+            maxLength={INVOICE_LIMITS.maxPaymentNotesLength}
+            placeholder="Transaction reference, etc."
+          />
         </div>
         <Button type="submit" disabled={pending} className="sm:col-span-2">
           {pending ? "Recording..." : "Record Payment"}

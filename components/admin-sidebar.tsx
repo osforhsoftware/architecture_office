@@ -3,48 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
-import {
-  LayoutDashboard,
-  Users,
-  FolderKanban,
-  Building2,
-  CreditCard,
-  FileText,
-  BarChart3,
-  Bell,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  UserCog,
-} from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { isBillingStaff, type Role } from "@/lib/constants"
+import { adminNavForRole } from "@/lib/admin-nav"
+import { isSuperAdmin, type Role } from "@/lib/constants"
 import { BrandLogoHeader } from "@/components/brand-logo"
-
-const ADMIN_NAV = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/admin/clients", label: "Clients", icon: Users },
-  { href: "/admin/projects", label: "Projects", icon: FolderKanban },
-  { href: "/admin/departments", label: "Departments", icon: Building2 },
-  { href: "/admin/staff", label: "Staff", icon: UserCog },
-  { href: "/admin/billing", label: "Billing", icon: CreditCard },
-  { href: "/admin/invoices", label: "Invoices", icon: FileText },
-  { href: "/admin/reports", label: "Reports", icon: BarChart3 },
-  { href: "/admin/notifications", label: "Notifications", icon: Bell },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
-]
-
-const BILLING_STAFF_NAV = [
-  { href: "/admin/billing", label: "Billing Dashboard", icon: CreditCard, exact: false },
-  { href: "/admin/invoices", label: "Invoices", icon: FileText },
-  { href: "/admin/projects", label: "Billing Projects", icon: FolderKanban },
-  { href: "/admin/notifications", label: "Notifications", icon: Bell },
-]
-
-function navForRole(role: Role) {
-  return isBillingStaff(role) ? BILLING_STAFF_NAV : ADMIN_NAV
-}
 
 export function AdminSidebar({
   role = "Admin",
@@ -55,7 +19,7 @@ export function AdminSidebar({
 }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const nav = navForRole(role)
+  const nav = adminNavForRole(role)
 
   return (
     <motion.aside
@@ -65,12 +29,12 @@ export function AdminSidebar({
       className="hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex"
     >
       <BrandLogoHeader
-        href="/admin"
+        href={isSuperAdmin(role) ? "/admin" : "/admin/projects"}
         compact={collapsed}
         className="border-sidebar-border"
       />
 
-      <nav className="flex-1 px-2 py-2">
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
         <ul className="flex flex-col gap-0.5">
           {nav.map((item) => {
             const active = item.exact
@@ -132,5 +96,3 @@ export function AdminSidebar({
     </motion.aside>
   )
 }
-
-export { ADMIN_NAV, BILLING_STAFF_NAV }

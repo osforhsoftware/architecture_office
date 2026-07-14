@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { getStaffAllProjects } from "@/lib/queries"
+import { staffOwnsProject } from "@/lib/project-access"
 import { StaffProjectCard } from "@/components/staff-project-card"
 import { Card, CardContent } from "@/components/ui/card"
 
@@ -10,17 +11,13 @@ export default async function StaffProjectsPage() {
   const projects = await getStaffAllProjects(user.id, user.name)
   const active = projects.filter(
     (p) =>
-      p.assigned_to === user.id &&
+      staffOwnsProject(user, p) &&
       !["Closed", "Completed", "Returned"].includes(p.status),
   )
-  const returned = projects.filter(
-    (p) => p.assigned_to === user.id && p.status === "Returned",
-  )
-  const past = projects.filter(
-    (p) =>
-      p.assigned_to !== user.id ||
-      ["Closed", "Completed", "Pending Review"].includes(p.status),
-  )
+  const returned = projects.filter((p) => p.status === "Returned")
+  const activeIds = new Set(active.map((p) => p.id))
+  const returnedIds = new Set(returned.map((p) => p.id))
+  const past = projects.filter((p) => !activeIds.has(p.id) && !returnedIds.has(p.id))
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">

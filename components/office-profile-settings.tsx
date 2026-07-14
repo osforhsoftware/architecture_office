@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { FormField, formControlClass, formTextareaClass } from "@/components/form-section"
 import { saveOfficeProfile } from "@/lib/actions"
 import { apiFetch, publicAssetUrl } from "@/lib/app-urls"
 import { DEFAULT_INVOICE_TERMS } from "@/lib/constants"
@@ -193,7 +194,7 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2 lg:col-span-2">
-          <Label>Company Logo</Label>
+          <Label className="text-sm font-medium">Company Logo</Label>
           <div className="flex items-center gap-4">
             {logoPreview ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -244,71 +245,76 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="company_name">Company Name</Label>
+        <FormField label="Company Name" htmlFor="company_name">
           <Input
             id="company_name"
             value={form.companyName}
             onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
             required
+            className={formControlClass}
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="gst_number">GST Number (optional)</Label>
+        </FormField>
+        <FormField label="GST Number (optional)" htmlFor="gst_number">
           <Input
             id="gst_number"
             value={form.gstNumber}
             onChange={(e) => setForm((f) => ({ ...f, gstNumber: e.target.value }))}
+            className={formControlClass}
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="phone">Phone</Label>
+        </FormField>
+        <FormField label="Phone" htmlFor="phone">
           <Input
             id="phone"
             value={form.phone}
             onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className={formControlClass}
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="email">Email</Label>
+        </FormField>
+        <FormField label="Email" htmlFor="email">
           <Input
             id="email"
             type="email"
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className={formControlClass}
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="website">Website</Label>
+        </FormField>
+        <FormField label="Website" htmlFor="website">
           <Input
             id="website"
             type="url"
             placeholder="https://yourcompany.com"
             value={form.website}
             onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+            className={formControlClass}
           />
-        </div>
-        <div className="flex flex-col gap-2 lg:col-span-2">
-          <Label htmlFor="address">Address</Label>
+        </FormField>
+        <FormField label="Address" htmlFor="address" className="lg:col-span-2">
           <Textarea
             id="address"
             rows={2}
             value={form.address}
             onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            className={formTextareaClass}
           />
-        </div>
-        <div className="flex flex-col gap-2 lg:col-span-2">
-          <Label htmlFor="terms_and_conditions">Default Terms & Conditions</Label>
+        </FormField>
+        <FormField label="Default Terms & Conditions" htmlFor="terms_and_conditions" className="lg:col-span-2">
           <Textarea
             id="terms_and_conditions"
             rows={4}
             value={form.termsAndConditions}
             onChange={(e) => setForm((f) => ({ ...f, termsAndConditions: e.target.value }))}
+            className={formTextareaClass}
           />
-        </div>
+        </FormField>
       </div>
 
-      <Button type="button" className="mt-6" disabled={pending || uploadingLogo} onClick={handleSave}>
+      <Button
+        type="button"
+        className="mt-6 min-h-11"
+        disabled={pending || uploadingLogo}
+        onClick={handleSave}
+      >
         {pending ? "Saving..." : "Save Office Profile"}
       </Button>
     </div>

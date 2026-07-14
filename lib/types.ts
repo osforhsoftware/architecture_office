@@ -3,7 +3,10 @@ import type { Role } from "./constants"
 export interface AppUser {
   id: number
   username: string
+  /** Primary role (portal routing + backward-compatible single-role column). */
   role: Role
+  /** All department roles for this staff member (multi-role). Falls back to `[role]`. */
+  roles?: Role[]
   name: string
   email: string | null
   phone: string | null
@@ -17,6 +20,9 @@ export interface Client {
   phone: string
   email: string | null
   address: string | null
+  street: string | null
+  district: string | null
+  aadhaar_numbers: string[]
   created_at: string
   project_count?: number
 }
@@ -39,11 +45,28 @@ export interface Project {
   invoice_number: string | null
   payment_status: string
   review_note: string | null
+  building_number: string | null
+  building_permit_number: string | null
+  drawing_number: string | null
+  req_architectural_plan: boolean
+  req_building_permit: boolean
+  req_regularization: boolean
+  project_package: string | null
+  current_workflow_step_id: number | null
+  work_completed_at: string | null
   created_at: string
   updated_at: string
   client_name?: string
   client_phone?: string
   assignee_name?: string | null
+  site_assignee_ids?: number[]
+  site_assignee_names?: string[]
+}
+
+export interface ProjectAssignee {
+  user_id: number
+  name: string
+  stage_key: string
 }
 
 export interface StatusHistory {
@@ -81,8 +104,18 @@ export interface ChecklistItem {
   id: number
   project_id: number
   item_key: string
+  service_key: string | null
   checked: boolean
+  filed: boolean
   review_status: string
+}
+
+export interface ProjectKmapArea {
+  id: number
+  project_id: number
+  floor_key: string
+  plinth_area: string | null
+  floor_area: string | null
 }
 
 export interface Payment {
@@ -109,10 +142,12 @@ export interface Notification {
 export interface AuditLog {
   id: number
   user_id: number | null
+  role: string | null
   action: string
   entity_type: string
   entity_id: number | null
   details: Record<string, unknown> | null
+  ip_address: string | null
   created_at: string
   user_name?: string | null
 }

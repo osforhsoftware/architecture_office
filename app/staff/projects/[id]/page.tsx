@@ -4,19 +4,24 @@ import { ArrowLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProjectChecklist } from "@/components/project-checklist"
+import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
+import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
 import { ProjectHistoryPanel } from "@/components/project-history-panel"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { PriorityBadge, StatusBadge } from "@/components/status-badges"
 import { getCurrentUser } from "@/lib/auth"
-import { WORKFLOW_STAGES, projectProgressPercent } from "@/lib/constants"
+import { isOfficeAdmin, projectProgressPercent, userIsPlanningStaff } from "@/lib/constants"
 import {
   getChecklist,
+  getCurrentWorkflowStep,
   getProject,
   getProjectFiles,
+  getProjectKmapAreas,
   getReturnHistory,
   getStaffUsers,
   getStatusHistory,
+  getWorkflowSteps,
 } from "@/lib/queries"
 import {
   requireProjectAccess,
@@ -31,7 +36,7 @@ export default async function StaffProjectDetailPage({
   params: Promise<{ id: string }>
 }) {
   const user = await getCurrentUser()
-  if (!user || user.role === "Admin") redirect("/login")
+  if (!user || isOfficeAdmin(user.role)) redirect("/login")
 
   const { id } = await params
   const projectId = Number(id)
@@ -48,17 +53,24 @@ export default async function StaffProjectDetailPage({
   }
 
   const canEdit = staffCanEditProject(user, project)
+  const isPlanningStaff = userIsPlanningStaff(user)
+  const showDrawingNumberPanel = isPlanningStaff || project.drawing_number
+  const canEditDrawingNumber =
+    isPlanningStaff && canEdit && project.section === "Planning & Design"
 
-  const [staff, checklist, files, statusHistory, returnHistory] = await Promise.all([
+  const [staff, checklist, files, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep] = await Promise.all([
     getStaffUsers(),
     getChecklist(projectId),
     getProjectFiles(projectId),
     getStatusHistory(projectId),
     getReturnHistory(projectId),
+    getProjectKmapAreas(projectId),
+    getWorkflowSteps(projectId),
+    getCurrentWorkflowStep(projectId),
   ])
 
-  const stage = WORKFLOW_STAGES[project.current_stage]
-  const progress = projectProgressPercent(project.current_stage)
+  const stage = currentStep
+  const progress = projectProgressPercent(project.current_stage, workflowSteps)
   const myReturns = returnHistory.filter((r) => r.created_by === user.name)
   const myStatusEntries = statusHistory.filter((h) => h.created_by === user.name)
 
@@ -82,7 +94,7 @@ export default async function StaffProjectDetailPage({
             {project.code} · {project.client_name}
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {project.section} · {stage?.label}
+            {project.section} · {stage?.label ?? "—"}
           </p>
           <div className="mt-4 space-y-1.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -109,6 +121,8 @@ export default async function StaffProjectDetailPage({
           <CardContent>
             <ProjectWorkflowPanel
               project={project}
+              workflowSteps={workflowSteps}
+              currentStep={currentStep}
               staff={staff}
               isAdmin={false}
               userRole={user.role}
@@ -124,6 +138,8 @@ export default async function StaffProjectDetailPage({
           <CardContent>
             <ProjectWorkflowPanel
               project={project}
+              workflowSteps={workflowSteps}
+              currentStep={currentStep}
               staff={staff}
               isAdmin={false}
               userRole={user.role}
@@ -161,6 +177,28 @@ export default async function StaffProjectDetailPage({
         </Card>
       ) : null}
 
+      {showDrawingNumberPanel ? (
+        <Card className="shadow-none">
+          <CardContent className="p-4 md:p-6">
+            <ProjectDrawingNumberPanel
+              projectId={projectId}
+              drawingNumber={project.drawing_number}
+              readOnly={!canEditDrawingNumber}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="shadow-none">
+        <CardContent className="p-4 md:p-6">
+          <ProjectKmapPanel
+            projectId={projectId}
+            areas={kmapAreas}
+            readOnly={!canEdit}
+          />
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="checklist" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="checklist">Checklist</TabsTrigger>
@@ -170,7 +208,7 @@ export default async function StaffProjectDetailPage({
         <TabsContent value="checklist" className="mt-4">
           <Card className="shadow-none">
             <CardContent className="p-4 md:p-6">
-              <ProjectChecklist items={checklist} projectId={projectId} isAdmin={false} />
+              <ProjectChecklist items={checklist} projectId={projectId} />
             </CardContent>
           </Card>
         </TabsContent>

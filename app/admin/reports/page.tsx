@@ -1,16 +1,22 @@
+import { redirect } from "next/navigation"
+import { getCurrentUser } from "@/lib/auth"
+import { canAccessReports, formatCurrency } from "@/lib/constants"
 import { getDashboardStats, getMonthlyRevenueTrend } from "@/lib/queries"
-import { formatCurrency } from "@/lib/constants"
+import { toSafeNumber } from "@/lib/utils"
 import { RevenueTrendChart } from "@/components/dashboard/analytics-charts"
 import { StatusDonutChart } from "@/components/dashboard/analytics-charts"
 
 export default async function AdminReportsPage() {
+  const user = await getCurrentUser()
+  if (!user || !canAccessReports(user.role)) redirect("/admin")
+
   const [stats, revenueTrend] = await Promise.all([
     getDashboardStats(),
     getMonthlyRevenueTrend(12),
   ])
 
-  const currentMonth = revenueTrend[revenueTrend.length - 1]?.revenue ?? 0
-  const previousMonth = revenueTrend[revenueTrend.length - 2]?.revenue ?? 0
+  const currentMonth = toSafeNumber(revenueTrend[revenueTrend.length - 1]?.revenue)
+  const previousMonth = toSafeNumber(revenueTrend[revenueTrend.length - 2]?.revenue)
 
   return (
     <div className="flex flex-col gap-6">
@@ -24,8 +30,8 @@ export default async function AdminReportsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Total Projects", value: stats.total },
-          { label: "Active", value: stats.active },
+          { label: "Total Projects", value: toSafeNumber(stats.total) },
+          { label: "Active", value: toSafeNumber(stats.active) },
           { label: "Revenue Collected", value: formatCurrency(stats.totalRevenue) },
           { label: "Outstanding", value: formatCurrency(stats.outstanding) },
         ].map((item) => (

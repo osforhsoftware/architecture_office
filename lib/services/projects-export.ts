@@ -75,7 +75,7 @@ function autoSizeColumns(sheet: ExcelJS.Worksheet): void {
 
 export async function buildProjectsExcelBuffer(projects: Project[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = "Architecture Office"
+  workbook.creator = "Acmmo Architects"
   workbook.created = new Date()
 
   const sheet = workbook.addWorksheet("Projects", {
