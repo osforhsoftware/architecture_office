@@ -74,7 +74,7 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
       value: s.key,
       label: s.label,
     }))
-    const residentialKeys = new Set(residential.map((s) => s.value))
+    const residentialKeys = new Set<string>(residential.map((s) => s.value))
     return [...residential, ...core.filter((s) => !residentialKeys.has(s.value))]
   }, [isResidential])
 
