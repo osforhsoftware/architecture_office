@@ -46,6 +46,18 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
     [],
   )
 
+  const serviceOptions = useMemo(() => {
+    const core = PROJECT_SERVICES.map((s) => ({ value: s.key, label: s.label }))
+    if (!isResidential) return core
+
+    const residential = RESIDENTIAL_SERVICE_TYPES.map((s) => ({
+      value: s.key,
+      label: s.label,
+    }))
+    const residentialKeys = new Set<string>(residential.map((s) => s.value))
+    return [...residential, ...core.filter((s) => !residentialKeys.has(s.value))]
+  }, [isResidential])
+
   function onSubmit(formData: FormData) {
     setError(null)
     startTransition(async () => {

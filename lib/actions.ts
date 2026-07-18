@@ -476,6 +476,10 @@ export async function deleteStaff(formData: FormData) {
 
   await sql`UPDATE projects SET assigned_to = NULL WHERE assigned_to = ${id}`
   await sql`DELETE FROM project_assignees WHERE user_id = ${id}`
+  await sql`UPDATE workflow_steps SET assigned_to = NULL WHERE assigned_to = ${id}`
+  await sql`UPDATE workflow_reviews SET reviewed_by = NULL WHERE reviewed_by = ${id}`
+  await sql`DELETE FROM workflow_assignments WHERE user_id = ${id}`
+  await sql`UPDATE workflow_assignments SET assigned_by = NULL WHERE assigned_by = ${id}`
   await sql`UPDATE project_files SET uploaded_by = NULL WHERE uploaded_by = ${id}`
   await sql`UPDATE payments SET recorded_by = NULL WHERE recorded_by = ${id}`
   await sql`UPDATE invoice_payments SET recorded_by = NULL WHERE recorded_by = ${id}`
@@ -607,6 +611,10 @@ export async function deleteAdminAccount(formData: FormData) {
 
   await sql`UPDATE projects SET assigned_to = NULL WHERE assigned_to = ${id}`
   await sql`DELETE FROM project_assignees WHERE user_id = ${id}`
+  await sql`UPDATE workflow_steps SET assigned_to = NULL WHERE assigned_to = ${id}`
+  await sql`UPDATE workflow_reviews SET reviewed_by = NULL WHERE reviewed_by = ${id}`
+  await sql`DELETE FROM workflow_assignments WHERE user_id = ${id}`
+  await sql`UPDATE workflow_assignments SET assigned_by = NULL WHERE assigned_by = ${id}`
   await sql`UPDATE project_files SET uploaded_by = NULL WHERE uploaded_by = ${id}`
   await sql`UPDATE payments SET recorded_by = NULL WHERE recorded_by = ${id}`
   await sql`UPDATE invoice_payments SET recorded_by = NULL WHERE recorded_by = ${id}`

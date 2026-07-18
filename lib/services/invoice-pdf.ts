@@ -45,66 +45,88 @@ function addHeader(
   invoice: InvoiceWithDetails,
   startY: number,
 ): number {
-  let y = startY
   const pageWidth = doc.internal.pageSize.getWidth()
   const margin = 14
+  const accent: [number, number, number] = [0, 151, 178]
+  const headerHeight = 40
+  const invoiceBoxWidth = 56
+  const invoiceBoxX = pageWidth - margin - invoiceBoxWidth
 
+  // A compact brand lockup keeps the logo and company identity visually connected.
+  doc.setFillColor(...accent)
+  doc.roundedRect(margin, startY, 3, headerHeight, 1.5, 1.5, "F")
+
+  let textX = margin + 7
   if (profile.logoDataUrl) {
     try {
       const format = profile.logoDataUrl.includes("image/png") ? "PNG" : "JPEG"
-      doc.addImage(profile.logoDataUrl, format, margin, y, 28, 28)
+      doc.addImage(profile.logoDataUrl, format, margin + 7, startY + 2, 28, 28)
+      textX = margin + 40
     } catch {
       // skip invalid logo
     }
   }
 
-  const textX = profile.logoDataUrl ? margin + 34 : margin
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(14)
-  doc.setTextColor(30, 30, 30)
-  doc.text(pdfText(profile.companyName) || "Company", textX, y + 6)
+  doc.setFontSize(15)
+  doc.setTextColor(24, 31, 36)
+  doc.text(pdfText(profile.companyName) || "Company", textX, startY + 8)
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(7)
+  doc.setTextColor(...accent)
+  doc.text("ARCHITECTURE & DESIGN STUDIO", textX, startY + 14)
 
   doc.setFont("helvetica", "normal")
-  doc.setFontSize(9)
-  doc.setTextColor(80, 80, 80)
+  doc.setFontSize(8)
+  doc.setTextColor(82, 89, 94)
   const companyLines = [
     pdfText(profile.address),
     pdfText([profile.phone, profile.email, profile.website].filter(Boolean).join(" | ")),
     profile.gstNumber ? `GST: ${pdfText(profile.gstNumber)}` : "",
   ].filter(Boolean)
   companyLines.forEach((line, i) => {
-    doc.text(line, textX, y + 12 + i * 5)
+    doc.text(line, textX, startY + 21 + i * 4.5, {
+      maxWidth: invoiceBoxX - textX - 6,
+    })
   })
+
+  doc.setFillColor(247, 250, 251)
+  doc.setDrawColor(225, 232, 235)
+  doc.roundedRect(invoiceBoxX, startY, invoiceBoxWidth, headerHeight, 2, 2, "FD")
+  doc.setFillColor(...accent)
+  doc.roundedRect(invoiceBoxX, startY, invoiceBoxWidth, 2, 1, 1, "F")
 
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(22)
-  doc.setTextColor(30, 30, 30)
-  doc.text("INVOICE", pageWidth - margin, y + 8, { align: "right" })
+  doc.setFontSize(18)
+  doc.setTextColor(24, 31, 36)
+  doc.text("INVOICE", pageWidth - margin - 5, startY + 11, { align: "right" })
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("helvetica", "bold")
   doc.setFontSize(10)
-  doc.setTextColor(60, 60, 60)
-  doc.text(`# ${pdfText(invoice.invoice_number)}`, pageWidth - margin, y + 16, {
+  doc.setTextColor(...accent)
+  doc.text(`# ${pdfText(invoice.invoice_number)}`, pageWidth - margin - 5, startY + 18, {
     align: "right",
   })
-  doc.text(`Date: ${formatInvoiceDate(invoice.invoice_date)}`, pageWidth - margin, y + 22, {
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(8)
+  doc.setTextColor(73, 81, 86)
+  doc.text(`Date: ${formatInvoiceDate(invoice.invoice_date)}`, pageWidth - margin - 5, startY + 25, {
     align: "right",
   })
   if (invoice.due_date) {
-    doc.text(`Due: ${formatInvoiceDate(invoice.due_date)}`, pageWidth - margin, y + 28, {
+    doc.text(`Due: ${formatInvoiceDate(invoice.due_date)}`, pageWidth - margin - 5, startY + 30, {
       align: "right",
     })
   }
   if (invoice.project_code) {
-    doc.text(`Project: ${pdfText(invoice.project_code)}`, pageWidth - margin, y + 34, {
+    doc.text(`Project: ${pdfText(invoice.project_code)}`, pageWidth - margin - 5, startY + 35, {
       align: "right",
     })
   }
 
-  y += invoice.project_code ? 44 : 38
-  doc.setDrawColor(220, 220, 220)
-  doc.line(margin, y, pageWidth - margin, y)
-  return y + 8
+  return startY + headerHeight + 10
 }
 
 function addClientBlock(doc: jsPDF, invoice: InvoiceWithDetails, startY: number): number {
