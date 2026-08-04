@@ -1,0 +1,61 @@
+﻿name: Repair architecture_office PM2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Repair PM2 and restart correct app
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            echo "== before =="
+            pm2 list
+            echo "== nginx root site =="
+            ls -la /etc/nginx/sites-enabled || true
+            for f in /etc/nginx/sites-enabled/*; do echo "===== $f ====="; cat "$f"; done
+            echo "== pm2 cwd/ports =="
+            pm2 jlist | node -e 'const a=JSON.parse(require("fs").readFileSync(0,"utf8")); for (const p of a){ const e=p.pm2_env||{}; console.log(JSON.stringify({name:p.name,cwd:e.pm_cwd,status:e.status,port:e.env&& (e.env.PORT||e.PORT),exec:e.pm_exec_path,args:e.args})) }'
+
+            APP_DIR=/var/www/architecture_office
+            cd "$APP_DIR"
+            echo "COMMIT=$(git rev-parse --short HEAD)"
+
+            # Remove accidental duplicate started by previous deploy (hyphen name)
+            if pm2 describe architecture-office >/dev/null 2>&1; then
+              echo "Deleting duplicate PM2 process architecture-office"
+              pm2 delete architecture-office || true
+            fi
+
+            # Restart the real long-running process (underscore name) if present
+            if pm2 describe architecture_office >/dev/null 2>&1; then
+              echo "Restarting architecture_office"
+              pm2 restart architecture_office --update-env
+            else
+              echo "Starting architecture_office from $APP_DIR"
+              cd "$APP_DIR"
+              PORT=${PORT:-3000} pm2 start npm --name architecture_office -- start
+            fi
+            pm2 save || true
+            sleep 4
+            pm2 list
+            pm2 show architecture_office | sed -n "1,50p"
+
+            CODE=$(curl -s -o /tmp/ao.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
+            echo "port80=$CODE"
+            head -c 300 /tmp/ao.html || true
+            echo
+            # Prefer following redirects for login page
+            curl -sL --max-time 20 http://127.0.0.1/ | head -c 400 || true
+            echo
+            pm2 logs architecture_office --lines 40 --nostream || true
+            echo REPAIR_OK
