@@ -1,0 +1,133 @@
+name: Deploy architecture_office to VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+
+concurrency:
+  group: deploy-vps-architecture-office
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy over SSH (architecture-office only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+
+            echo "== inventory (read-only) =="
+            hostname
+            pm2 list || true
+            ls /etc/nginx/sites-enabled 2>/dev/null || true
+            ls /etc/nginx/conf.d 2>/dev/null || true
+
+            APP_DIR=""
+            if [ -d /root/architecture_office ]; then
+              APP_DIR=/root/architecture_office
+            elif [ -d /var/www/architecture_office ]; then
+              APP_DIR=/var/www/architecture_office
+            else
+              CWD=$(pm2 jlist 2>/dev/null | node -e "let d='';try{const a=JSON.parse(require('fs').readFileSync(0,'utf8'));const p=a.find(x=>String(x.name||'').includes('architecture'));if(p&&p.pm2_env&&p.pm2_env.pm_cwd)d=p.pm2_env.pm_cwd}catch(e){}process.stdout.write(d)" || true)
+              if [ -n "${CWD:-}" ] && [ -d "$CWD" ]; then
+                APP_DIR="$CWD"
+              fi
+            fi
+
+            if [ -z "${APP_DIR}" ]; then
+              echo "App directory not found; cloning into /root/architecture_office (isolated)"
+              mkdir -p /root
+              git clone https://github.com/osforhsoftware/architecture_office.git /root/architecture_office
+              APP_DIR=/root/architecture_office
+            fi
+
+            echo "APP_DIR=$APP_DIR"
+            cd "$APP_DIR"
+
+            # Snapshot nginx configs to prove we do not change other sites
+            NGINX_SNAP_BEFORE=$(mktemp)
+            if command -v nginx >/dev/null 2>&1; then
+              (ls -la /etc/nginx/sites-enabled 2>/dev/null; ls -la /etc/nginx/conf.d 2>/dev/null; md5sum /etc/nginx/sites-enabled/* /etc/nginx/conf.d/* 2>/dev/null || true) > "$NGINX_SNAP_BEFORE"
+            fi
+
+            echo "== git update =="
+            git remote set-url origin https://github.com/osforhsoftware/architecture_office.git
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+            echo "DEPLOYED_COMMIT=$(git rev-parse --short HEAD)"
+
+            if [ ! -f .env ]; then
+              echo "ERROR: missing .env in $APP_DIR — refusing to invent production secrets"
+              exit 1
+            fi
+
+            echo "== dependencies =="
+            if [ -f package-lock.json ]; then
+              npm ci || npm install
+            else
+              npm install
+            fi
+
+            echo "== migrations (this DB only via local .env) =="
+            npm run db:migrate-departments || true
+            npm run db:migrate-documents || true
+            npm run db:migrate-finance || true
+            npm run db:migrate-finance-v2 || true
+            npm run db:migrate-invoice-discounts || true
+            npm run db:migrate-drawing-number-unique || true
+            npm run db:migrate-refer-name || true
+            npm run db:migrate-edgebook-number || true
+            npm run db:migrate-staff-avatar || true
+
+            echo "== build =="
+            npm run build
+
+            echo "== restart pm2 app only =="
+            if pm2 describe architecture-office >/dev/null 2>&1; then
+              pm2 restart architecture-office --update-env
+            else
+              # Start isolated on port 3000 if process missing; do not touch other pm2 apps
+              PORT=3000 pm2 start npm --name architecture-office -- start
+              pm2 save || true
+            fi
+
+            sleep 3
+            pm2 list
+            pm2 show architecture-office | sed -n '1,40p' || true
+
+            if command -v nginx >/dev/null 2>&1; then
+              NGINX_SNAP_AFTER=$(mktemp)
+              (ls -la /etc/nginx/sites-enabled 2>/dev/null; ls -la /etc/nginx/conf.d 2>/dev/null; md5sum /etc/nginx/sites-enabled/* /etc/nginx/conf.d/* 2>/dev/null || true) > "$NGINX_SNAP_AFTER"
+              if ! diff -u "$NGINX_SNAP_BEFORE" "$NGINX_SNAP_AFTER"; then
+                echo "ERROR: nginx configs changed unexpectedly"
+                exit 1
+              fi
+              echo "nginx configs unchanged"
+            fi
+
+            echo "== HTTP check =="
+            CODE=$(curl -s -o /tmp/ao_home.html -w "%{http_code}" --max-time 20 http://127.0.0.1:3000/ || true)
+            echo "local_app_http=$CODE"
+            CODE80=$(curl -s -o /tmp/ao_ip.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
+            echo "local_port80_http=$CODE80"
+            head -c 400 /tmp/ao_ip.html || true
+            echo
+            if [ "$CODE" != "200" ] && [ "$CODE80" != "200" ]; then
+              echo "WARN: expected 200 from app or nginx; dumping recent logs"
+              pm2 logs architecture-office --lines 80 --nostream || true
+              exit 1
+            fi
+            echo "DEPLOY_OK"
