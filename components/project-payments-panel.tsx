@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PaymentDeleteDialog } from "@/components/payment-delete-dialog"
+import { PaymentEditDialog } from "@/components/payment-edit-dialog"
 import { recordPayment } from "@/lib/actions"
 import { PAYMENT_METHODS, balanceAmount, formatCurrency } from "@/lib/constants"
 import { PaymentBadge } from "@/components/status-badges"
@@ -90,14 +92,21 @@ export function ProjectPaymentsPanel({
         <p className="mb-2 text-sm font-medium">Payment history</p>
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
           {payments.map((p) => (
-            <li key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-              <div>
+            <li
+              key={p.id}
+              className="flex flex-col gap-3 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
                 <p className="font-medium">{formatCurrency(p.amount)} · {p.method}</p>
                 <p className="text-xs text-muted-foreground">
                   {new Date(p.created_at).toLocaleDateString("en-IN")}
                   {p.recorder_name ? ` · ${p.recorder_name}` : ""}
                   {p.note ? ` · ${p.note}` : ""}
                 </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <PaymentEditDialog payment={p} />
+                <PaymentDeleteDialog payment={p} />
               </div>
             </li>
           ))}

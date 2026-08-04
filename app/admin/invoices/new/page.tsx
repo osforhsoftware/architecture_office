@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { InvoiceEditor } from "@/components/invoice-editor"
+import { invoiceServicePresets } from "@/lib/invoice-utils"
+import { listProjectServiceDefs } from "@/lib/project-services"
 import { getOfficeProfile, getProjectsForInvoiceSelect } from "@/lib/queries"
 import { sql } from "@/lib/db"
 
@@ -31,10 +33,11 @@ export default async function AdminNewInvoicePage({
   const params = await searchParams
   const initialProjectId = params.projectId ? Number(params.projectId) : undefined
 
-  const [profile, suggestedNumber, projects] = await Promise.all([
+  const [profile, suggestedNumber, projects, services] = await Promise.all([
     getOfficeProfile(),
     nextSuggestedInvoiceNumber(),
     getProjectsForInvoiceSelect(),
+    listProjectServiceDefs({ activeOnly: true }),
   ])
 
   return (
@@ -52,6 +55,7 @@ export default async function AdminNewInvoicePage({
         initialProjectId={
           initialProjectId && Number.isFinite(initialProjectId) ? initialProjectId : undefined
         }
+        servicePresets={invoiceServicePresets(services)}
       />
     </div>
   )

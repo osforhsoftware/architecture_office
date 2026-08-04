@@ -22,7 +22,15 @@ function buildInitialForm(profile: OfficeProfile) {
     email: profile.email ?? "",
     website: profile.website ?? "",
     address: profile.address ?? "",
+    tagline: profile.tagline ?? "Architecture • Interiors • Planning",
     termsAndConditions: profile.termsAndConditions || DEFAULT_INVOICE_TERMS,
+    bankName: profile.bankName ?? "",
+    accountName: profile.accountName ?? "",
+    accountNumber: profile.accountNumber ?? "",
+    ifsc: profile.ifsc ?? "",
+    upiId: profile.upiId ?? "",
+    architectName: profile.architectName ?? "",
+    architectDesignation: profile.architectDesignation ?? "Principal Architect",
   }
 }
 
@@ -64,10 +72,14 @@ function compressImageFile(file: File, maxSize = 240): Promise<Blob> {
   })
 }
 
+type AssetKind = "logo" | "qr"
+
 function buildSaveFormData(
   form: ReturnType<typeof buildInitialForm>,
   logoPath: string | null,
   logoPreview: string | null,
+  qrPath: string | null,
+  qrPreview: string | null,
 ): FormData {
   const fd = new FormData()
   fd.set("company_name", form.companyName)
@@ -76,105 +88,207 @@ function buildSaveFormData(
   fd.set("email", form.email)
   fd.set("website", form.website)
   fd.set("address", form.address)
+  fd.set("tagline", form.tagline)
   fd.set("terms_and_conditions", form.termsAndConditions)
+  fd.set("bank_name", form.bankName)
+  fd.set("account_name", form.accountName)
+  fd.set("account_number", form.accountNumber)
+  fd.set("ifsc", form.ifsc)
+  fd.set("upi_id", form.upiId)
+  fd.set("architect_name", form.architectName)
+  fd.set("architect_designation", form.architectDesignation)
 
-  if (!logoPreview) {
-    fd.set("logo_data_url", "")
-  } else if (logoPath) {
-    fd.set("logo_data_url", logoPath)
-  } else {
-    fd.set("logo_data_url", "__KEEP__")
-  }
+  if (!logoPreview) fd.set("logo_data_url", "")
+  else if (logoPath) fd.set("logo_data_url", logoPath)
+  else fd.set("logo_data_url", "__KEEP__")
+
+  if (!qrPreview) fd.set("qr_code_data_url", "")
+  else if (qrPath) fd.set("qr_code_data_url", qrPath)
+  else fd.set("qr_code_data_url", "__KEEP__")
+
+  // Signature upload UI removed; preserve any existing stored signature.
+  fd.set("signature_data_url", "__KEEP__")
 
   return fd
+}
+
+function ImageUploadField({
+  label,
+  preview,
+  uploading,
+  pending,
+  onUpload,
+  onRemove,
+  hint,
+}: {
+  label: string
+  preview: string | null
+  uploading: boolean
+  pending: boolean
+  onUpload: (file: File) => void
+  onRemove?: () => void
+  hint: string
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className="flex flex-col gap-2 lg:col-span-2">
+      <Label className="text-sm font-medium">{label}</Label>
+      <div className="flex items-center gap-4">
+        {preview ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={preview}
+            alt={label}
+            className="size-16 rounded-lg border border-border object-contain"
+          />
+        ) : (
+          <div className="flex size-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground">
+            None
+          </div>
+        )}
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) onUpload(file)
+              if (inputRef.current) inputRef.current.value = ""
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading || pending}
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="size-4" />
+            {uploading ? "Uploading..." : preview ? "Change" : "Upload"}
+          </Button>
+          {preview && onRemove ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-2"
+              disabled={pending || uploading}
+              onClick={onRemove}
+            >
+              Remove
+            </Button>
+          ) : null}
+          <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploading, setUploading] = useState<AssetKind | null>(null)
   const [form, setForm] = useState(() => buildInitialForm(profile))
-  const [logoPreview, setLogoPreview] = useState<string | null>(() => logoPreviewSrc(profile.logoDataUrl))
+  const [logoPreview, setLogoPreview] = useState<string | null>(() =>
+    logoPreviewSrc(profile.logoDataUrl),
+  )
   const [logoPath, setLogoPath] = useState<string | null>(
     profile.logoDataUrl?.startsWith("/") ? profile.logoDataUrl : null,
   )
-  const logoInputRef = useRef<HTMLInputElement>(null)
+  const [qrPreview, setQrPreview] = useState<string | null>(() =>
+    logoPreviewSrc(profile.qrCodeDataUrl),
+  )
+  const [qrPath, setQrPath] = useState<string | null>(
+    profile.qrCodeDataUrl?.startsWith("/") ? profile.qrCodeDataUrl : null,
+  )
 
   useEffect(() => {
     setForm(buildInitialForm(profile))
     setLogoPreview(logoPreviewSrc(profile.logoDataUrl))
     setLogoPath(profile.logoDataUrl?.startsWith("/") ? profile.logoDataUrl : null)
-  }, [
-    profile.companyName,
-    profile.address,
-    profile.phone,
-    profile.email,
-    profile.website,
-    profile.gstNumber,
-    profile.termsAndConditions,
-    profile.logoDataUrl,
-  ])
+    setQrPreview(logoPreviewSrc(profile.qrCodeDataUrl))
+    setQrPath(profile.qrCodeDataUrl?.startsWith("/") ? profile.qrCodeDataUrl : null)
+  }, [profile])
 
-  async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function uploadAsset(kind: AssetKind, file: File) {
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Logo must be under 2MB.")
+      toast.error("Image must be under 2MB.")
       return
     }
-
-    setUploadingLogo(true)
+    setUploading(kind)
     try {
-      const compressed = await compressImageFile(file)
+      const compressed = await compressImageFile(file, kind === "qr" ? 320 : 240)
       const body = new FormData()
-      body.set("logo", compressed, "company-logo.jpg")
+      body.set("kind", kind)
+      body.set(kind === "logo" ? "logo" : "file", compressed, `${kind}.jpg`)
 
       const res = await apiFetch("/api/admin/settings/logo", { method: "POST", body })
       const data = (await res.json()) as { path?: string; error?: string }
       if (!res.ok || !data.path) {
-        toast.error(data.error ?? "Failed to upload logo.")
+        toast.error(data.error ?? "Failed to upload image.")
         return
       }
-
-      setLogoPath(data.path)
-      setLogoPreview(`${publicAssetUrl(data.path) ?? data.path}?v=${Date.now()}`)
+      const preview = `${publicAssetUrl(data.path) ?? data.path}?v=${Date.now()}`
+      if (kind === "logo") {
+        setLogoPath(data.path)
+        setLogoPreview(preview)
+      } else {
+        setQrPath(data.path)
+        setQrPreview(preview)
+      }
       router.refresh()
-      toast.success("Logo saved to database")
+      toast.success("Image saved")
     } catch {
-      toast.error("Failed to process logo image.")
+      toast.error("Failed to process image.")
     } finally {
-      setUploadingLogo(false)
-      if (logoInputRef.current) logoInputRef.current.value = ""
+      setUploading(null)
     }
-  }
-
-  function handleRemoveLogo() {
-    startTransition(async () => {
-      setLogoPreview(null)
-      setLogoPath(null)
-
-      const fd = buildSaveFormData(form, null, null)
-      const res = await saveOfficeProfile(fd)
-      if (res?.error) {
-        toast.error(res.error)
-        router.refresh()
-        return
-      }
-
-      router.refresh()
-      toast.success("Logo removed")
-    })
   }
 
   function handleSave() {
     startTransition(async () => {
-      const fd = buildSaveFormData(form, logoPath, logoPreview)
+      const fd = buildSaveFormData(form, logoPath, logoPreview, qrPath, qrPreview)
       const res = await saveOfficeProfile(fd)
       if (res?.error) toast.error(res.error)
       else {
         router.refresh()
         toast.success("Office profile saved to database")
       }
+    })
+  }
+
+  function removeAsset(kind: AssetKind) {
+    startTransition(async () => {
+      if (kind === "logo") {
+        setLogoPreview(null)
+        setLogoPath(null)
+      } else {
+        setQrPreview(null)
+        setQrPath(null)
+      }
+      const fd = buildSaveFormData(
+        form,
+        kind === "logo" ? null : logoPath,
+        kind === "logo" ? null : logoPreview,
+        kind === "qr" ? null : qrPath,
+        kind === "qr" ? null : qrPreview,
+      )
+      if (kind === "logo") {
+        fd.set("logo_data_url", "")
+      } else {
+        fd.set("qr_code_data_url", "")
+      }
+      const res = await saveOfficeProfile(fd)
+      if (res?.error) {
+        toast.error(res.error)
+        router.refresh()
+        return
+      }
+      router.refresh()
+      toast.success("Removed")
     })
   }
 
@@ -187,63 +301,21 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
         <div>
           <h3 className="font-semibold">Office Profile</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Company details are saved in the database and appear on every invoice PDF
+            Company and payment details appear on every invoice PDF
           </p>
         </div>
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col gap-2 lg:col-span-2">
-          <Label className="text-sm font-medium">Company Logo</Label>
-          <div className="flex items-center gap-4">
-            {logoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoPreview}
-                alt="Company logo preview"
-                className="size-16 rounded-lg border border-border object-contain"
-              />
-            ) : (
-              <div className="flex size-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground">
-                No logo
-              </div>
-            )}
-            <div>
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={handleLogoChange}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={uploadingLogo || pending}
-                onClick={() => logoInputRef.current?.click()}
-              >
-                <Upload className="size-4" />
-                {uploadingLogo ? "Uploading..." : logoPreview ? "Change Logo" : "Upload Logo"}
-              </Button>
-              {logoPreview ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-2"
-                  disabled={pending || uploadingLogo}
-                  onClick={handleRemoveLogo}
-                >
-                  Remove
-                </Button>
-              ) : null}
-              <p className="mt-1 text-xs text-muted-foreground">
-                PNG or JPG, auto-compressed. Logo is saved immediately on upload.
-              </p>
-            </div>
-          </div>
-        </div>
+        <ImageUploadField
+          label="Company Logo"
+          preview={logoPreview}
+          uploading={uploading === "logo"}
+          pending={pending}
+          onUpload={(f) => uploadAsset("logo", f)}
+          onRemove={() => removeAsset("logo")}
+          hint="PNG or JPG. Saved immediately on upload."
+        />
 
         <FormField label="Company Name" htmlFor="company_name">
           <Input
@@ -251,6 +323,15 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
             value={form.companyName}
             onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
             required
+            className={formControlClass}
+          />
+        </FormField>
+        <FormField label="Tagline" htmlFor="tagline">
+          <Input
+            id="tagline"
+            value={form.tagline}
+            onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
+            placeholder="Architecture • Interiors • Planning"
             className={formControlClass}
           />
         </FormField>
@@ -298,7 +379,92 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
             className={formTextareaClass}
           />
         </FormField>
-        <FormField label="Default Terms & Conditions" htmlFor="terms_and_conditions" className="lg:col-span-2">
+
+        <div className="lg:col-span-2">
+          <h4 className="mb-3 text-sm font-semibold">Payment Details (Invoice)</h4>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FormField label="Bank Name" htmlFor="bank_name">
+              <Input
+                id="bank_name"
+                value={form.bankName}
+                onChange={(e) => setForm((f) => ({ ...f, bankName: e.target.value }))}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="Account Name" htmlFor="account_name">
+              <Input
+                id="account_name"
+                value={form.accountName}
+                onChange={(e) => setForm((f) => ({ ...f, accountName: e.target.value }))}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="Account Number" htmlFor="account_number">
+              <Input
+                id="account_number"
+                value={form.accountNumber}
+                onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="IFSC" htmlFor="ifsc">
+              <Input
+                id="ifsc"
+                value={form.ifsc}
+                onChange={(e) => setForm((f) => ({ ...f, ifsc: e.target.value }))}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="UPI ID" htmlFor="upi_id" className="lg:col-span-2">
+              <Input
+                id="upi_id"
+                value={form.upiId}
+                onChange={(e) => setForm((f) => ({ ...f, upiId: e.target.value }))}
+                placeholder="studio@upi"
+                className={formControlClass}
+              />
+            </FormField>
+            <ImageUploadField
+              label="Payment QR Code (optional)"
+              preview={qrPreview}
+              uploading={uploading === "qr"}
+              pending={pending}
+              onUpload={(f) => uploadAsset("qr", f)}
+              onRemove={() => removeAsset("qr")}
+              hint="Upload a UPI / bank QR image for invoices."
+            />
+          </div>
+        </div>
+
+        <div className="lg:col-span-2">
+          <h4 className="mb-3 text-sm font-semibold">Authorization</h4>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FormField label="Architect Name" htmlFor="architect_name">
+              <Input
+                id="architect_name"
+                value={form.architectName}
+                onChange={(e) => setForm((f) => ({ ...f, architectName: e.target.value }))}
+                className={formControlClass}
+              />
+            </FormField>
+            <FormField label="Designation" htmlFor="architect_designation">
+              <Input
+                id="architect_designation"
+                value={form.architectDesignation}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, architectDesignation: e.target.value }))
+                }
+                className={formControlClass}
+              />
+            </FormField>
+          </div>
+        </div>
+
+        <FormField
+          label="Default Terms & Conditions"
+          htmlFor="terms_and_conditions"
+          className="lg:col-span-2"
+        >
           <Textarea
             id="terms_and_conditions"
             rows={4}
@@ -312,7 +478,7 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
       <Button
         type="button"
         className="mt-6 min-h-11"
-        disabled={pending || uploadingLogo}
+        disabled={pending || uploading !== null}
         onClick={handleSave}
       >
         {pending ? "Saving..." : "Save Office Profile"}

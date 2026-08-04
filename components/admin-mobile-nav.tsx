@@ -76,18 +76,15 @@ export function AdminMobileNav({
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           <ul className="flex flex-col gap-0.5">
-            {nav.map((item) => {
-              const active = item.exact
-                ? pathname === item.href
-                : pathname.startsWith(item.href)
-              return (
-                <li key={item.href}>
+            {nav.flatMap((item) => {
+              const top = (
+                <li key={item.href + item.label}>
                   <Link
                     href={item.href}
                     onClick={() => onOpenChange(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                      active
+                      (item.exact ? pathname === item.href : pathname.startsWith(item.href))
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50",
                     )}
@@ -97,6 +94,28 @@ export function AdminMobileNav({
                   </Link>
                 </li>
               )
+              if (!item.children?.length) return [top]
+              return [
+                top,
+                ...item.children.map((child) => (
+                  <li key={child.href}>
+                    <Link
+                      href={child.href}
+                      onClick={() => onOpenChange(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg py-2 pl-10 pr-3 text-[13px] font-medium transition-colors",
+                        (child.exact
+                          ? pathname === child.href
+                          : pathname === child.href || pathname.startsWith(`${child.href}/`))
+                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/40",
+                      )}
+                    >
+                      {child.label}
+                    </Link>
+                  </li>
+                )),
+              ]
             })}
           </ul>
         </nav>

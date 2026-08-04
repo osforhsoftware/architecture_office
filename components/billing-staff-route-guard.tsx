@@ -9,11 +9,12 @@ import {
   isSuperAdmin,
   ADMIN_ROLE,
 } from "@/lib/constants"
+import { isBillingFinanceRouteAllowed } from "@/lib/admin-nav"
 
 /**
  * Client-side route guard for the admin shell.
- * - Billing Staff: allow-listed billing routes only
- * - Admin: Staff + Projects only
+ * - Billing Staff: allow-listed billing routes; finance limited to dashboard/income/expenses/reports
+ * - Admin: Clients + Projects + Finance
  * - Super Admin: full access
  */
 export function AdminRouteGuard({
@@ -30,6 +31,10 @@ export function AdminRouteGuard({
     if (isBillingStaff(role)) {
       if (!isBillingStaffRouteAllowed(pathname)) {
         router.replace("/admin/billing")
+        return
+      }
+      if (pathname.startsWith("/admin/finance") && !isBillingFinanceRouteAllowed(pathname)) {
+        router.replace("/admin/finance")
       }
       return
     }

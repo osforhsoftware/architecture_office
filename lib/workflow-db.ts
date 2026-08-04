@@ -1,7 +1,8 @@
 import { sql } from "./db"
+import { listProjectServiceDefs } from "./project-services"
+import { checklistItemsFromTemplates } from "./document-templates"
 import {
   buildWorkflowSteps,
-  checklistItemsForServices,
   syncLegacyFieldsFromStep,
   type ServiceKey,
   type WorkflowStepRecord,
@@ -10,8 +11,10 @@ import {
 export async function seedProjectWorkflow(
   projectId: number,
   selectedServices: readonly ServiceKey[],
+  selectedDocuments?: readonly { itemKey: string; serviceKey: string }[],
 ): Promise<number | null> {
-  const definitions = buildWorkflowSteps(selectedServices)
+  const catalog = await listProjectServiceDefs({ includeInactive: true })
+  const definitions = buildWorkflowSteps(selectedServices, catalog)
   let firstStepId: number | null = null
 
   for (const def of definitions) {
@@ -42,7 +45,9 @@ export async function seedProjectWorkflow(
     `
   }
 
-  for (const item of checklistItemsForServices(selectedServices)) {
+  const documents =
+    selectedDocuments ?? (await checklistItemsFromTemplates(selectedServices))
+  for (const item of documents) {
     await sql`
       INSERT IGNORE INTO checklist_items (project_id, item_key, service_key, checked, filed, review_status)
       VALUES (${projectId}, ${item.itemKey}, ${item.serviceKey}, false, false, 'Pending')
@@ -53,7 +58,7 @@ export async function seedProjectWorkflow(
     const firstStep = (await sql`
       SELECT * FROM workflow_steps WHERE id = ${firstStepId}
     `) as WorkflowStepRecord[]
-    const legacy = syncLegacyFieldsFromStep(firstStep[0] ?? null, "New")
+    const legacy = syncLegacyFieldsFromStep(firstStep[0] ?? null, "New", catalog)
     await sql`
       UPDATE projects
       SET current_workflow_step_id = ${firstStepId},
@@ -134,7 +139,8 @@ export async function activateWorkflowStep(
     WHERE id = ${stepId}
   `
 
-  const legacy = syncLegacyFieldsFromStep(step[0], status)
+  const catalog = await listProjectServiceDefs({ includeInactive: true })
+  const legacy = syncLegacyFieldsFromStep(step[0], status, catalog)
   await sql`
     UPDATE projects
     SET current_workflow_step_id = ${stepId},

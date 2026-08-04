@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import Link from "next/link"
+import { Printer } from "lucide-react"
 import {
   flexRender,
   getCoreRowModel,
@@ -21,6 +22,8 @@ import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider, useTableParams } from "@/components/use-table-params"
+import { buttonVariants } from "@/components/ui/button"
+import { projectPrintUrl } from "@/components/project-print-button"
 import { formatCurrency, projectProgressPercent, WORKFLOW_STAGES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import type { PaginatedResult } from "@/lib/pagination"
@@ -126,6 +129,22 @@ function ProjectsTableInner({
           <span className="text-sm font-medium tabular-nums">
             {formatCurrency(getValue() as string)}
           </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <a
+            href={projectPrintUrl(row.original.id)}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+            title="Print project & client details"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Printer className="size-4" />
+          </a>
         ),
       },
     ],

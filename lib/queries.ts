@@ -30,13 +30,16 @@ import type {
   ReturnHistory,
   StatusHistory,
 } from "./types"
-import { DEFAULT_INVOICE_TERMS, ROLE_SECTION, roleToKey } from "./constants"
+import { DEFAULT_INVOICE_TERMS, roleToKey } from "./constants"
+import { getRoleSectionMap, listDepartments } from "./departments"
+import { listProjectServices, listProjectServiceDefs } from "./project-services"
+import { listDocumentTemplates } from "./document-templates"
 import { deriveInvoiceStatus, normalizeDateField } from "./invoice-utils"
 import { attachUserRoles, attachUserRolesMany } from "./staff-roles"
 
 export type { PaginatedResult } from "./pagination"
 
-function parseAadhaarNumbers(value: unknown): string[] {
+function parseJsonStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
   }
@@ -58,7 +61,8 @@ function normalizeClient(client: Client): Client {
     ...client,
     street: client.street ?? null,
     district: client.district ?? null,
-    aadhaar_numbers: parseAadhaarNumbers(client.aadhaar_numbers),
+    aadhaar_numbers: parseJsonStringList(client.aadhaar_numbers),
+    linked_numbers: parseJsonStringList(client.linked_numbers),
     project_count: toSafeNumber(client.project_count),
   }
 }
@@ -74,7 +78,12 @@ export interface ProjectListFilters extends PaginationParams {
 }
 
 export interface DepartmentRow {
+  id: number
   section: string
+  role_label: string
+  role_key: string
+  sort_order: number
+  active_flag: boolean
   active: number
   completed: number
   staff: number
@@ -88,7 +97,7 @@ export async function getStaffUsers(role?: string): Promise<AppUser[]> {
   if (role) {
     const roleKey = roleToKey(role)
     const rows = (await sql`
-      SELECT DISTINCT u.id, u.username, u.role, u.name, u.email, u.phone, u.active, u.created_at
+      SELECT DISTINCT u.id, u.username, u.role, u.name, u.email, u.phone, u.avatar_url, u.active, u.created_at
       FROM app_users u
       LEFT JOIN staff_roles sr ON sr.user_id = u.id
       WHERE u.active = true
@@ -102,7 +111,7 @@ export async function getStaffUsers(role?: string): Promise<AppUser[]> {
     return attachUserRolesMany(rows)
   }
   const rows = (await sql`
-    SELECT id, username, role, name, email, phone, active, created_at
+    SELECT id, username, role, name, email, phone, avatar_url, active, created_at
     FROM app_users
     WHERE role NOT IN ('Super Admin', 'Admin') AND active = true
     ORDER BY name
@@ -139,7 +148,7 @@ export async function getStaffPaginated(
   const rows =
     pageSize === -1
       ? ((await sql`
-          SELECT id, username, role, name, email, phone, active, created_at
+          SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
           WHERE u.role NOT IN ('Super Admin', 'Admin')
             AND (${search} IS NULL OR
@@ -155,7 +164,7 @@ export async function getStaffPaginated(
           ORDER BY u.created_at DESC
         `) as AppUser[])
       : ((await sql`
-          SELECT id, username, role, name, email, phone, active, created_at
+          SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
           WHERE u.role NOT IN ('Super Admin', 'Admin')
             AND (${search} IS NULL OR
@@ -177,7 +186,7 @@ export async function getStaffPaginated(
 
 export async function getAdminUsers(): Promise<AppUser[]> {
   return (await sql`
-    SELECT id, username, role, name, email, phone, active, created_at
+    SELECT id, username, role, name, email, phone, avatar_url, active, created_at
     FROM app_users
     WHERE role = 'Admin'
     ORDER BY name
@@ -208,7 +217,7 @@ export async function getAllUsersPaginated(
   const rows =
     pageSize === -1
       ? ((await sql`
-          SELECT id, username, role, name, email, phone, active, created_at
+          SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
           WHERE (${search} IS NULL OR
             u.name LIKE ${search} OR
@@ -225,7 +234,7 @@ export async function getAllUsersPaginated(
             u.name ASC
         `) as AppUser[])
       : ((await sql`
-          SELECT id, username, role, name, email, phone, active, created_at
+          SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
           WHERE (${search} IS NULL OR
             u.name LIKE ${search} OR
@@ -405,6 +414,7 @@ export async function getProjectsForInvoiceSelect(): Promise<InvoiceProjectOptio
       p.id,
       p.code,
       p.name,
+      p.location,
       p.project_amount,
       c.name AS client_name,
       c.phone AS client_phone,
@@ -420,6 +430,7 @@ export type InvoiceProjectOption = {
   id: number
   code: string
   name: string
+  location: string | null
   project_amount: string
   client_name: string
   client_phone: string
@@ -645,10 +656,11 @@ export async function getDepartmentQueue(role: string): Promise<Project[]> {
 
 /** Department queue across one or more staff roles (multi-role employees). */
 export async function getDepartmentQueueForRoles(roles: readonly string[]): Promise<Project[]> {
+  const roleSection = await getRoleSectionMap()
   const sections = [
     ...new Set(
       roles
-        .map((role) => ROLE_SECTION[role])
+        .map((role) => roleSection[role])
         .filter((section): section is string => Boolean(section)),
     ),
   ]
@@ -1179,42 +1191,44 @@ export async function getBillingOverview(): Promise<BillingOverview> {
 }
 
 export async function getDepartmentStats(): Promise<DepartmentRow[]> {
-  return (await sql`
-    SELECT
-      s.section,
-      SUM(CASE WHEN p.status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS active,
-      SUM(CASE WHEN p.status IN ('Closed','Completed')     THEN 1 ELSE 0 END) AS completed,
-      (SELECT COUNT(DISTINCT u.id) FROM app_users u
-       LEFT JOIN staff_roles sr ON sr.user_id = u.id
-       WHERE u.active = 1 AND u.role NOT IN ('Super Admin', 'Admin') AND (
-         (s.section = 'Planning & Design' AND (
-           u.role = 'Planning Staff' OR sr.role_key = 'PLANNING_STAFF'
-         )) OR
-         (s.section = 'Building Permit' AND (
-           u.role = 'Permit Staff' OR sr.role_key = 'PERMIT_STAFF'
-         )) OR
-         (s.section = '3D & Interior' AND (
-           u.role = '3D Staff' OR sr.role_key = 'THREED_STAFF'
-         )) OR
-         (s.section = 'Estimation & Construction' AND (
-           u.role = 'Estimation Staff' OR sr.role_key = 'ESTIMATION_STAFF'
-         )) OR
-         (s.section = 'Billing' AND (
-           u.role = 'Billing Staff' OR sr.role_key = 'BILLING_STAFF'
-         ))
-       )
-      ) AS staff
-    FROM (
-      SELECT 'Planning & Design'         AS section UNION ALL
-      SELECT 'Building Permit'           UNION ALL
-      SELECT '3D & Interior'             UNION ALL
-      SELECT 'Estimation & Construction' UNION ALL
-      SELECT 'Billing'
-    ) s
-    LEFT JOIN projects p ON p.section = s.section
-    GROUP BY s.section
-    ORDER BY s.section
-  `) as DepartmentRow[]
+  const departments = await listDepartments({ includeInactive: true })
+  const rows: DepartmentRow[] = []
+
+  for (const dept of departments) {
+    const projectCounts = (await sql`
+      SELECT
+        SUM(CASE WHEN status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status IN ('Closed','Completed') THEN 1 ELSE 0 END) AS completed
+      FROM projects
+      WHERE section = ${dept.name}
+    `) as { active: number | null; completed: number | null }[]
+
+    const staffCounts = (await sql`
+      SELECT COUNT(DISTINCT u.id) AS staff
+      FROM app_users u
+      LEFT JOIN staff_roles sr ON sr.user_id = u.id
+      WHERE u.active = 1
+        AND u.role NOT IN ('Super Admin', 'Admin')
+        AND (
+          u.role = ${dept.role_label}
+          OR sr.role_key = ${dept.role_key}
+        )
+    `) as { staff: number }[]
+
+    rows.push({
+      id: dept.id,
+      section: dept.name,
+      role_label: dept.role_label,
+      role_key: dept.role_key,
+      sort_order: dept.sort_order,
+      active_flag: dept.active,
+      active: Number(projectCounts[0]?.active ?? 0),
+      completed: Number(projectCounts[0]?.completed ?? 0),
+      staff: Number(staffCounts[0]?.staff ?? 0),
+    })
+  }
+
+  return rows
 }
 
 export async function getDepartmentsPaginated(
@@ -1229,6 +1243,7 @@ export async function getDepartmentsPaginated(
     ? allRows.filter(
         (row) =>
           row.section.toLowerCase().includes(searchTerm) ||
+          row.role_label.toLowerCase().includes(searchTerm) ||
           String(row.active).includes(searchTerm) ||
           String(row.completed).includes(searchTerm) ||
           String(row.staff).includes(searchTerm),
@@ -1240,6 +1255,128 @@ export async function getDepartmentsPaginated(
 
   const rows = pageSize === -1 ? filtered : filtered.slice(offset, offset + pageSize)
   return toPaginatedResult(rows, total, page, pageSize)
+}
+
+export interface ServiceRow {
+  id: number
+  service_key: string
+  label: string
+  section: string
+  role: string
+  sort_order: number
+  active: boolean
+  project_count: number
+}
+
+export async function getServicesPaginated(
+  params: PaginationParams = {},
+): Promise<PaginatedResult<ServiceRow>> {
+  const requestedPage = parsePage(params.page)
+  const pageSize = parsePageSize(params.pageSize)
+  const searchTerm = params.search?.trim().toLowerCase() ?? ""
+
+  const services = await listProjectServices({ includeInactive: true })
+
+  const rows: ServiceRow[] = []
+  for (const service of services) {
+    let project_count = 0
+    try {
+      const counts = (await sql`
+        SELECT COUNT(*) AS count FROM project_services WHERE service_key = ${service.service_key}
+      `) as { count: number }[]
+      project_count = Number(counts[0]?.count ?? 0)
+    } catch {
+      project_count = 0
+    }
+    rows.push({
+      id: service.id,
+      service_key: service.service_key,
+      label: service.label,
+      section: service.section,
+      role: service.role,
+      sort_order: service.sort_order,
+      active: service.active,
+      project_count,
+    })
+  }
+
+  const filtered = searchTerm
+    ? rows.filter(
+        (row) =>
+          row.label.toLowerCase().includes(searchTerm) ||
+          row.service_key.toLowerCase().includes(searchTerm) ||
+          row.section.toLowerCase().includes(searchTerm) ||
+          row.role.toLowerCase().includes(searchTerm),
+      )
+    : rows
+
+  const total = filtered.length
+  const page = clampPage(requestedPage, total, pageSize)
+  const offset = pageOffset(page, pageSize)
+  const pageRows = pageSize === -1 ? filtered : filtered.slice(offset, offset + pageSize)
+  return toPaginatedResult(pageRows, total, page, pageSize)
+}
+
+export interface DocumentTemplateRow {
+  id: number
+  service_key: string
+  service_label: string
+  label: string
+  sort_order: number
+  active: boolean
+  project_count: number
+}
+
+export async function getDocumentTemplatesPaginated(
+  params: PaginationParams = {},
+): Promise<PaginatedResult<DocumentTemplateRow>> {
+  const requestedPage = parsePage(params.page)
+  const pageSize = parsePageSize(params.pageSize)
+  const searchTerm = params.search?.trim().toLowerCase() ?? ""
+
+  const [templates, services] = await Promise.all([
+    listDocumentTemplates({ includeInactive: true }),
+    listProjectServiceDefs({ includeInactive: true }),
+  ])
+  const serviceLabel = new Map(services.map((s) => [s.key, s.label]))
+
+  const rows: DocumentTemplateRow[] = []
+  for (const template of templates) {
+    let project_count = 0
+    const itemKey = `${template.service_key}::${template.label}`
+    try {
+      const counts = (await sql`
+        SELECT COUNT(*) AS count FROM checklist_items WHERE item_key = ${itemKey}
+      `) as { count: number }[]
+      project_count = Number(counts[0]?.count ?? 0)
+    } catch {
+      project_count = 0
+    }
+    rows.push({
+      id: template.id,
+      service_key: template.service_key,
+      service_label: serviceLabel.get(template.service_key) ?? template.service_key,
+      label: template.label,
+      sort_order: template.sort_order,
+      active: template.active,
+      project_count,
+    })
+  }
+
+  const filtered = searchTerm
+    ? rows.filter(
+        (row) =>
+          row.label.toLowerCase().includes(searchTerm) ||
+          row.service_key.toLowerCase().includes(searchTerm) ||
+          row.service_label.toLowerCase().includes(searchTerm),
+      )
+    : rows
+
+  const total = filtered.length
+  const page = clampPage(requestedPage, total, pageSize)
+  const offset = pageOffset(page, pageSize)
+  const pageRows = pageSize === -1 ? filtered : filtered.slice(offset, offset + pageSize)
+  return toPaginatedResult(pageRows, total, page, pageSize)
 }
 
 // ---------------------------------------------------------------------------
@@ -1255,10 +1392,26 @@ const DEFAULT_OFFICE_PROFILE: OfficeProfile = {
   gstNumber: "",
   logoDataUrl: null,
   termsAndConditions: DEFAULT_INVOICE_TERMS,
+  tagline: "Architecture • Interiors • Planning",
+  bankName: "",
+  accountName: "",
+  accountNumber: "",
+  ifsc: "",
+  upiId: "",
+  qrCodeDataUrl: null,
+  architectName: "",
+  architectDesignation: "Principal Architect",
+  signatureDataUrl: null,
 }
 
 function pickString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
+}
+
+function pickNullableString(value: unknown): string | null | undefined {
+  if (value === null) return null
+  if (typeof value === "string") return value.length > 0 ? value : null
+  return undefined
 }
 
 function normalizeStoredOfficeProfile(value: unknown): Partial<OfficeProfile> {
@@ -1277,6 +1430,8 @@ function normalizeStoredOfficeProfile(value: unknown): Partial<OfficeProfile> {
 
   const row = raw as Record<string, unknown>
   const logo = row.logoDataUrl ?? row.logo_data_url
+  const qr = row.qrCodeDataUrl ?? row.qr_code_data_url
+  const signature = row.signatureDataUrl ?? row.signature_data_url
 
   return {
     companyName: pickString(row.companyName ?? row.company_name),
@@ -1287,6 +1442,16 @@ function normalizeStoredOfficeProfile(value: unknown): Partial<OfficeProfile> {
     gstNumber: pickString(row.gstNumber ?? row.gst_number),
     logoDataUrl: typeof logo === "string" && logo.length > 0 ? logo : null,
     termsAndConditions: pickString(row.termsAndConditions ?? row.terms_and_conditions),
+    tagline: pickString(row.tagline),
+    bankName: pickString(row.bankName ?? row.bank_name),
+    accountName: pickString(row.accountName ?? row.account_name),
+    accountNumber: pickString(row.accountNumber ?? row.account_number),
+    ifsc: pickString(row.ifsc),
+    upiId: pickString(row.upiId ?? row.upi_id),
+    qrCodeDataUrl: pickNullableString(qr),
+    architectName: pickString(row.architectName ?? row.architect_name),
+    architectDesignation: pickString(row.architectDesignation ?? row.architect_designation),
+    signatureDataUrl: pickNullableString(signature),
   }
 }
 
@@ -1323,7 +1488,7 @@ function mapInvoiceRow(row: Invoice): Invoice {
 
 export async function getInvoice(id: number): Promise<InvoiceWithDetails | null> {
   const rows = (await sql`
-    SELECT i.*, p.code AS project_code, u.name AS creator_name
+    SELECT i.*, p.code AS project_code, p.location AS project_location, u.name AS creator_name
     FROM invoices i
     LEFT JOIN projects p ON p.id = i.project_id
     LEFT JOIN app_users u ON u.id = i.created_by

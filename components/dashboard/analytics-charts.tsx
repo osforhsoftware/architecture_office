@@ -8,13 +8,13 @@ import {
   LineChart,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
   Treemap,
 } from "recharts"
 import { motion } from "framer-motion"
+import { ChartContainer } from "@/components/chart-container"
 import { formatCurrency } from "@/lib/constants"
 import { toSafeNumber } from "@/lib/utils"
 
@@ -99,7 +99,7 @@ export function DepartmentAnalytics({
     <div className="grid gap-4 lg:grid-cols-5">
       <ChartCard title="Projects by Department" subtitle="Horizontal breakdown" delay={0.1} >
         <div className="lg:col-span-3">
-          <ResponsiveContainer width="100%" height={220}>
+          <ChartContainer height={220}>
             <BarChart data={horizontal} layout="vertical" margin={{ left: 4, right: 16 }}>
               <XAxis type="number" hide />
               <YAxis
@@ -118,11 +118,11 @@ export function DepartmentAnalytics({
                 ))}
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         </div>
       </ChartCard>
       <ChartCard title="Distribution" subtitle="Treemap view" delay={0.15}>
-        <ResponsiveContainer width="100%" height={220}>
+        <ChartContainer height={220}>
           <Treemap
             data={treemapData}
             dataKey="size"
@@ -150,7 +150,7 @@ export function DepartmentAnalytics({
               )
             }}
           />
-        </ResponsiveContainer>
+        </ChartContainer>
       </ChartCard>
     </div>
   )
@@ -169,8 +169,8 @@ export function StatusDonutChart({
   return (
     <ChartCard title="Status Breakdown" subtitle="Interactive distribution" delay={0.2}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative mx-auto sm:mx-0" style={{ width: 200, height: 200 }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="relative mx-auto sm:mx-0 size-[200px]">
+          <ChartContainer height={200} className="size-full">
             <PieChart>
               <Pie
                 data={sorted}
@@ -187,7 +187,7 @@ export function StatusDonutChart({
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
             </PieChart>
-          </ResponsiveContainer>
+          </ChartContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-semibold">{total}</span>
             <span className="text-xs text-muted-foreground">Total</span>
@@ -257,7 +257,7 @@ export function RevenueTrendChart({
           Prev: {formatCurrency(previousMonth)}
         </p>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ChartContainer height={200}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
           <defs>
             <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
@@ -293,7 +293,7 @@ export function RevenueTrendChart({
             activeDot={{ r: 5 }}
           />
         </LineChart>
-      </ResponsiveContainer>
+      </ChartContainer>
     </ChartCard>
   )
 }

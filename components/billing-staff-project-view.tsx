@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { ProjectBillingPanel } from "@/components/project-billing-panel"
+import { ProjectPrintButton } from "@/components/project-print-button"
 import { PaymentBadge, StatusBadge } from "@/components/status-badges"
 import { formatCurrency } from "@/lib/constants"
 import type { Payment, Project } from "@/lib/types"
@@ -37,14 +38,17 @@ export function BillingStaffProjectView({
               Client: {project.client_name}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-muted-foreground">Project amount</p>
-              <p className="font-semibold">{formatCurrency(project.project_amount)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Advance received</p>
-              <p className="font-semibold">{formatCurrency(project.advance_received)}</p>
+          <div className="flex flex-col items-end gap-3">
+            <ProjectPrintButton projectId={project.id} />
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Project amount</p>
+                <p className="font-semibold">{formatCurrency(project.project_amount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Advance received</p>
+                <p className="font-semibold">{formatCurrency(project.advance_received)}</p>
+              </div>
             </div>
           </div>
         </div>

@@ -2,6 +2,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { InvoiceEditor } from "@/components/invoice-editor"
+import { invoiceServicePresets } from "@/lib/invoice-utils"
+import { listProjectServiceDefs } from "@/lib/project-services"
 import { getInvoice, getOfficeProfile, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export default async function AdminInvoiceDetailPage({
@@ -13,10 +15,11 @@ export default async function AdminInvoiceDetailPage({
   const invoiceId = Number(id)
   if (!invoiceId) notFound()
 
-  const [invoice, profile, projects] = await Promise.all([
+  const [invoice, profile, projects, services] = await Promise.all([
     getInvoice(invoiceId),
     getOfficeProfile(),
     getProjectsForInvoiceSelect(),
+    listProjectServiceDefs({ activeOnly: true }),
   ])
 
   if (!invoice) notFound()
@@ -29,7 +32,12 @@ export default async function AdminInvoiceDetailPage({
       >
         <ArrowLeft className="size-4" /> Back to invoices
       </Link>
-      <InvoiceEditor invoice={invoice} profile={profile} projects={projects} />
+      <InvoiceEditor
+        invoice={invoice}
+        profile={profile}
+        projects={projects}
+        servicePresets={invoiceServicePresets(services)}
+      />
     </div>
   )
 }

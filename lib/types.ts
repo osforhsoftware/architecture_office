@@ -10,6 +10,8 @@ export interface AppUser {
   name: string
   email: string | null
   phone: string | null
+  /** Public path or URL for staff profile image. */
+  avatar_url?: string | null
   active: boolean
   created_at?: string
 }
@@ -23,6 +25,7 @@ export interface Client {
   street: string | null
   district: string | null
   aadhaar_numbers: string[]
+  linked_numbers: string[]
   created_at: string
   project_count?: number
 }
@@ -48,6 +51,8 @@ export interface Project {
   building_number: string | null
   building_permit_number: string | null
   drawing_number: string | null
+  edgebook_number: string | null
+  refer_name: string | null
   req_architectural_plan: boolean
   req_building_permit: boolean
   req_regularization: boolean
@@ -170,6 +175,18 @@ export interface OfficeProfile {
   gstNumber: string
   logoDataUrl: string | null
   termsAndConditions: string
+  tagline?: string
+  /** Payment details shown on invoice PDF */
+  bankName?: string
+  accountName?: string
+  accountNumber?: string
+  ifsc?: string
+  upiId?: string
+  qrCodeDataUrl?: string | null
+  /** Authorization / signature block */
+  architectName?: string
+  architectDesignation?: string
+  signatureDataUrl?: string | null
 }
 
 export interface InvoiceLineItem {
@@ -179,6 +196,9 @@ export interface InvoiceLineItem {
   quantity: string
   unit?: string | null
   unit_price: string
+  /** Per-unit discount in ₹ (optional for legacy rows). */
+  discount_amount?: string | null
+  discount_percent?: string | null
   amount: string
   sort_order?: number
 }
@@ -222,6 +242,7 @@ export interface Invoice {
   created_at: string
   updated_at: string
   project_code?: string | null
+  project_location?: string | null
   creator_name?: string | null
 }
 

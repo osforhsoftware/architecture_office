@@ -6,11 +6,11 @@ import {
   Cell,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
+import { ChartContainer } from "@/components/chart-container"
 
 const SECTION_COLORS = [
   "var(--chart-1)",
@@ -29,7 +29,7 @@ export function SectionBarChart({
     label: d.section.replace(" & ", " &\n"),
   }))
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ChartContainer height={240}>
       <BarChart data={shortened} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <XAxis
           dataKey="section"
@@ -61,7 +61,7 @@ export function SectionBarChart({
           ))}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   )
 }
 
@@ -84,7 +84,7 @@ export function StatusPieChart({
   data: { status: string; count: number }[]
 }) {
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ChartContainer height={240}>
       <PieChart>
         <Pie
           data={data}
@@ -107,6 +107,6 @@ export function StatusPieChart({
           }}
         />
       </PieChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   )
 }

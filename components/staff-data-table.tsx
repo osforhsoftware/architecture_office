@@ -14,6 +14,7 @@ import { StaffDialog } from "@/components/staff-dialog"
 import { StaffDeleteDialog } from "@/components/staff-delete-dialog"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
+import { UserAvatar } from "@/components/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import type { PaginatedResult } from "@/lib/pagination"
 import { formatRolesLabel } from "@/lib/constants"
@@ -24,17 +25,30 @@ interface StaffDataTableProps {
   search: string
   /** When false, hide edit/delete (Admin add-only mode) */
   canManageStaff?: boolean
+  roleOptions?: string[]
 }
 
-function StaffTableInner({ result, search, canManageStaff = true }: StaffDataTableProps) {
+function StaffTableInner({
+  result,
+  search,
+  canManageStaff = true,
+  roleOptions,
+}: StaffDataTableProps) {
   const columns = useMemo<ColumnDef<AppUser>[]>(
     () => {
       const cols: ColumnDef<AppUser>[] = [
       {
         accessorKey: "name",
         header: "Name",
-        cell: ({ getValue }) => (
-          <span className="font-medium">{getValue() as string}</span>
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2.5">
+            <UserAvatar
+              name={row.original.name}
+              avatarUrl={row.original.avatar_url}
+              className="size-8"
+            />
+            <span className="font-medium">{row.original.name}</span>
+          </div>
         ),
       },
       {
@@ -103,7 +117,7 @@ function StaffTableInner({ result, search, canManageStaff = true }: StaffDataTab
           header: "",
           cell: ({ row }) => (
             <div className="flex items-center justify-end gap-2">
-              <StaffDialog staff={row.original} />
+              <StaffDialog staff={row.original} roleOptions={roleOptions} />
               <StaffDeleteDialog staff={row.original} />
             </div>
           ),
@@ -112,7 +126,7 @@ function StaffTableInner({ result, search, canManageStaff = true }: StaffDataTab
 
       return cols
     },
-    [canManageStaff],
+    [canManageStaff, roleOptions],
   )
 
   const table = useReactTable({

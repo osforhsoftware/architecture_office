@@ -3,8 +3,17 @@ import "server-only"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { formatCurrency } from "@/lib/constants"
-import { formatInvoiceDate } from "@/lib/invoice-utils"
-import type { InvoiceWithDetails, OfficeProfile } from "@/lib/types"
+import { formatInvoiceDate, sanitizeLineItemInput } from "@/lib/invoice-utils"
+import type { InvoiceLineItem, InvoiceWithDetails, OfficeProfile } from "@/lib/types"
+
+/** Professional monochrome palette for print / PDF */
+const INK: [number, number, number] = [33, 33, 33]
+const MUTED: [number, number, number] = [90, 90, 90]
+const RULE: [number, number, number] = [180, 180, 180]
+const RULE_STRONG: [number, number, number] = [100, 100, 100]
+const BORDER: [number, number, number] = [160, 160, 160]
+/** ~12 mm — within the 10–15 mm print-safe range for A4 */
+const MARGIN = 12
 
 /** ASCII-safe text for jsPDF built-in fonts (no Unicode symbols). */
 function pdfText(value: string | null | undefined): string {
@@ -16,10 +25,6 @@ function pdfText(value: string | null | undefined): string {
     .replace(/[^\x00-\x7F]/g, "")
 }
 
-/**
- * PDF-safe currency — jsPDF Helvetica cannot render the INR (Rs.) glyph;
- * using Intl currency style causes broken spacing and wrong characters.
- */
 function formatPdfCurrency(value: number | string): string {
   const n = typeof value === "string" ? Number.parseFloat(value) : value
   const amount = Number.isFinite(n) ? n : 0
@@ -30,13 +35,36 @@ function formatPdfCurrency(value: number | string): string {
   return `Rs. ${formatted}`
 }
 
-function formatPdfQuantity(value: number | string): string {
+function formatPdfQuantity(value: number | string, unit?: string | null): string {
   const n = typeof value === "string" ? Number.parseFloat(value) : value
   if (!Number.isFinite(n)) return "0.00"
-  return new Intl.NumberFormat("en-IN", {
+  const qty = new Intl.NumberFormat("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)
+  const u = pdfText(unit)
+  return u && u !== "Nos" ? `${qty} ${u}` : qty
+}
+
+function drawHRule(doc: jsPDF, y: number, pageWidth: number, strong = false) {
+  doc.setDrawColor(...(strong ? RULE_STRONG : RULE))
+  doc.setLineWidth(strong ? 0.35 : 0.2)
+  doc.line(MARGIN, y, pageWidth - MARGIN, y)
+}
+
+function companyDetailLines(profile: OfficeProfile): string[] {
+  const lines: string[] = []
+  const address = pdfText(profile.address)
+  if (address) lines.push(address)
+
+  const contact = [pdfText(profile.phone), pdfText(profile.email)].filter(Boolean).join("  |  ")
+  if (contact) lines.push(contact)
+
+  const website = pdfText(profile.website)
+  if (website) lines.push(website)
+
+  if (profile.gstNumber) lines.push(`GSTIN: ${pdfText(profile.gstNumber)}`)
+  return lines
 }
 
 function addHeader(
@@ -46,162 +74,325 @@ function addHeader(
   startY: number,
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth()
-  const margin = 14
-  const accent: [number, number, number] = [0, 151, 178]
-  const headerHeight = 40
-  const invoiceBoxWidth = 56
-  const invoiceBoxX = pageWidth - margin - invoiceBoxWidth
+  const leftMaxW = pageWidth / 2 - MARGIN - 4
+  let y = startY
+  let hasLogo = false
 
-  // A compact brand lockup keeps the logo and company identity visually connected.
-  doc.setFillColor(...accent)
-  doc.roundedRect(margin, startY, 3, headerHeight, 1.5, 1.5, "F")
-
-  let textX = margin + 7
   if (profile.logoDataUrl) {
     try {
       const format = profile.logoDataUrl.includes("image/png") ? "PNG" : "JPEG"
-      doc.addImage(profile.logoDataUrl, format, margin + 7, startY + 2, 28, 28)
-      textX = margin + 40
+      doc.addImage(profile.logoDataUrl, format, MARGIN, y, 36, 14)
+      hasLogo = true
+      y += 16
     } catch {
       // skip invalid logo
     }
   }
 
+  // Company name + details directly under logo (or at top when no logo)
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(15)
-  doc.setTextColor(24, 31, 36)
-  doc.text(pdfText(profile.companyName) || "Company", textX, startY + 8)
+  doc.setFontSize(11)
+  doc.setTextColor(...INK)
+  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
+  doc.text(companyName, MARGIN, y + 4, { maxWidth: leftMaxW })
+  y += 9
 
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(7)
-  doc.setTextColor(...accent)
-  doc.text("ARCHITECTURE & DESIGN STUDIO", textX, startY + 14)
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.setTextColor(82, 89, 94)
-  const companyLines = [
-    pdfText(profile.address),
-    pdfText([profile.phone, profile.email, profile.website].filter(Boolean).join(" | ")),
-    profile.gstNumber ? `GST: ${pdfText(profile.gstNumber)}` : "",
-  ].filter(Boolean)
-  companyLines.forEach((line, i) => {
-    doc.text(line, textX, startY + 21 + i * 4.5, {
-      maxWidth: invoiceBoxX - textX - 6,
-    })
-  })
-
-  doc.setFillColor(247, 250, 251)
-  doc.setDrawColor(225, 232, 235)
-  doc.roundedRect(invoiceBoxX, startY, invoiceBoxWidth, headerHeight, 2, 2, "FD")
-  doc.setFillColor(...accent)
-  doc.roundedRect(invoiceBoxX, startY, invoiceBoxWidth, 2, 1, 1, "F")
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(18)
-  doc.setTextColor(24, 31, 36)
-  doc.text("INVOICE", pageWidth - margin - 5, startY + 11, { align: "right" })
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(10)
-  doc.setTextColor(...accent)
-  doc.text(`# ${pdfText(invoice.invoice_number)}`, pageWidth - margin - 5, startY + 18, {
-    align: "right",
-  })
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.setTextColor(73, 81, 86)
-  doc.text(`Date: ${formatInvoiceDate(invoice.invoice_date)}`, pageWidth - margin - 5, startY + 25, {
-    align: "right",
-  })
-  if (invoice.due_date) {
-    doc.text(`Due: ${formatInvoiceDate(invoice.due_date)}`, pageWidth - margin - 5, startY + 30, {
-      align: "right",
-    })
-  }
-  if (invoice.project_code) {
-    doc.text(`Project: ${pdfText(invoice.project_code)}`, pageWidth - margin - 5, startY + 35, {
-      align: "right",
-    })
+  if (!hasLogo && profile.tagline) {
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    doc.text(pdfText(profile.tagline), MARGIN, y, { maxWidth: leftMaxW })
+    y += 4.5
   }
 
-  return startY + headerHeight + 10
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  for (const line of companyDetailLines(profile)) {
+    const wrapped = doc.splitTextToSize(line, leftMaxW)
+    doc.text(wrapped, MARGIN, y)
+    y += wrapped.length * 3.6
+  }
+
+  // INVOICE title + meta (top-right)
+  const metaX = pageWidth - MARGIN
+  const metaLabelX = metaX - 52
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(22)
+  doc.setTextColor(...INK)
+  doc.text("INVOICE", metaX, startY + 9, { align: "right" })
+
+  const metaRows: [string, string][] = [
+    ["Invoice No", pdfText(invoice.invoice_number)],
+    ["Date", formatInvoiceDate(invoice.invoice_date)],
+  ]
+  if (invoice.due_date) metaRows.push(["Due Date", formatInvoiceDate(invoice.due_date)])
+  if (invoice.project_code) metaRows.push(["Project Code", pdfText(invoice.project_code)])
+
+  metaRows.forEach(([label, value], i) => {
+    const rowY = startY + 16 + i * 5
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...INK)
+    doc.text(label, metaLabelX, rowY)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(...MUTED)
+    doc.text(value, metaX, rowY, { align: "right" })
+  })
+
+  const metaBottom = startY + 16 + metaRows.length * 5 + 2
+  const headerBottom = Math.max(y + 2, metaBottom)
+  drawHRule(doc, headerBottom, pageWidth, true)
+  return headerBottom + 6
 }
 
-function addClientBlock(doc: jsPDF, invoice: InvoiceWithDetails, startY: number): number {
-  const margin = 14
+function addClientProjectBlock(
+  doc: jsPDF,
+  invoice: InvoiceWithDetails,
+  startY: number,
+): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const midX = pageWidth / 2
   let y = startY
 
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(9)
-  doc.setTextColor(100, 100, 100)
-  doc.text("BILL TO", margin, y)
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  doc.text("BILL TO", MARGIN, y)
+  doc.text("PROJECT DETAILS", midX + 4, y)
 
+  y += 5
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
-  doc.setTextColor(30, 30, 30)
-  doc.text(pdfText(invoice.client_name), margin, y + 7)
+  doc.setFontSize(10)
+  doc.setTextColor(...INK)
+  doc.text(pdfText(invoice.client_name), MARGIN, y)
 
   doc.setFont("helvetica", "normal")
-  doc.setFontSize(9)
-  doc.setTextColor(60, 60, 60)
-  const clientLines = [
+  doc.setFontSize(8)
+  doc.setTextColor(...MUTED)
+
+  const billLines = [
     pdfText(invoice.client_address),
-    pdfText([invoice.client_phone, invoice.client_email].filter(Boolean).join(" | ")),
-    invoice.client_tax_id ? `GST: ${pdfText(invoice.client_tax_id)}` : "",
-    invoice.project_name ? `Project: ${pdfText(invoice.project_name)}` : "",
+    invoice.client_tax_id ? `GSTIN: ${pdfText(invoice.client_tax_id)}` : "",
+    pdfText(invoice.client_phone),
+    pdfText(invoice.client_email),
   ].filter(Boolean) as string[]
 
-  clientLines.forEach((line, i) => {
-    doc.text(line, margin, y + 14 + i * 5)
+  billLines.forEach((line, i) => {
+    doc.text(line, MARGIN, y + 5 + i * 4.2, { maxWidth: midX - MARGIN - 6 })
   })
 
-  return y + 14 + clientLines.length * 5 + 6
+  const projectRows: [string, string][] = []
+  if (invoice.project_name) projectRows.push(["Project", pdfText(invoice.project_name)])
+  if (invoice.project_location) {
+    projectRows.push(["Location", pdfText(invoice.project_location)])
+  }
+  if (invoice.status) projectRows.push(["Status", pdfText(invoice.status)])
+
+  const projectLabelX = midX + 4
+  const projectValueX = midX + 28
+  const projectValueMaxW = pageWidth - MARGIN - projectValueX
+  const projectRowH = 5.5
+
+  projectRows.forEach(([label, value], i) => {
+    const rowY = y + i * projectRowH
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...INK)
+    doc.text(label, projectLabelX, rowY)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(...MUTED)
+    doc.text(value, projectValueX, rowY, { maxWidth: projectValueMaxW })
+  })
+
+  const projectBlockH = Math.max(projectRows.length * projectRowH, 0)
+  const billBlockH = billLines.length * 4.2 + 5
+
+  doc.setDrawColor(...RULE)
+  doc.setLineWidth(0.15)
+  doc.line(midX, startY - 1, midX, y + Math.max(billBlockH, projectBlockH) + 1)
+
+  const blockBottom = y + Math.max(billBlockH, projectBlockH) + 3
+  drawHRule(doc, blockBottom, pageWidth)
+  return blockBottom + 5
+}
+
+function lineFinalRate(item: InvoiceLineItem): number {
+  const sanitized = sanitizeLineItemInput({
+    description: item.description,
+    quantity: Number(item.quantity) || 0,
+    unit: item.unit ?? "Nos",
+    unit_price: Number(item.unit_price) || 0,
+    discount_amount: Number(item.discount_amount) || 0,
+    discount_percent: Number(item.discount_percent) || 0,
+  })
+  return sanitized.final_rate
 }
 
 function addSummaryBlock(
   doc: jsPDF,
   invoice: InvoiceWithDetails,
   startY: number,
-  margin: number,
   pageWidth: number,
 ): number {
-  const boxWidth = 78
-  const boxX = pageWidth - margin - boxWidth
-  const rowHeight = 6
-  const rows = [
-    { label: "Subtotal", value: formatPdfCurrency(invoice.subtotal), bold: false },
-    {
-      label: `Tax (${invoice.tax_percent}%)`,
-      value: formatPdfCurrency(invoice.tax_amount),
-      bold: false,
-    },
-    {
-      label: `Discount (${invoice.discount_percent}%)`,
-      value: `-${formatPdfCurrency(invoice.discount_amount)}`,
-      bold: false,
-    },
-    { label: "Total", value: formatPdfCurrency(invoice.total), bold: true },
-    { label: "Amount Paid", value: formatPdfCurrency(invoice.amount_paid), bold: false },
-    { label: "Balance Due", value: formatPdfCurrency(invoice.balance), bold: true },
+  const boxWidth = 72
+  const boxX = pageWidth - MARGIN - boxWidth
+  const taxPercent = Number(invoice.tax_percent) || 0
+  const storedSubtotal = Number(invoice.subtotal) || 0
+  const discount = Number(invoice.discount_amount) || 0
+  const tax = Number(invoice.tax_amount) || 0
+  const total = Number(invoice.total) || 0
+  const paid = Number(invoice.amount_paid) || 0
+  // Stored subtotal is taxable (after discount). Reconstruct gross when discount exists.
+  const gross = discount > 0 ? storedSubtotal + discount : storedSubtotal
+
+  const rows: { label: string; value: string; emphasize?: boolean }[] = [
+    { label: "Subtotal", value: formatPdfCurrency(gross) },
   ]
+  if (discount > 0) {
+    rows.push({ label: "Discount", value: `-${formatPdfCurrency(discount)}` })
+  }
+  rows.push(
+    { label: `GST (${taxPercent}%)`, value: formatPdfCurrency(tax) },
+    { label: "Grand Total", value: formatPdfCurrency(total), emphasize: true },
+  )
+  if (paid > 0) {
+    rows.push({ label: "Amount Paid", value: formatPdfCurrency(paid) })
+  }
 
-  const boxHeight = rows.length * rowHeight + 8
-  doc.setFillColor(248, 249, 252)
-  doc.setDrawColor(220, 224, 230)
-  doc.roundedRect(boxX, startY - 4, boxWidth, boxHeight, 2, 2, "FD")
+  const rowH = 6.5
+  const padX = 3.5
+  const padY = 3.5
+  const boxHeight = padY * 2 + rows.length * rowH
 
-  rows.forEach((row, i) => {
-    const y = startY + i * rowHeight
-    doc.setFont("helvetica", row.bold ? "bold" : "normal")
-    doc.setFontSize(row.label === "Total" || row.label === "Balance Due" ? 10 : 9)
-    doc.setTextColor(row.bold ? 30 : 70, row.bold ? 30 : 70, row.bold ? 30 : 70)
-    doc.text(row.label, boxX + 4, y)
-    doc.text(row.value, boxX + boxWidth - 4, y, { align: "right" })
+  // Clean bordered box — no fill, no shadow
+  doc.setDrawColor(...BORDER)
+  doc.setLineWidth(0.3)
+  doc.rect(boxX, startY, boxWidth, boxHeight)
+
+  let y = startY + padY + 3.5
+  rows.forEach((row) => {
+    if (row.emphasize) {
+      doc.setDrawColor(...RULE_STRONG)
+      doc.setLineWidth(0.25)
+      doc.line(boxX + padX, y - 3.5, boxX + boxWidth - padX, y - 3.5)
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(9.5)
+      doc.setTextColor(...INK)
+    } else {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(...INK)
+    }
+    doc.text(row.label, boxX + padX, y)
+    doc.setFont("helvetica", row.emphasize ? "bold" : "normal")
+    doc.text(row.value, boxX + boxWidth - padX, y, { align: "right" })
+    y += rowH
   })
 
   return startY + boxHeight + 6
+}
+
+function addPaymentAndNotes(
+  doc: jsPDF,
+  profile: OfficeProfile,
+  invoice: InvoiceWithDetails,
+  startY: number,
+  pageWidth: number,
+  pageHeight: number,
+): number {
+  const paymentRows = [
+    ["Bank Name", profile.bankName],
+    ["Account Name", profile.accountName],
+    ["Account Number", profile.accountNumber],
+    ["IFSC", profile.ifsc],
+    ["UPI", profile.upiId],
+  ].filter(([, v]) => Boolean(v)) as [string, string][]
+
+  const terms = invoice.terms || profile.termsAndConditions
+  const noteText = pdfText(invoice.notes) || pdfText(terms)
+  const hasPayment = paymentRows.length > 0 || Boolean(profile.qrCodeDataUrl)
+  const hasNotes = Boolean(noteText)
+
+  if (!hasPayment && !hasNotes) return startY
+
+  const qrSize = 24
+  const qrReserve = profile.qrCodeDataUrl ? qrSize + 6 : 0
+  const contentRight = pageWidth - MARGIN - qrReserve
+  const contentWidth = contentRight - MARGIN
+
+  // Estimate footer height and push to new page if needed
+  const paymentH = hasPayment ? 6 + paymentRows.length * 4.2 + 4 : 0
+  const noteLinesPreview = noteText
+    ? doc.splitTextToSize(noteText, contentWidth)
+    : []
+  const notesH = hasNotes ? 6 + Math.min(noteLinesPreview.length, 8) * 3.4 + 2 : 0
+  const qrH = profile.qrCodeDataUrl ? qrSize + 4 : 0
+  const estimatedH = Math.max(paymentH + notesH, qrH) + 4
+  const bottomSafe = pageHeight - 14
+
+  let y = startY
+  if (y + estimatedH > bottomSafe) {
+    doc.addPage()
+    y = MARGIN + 4
+  }
+
+  drawHRule(doc, y, pageWidth)
+  y += 6
+
+  const blockTop = y
+
+  if (hasPayment) {
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    doc.setTextColor(...INK)
+    doc.text("PAYMENT INFORMATION", MARGIN, y)
+    y += 5.5
+
+    doc.setFontSize(7.5)
+    paymentRows.forEach(([label, value]) => {
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(...INK)
+      doc.text(`${label}:`, MARGIN, y)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(...MUTED)
+      doc.text(pdfText(value), MARGIN + 30, y, { maxWidth: contentWidth - 30 })
+      y += 4.2
+    })
+    y += 3
+  }
+
+  if (hasNotes) {
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    doc.setTextColor(...INK)
+    doc.text("NOTES & PAYMENT TERMS", MARGIN, y)
+    y += 5
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    const noteLines = doc.splitTextToSize(noteText, contentWidth)
+    const shown = noteLines.slice(0, 8)
+    doc.text(shown, MARGIN, y)
+    y += shown.length * 3.4 + 2
+  }
+
+  // QR aligned to the bottom-right of the footer block
+  if (profile.qrCodeDataUrl) {
+    try {
+      const format = profile.qrCodeDataUrl.includes("image/png") ? "PNG" : "JPEG"
+      const qrX = pageWidth - MARGIN - qrSize
+      const finalQrY = Math.max(blockTop, Math.min(y - qrSize, bottomSafe - qrSize))
+      doc.addImage(profile.qrCodeDataUrl, format, qrX, finalQrY, qrSize, qrSize)
+      y = Math.max(y, finalQrY + qrSize + 2)
+    } catch {
+      // skip
+    }
+  }
+
+  return y + 2
 }
 
 export function getInvoicePdfFileName(invoiceNumber: string): string {
@@ -215,99 +406,104 @@ export function buildInvoicePdfBuffer(
 ): Buffer {
   const doc = new jsPDF({ unit: "mm", format: "a4" })
   const pageWidth = doc.internal.pageSize.getWidth()
-  const margin = 14
+  const pageHeight = doc.internal.pageSize.getHeight()
+  // Usable width = A4 210 - margins 24 = 186
+  const usableWidth = pageWidth - MARGIN * 2
 
-  let y = addHeader(doc, profile, invoice, 16)
-  y = addClientBlock(doc, invoice, y)
+  let y = addHeader(doc, profile, invoice, MARGIN + 2)
+  y = addClientProjectBlock(doc, invoice, y)
 
-  const tableBody = invoice.line_items.map((item) => [
-    pdfText(item.description),
-    formatPdfQuantity(item.quantity),
-    formatPdfCurrency(item.unit_price),
-    formatPdfCurrency(item.amount),
-  ])
+  const tableBody = invoice.line_items.map((item, index) => {
+    const unitRate = lineFinalRate(item)
+    return [
+      String(index + 1),
+      pdfText(item.description),
+      formatPdfCurrency(unitRate),
+      formatPdfQuantity(item.quantity, item.unit),
+      formatPdfCurrency(item.amount),
+    ]
+  })
 
   autoTable(doc, {
     startY: y,
-    head: [["DESCRIPTION", "SQFT / M2", "RATE", "AMOUNT"]],
-    body: tableBody.length ? tableBody : [["-", "-", "-", "-"]],
+    head: [["Sl. No.", "Description", "Unit Rate", "Quantity", "Amount"]],
+    body: tableBody.length ? tableBody : [["-", "-", "-", "-", "-"]],
     theme: "grid",
-    showHead: "firstPage",
+    showHead: "everyPage",
     rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
-      fontSize: 9,
-      cellPadding: { top: 3, right: 3, bottom: 3, left: 3 },
-      textColor: [0, 0, 0],
-      lineColor: [0, 0, 0],
+      fontSize: 8,
+      cellPadding: { top: 2.8, right: 2.2, bottom: 2.8, left: 2.2 },
+      textColor: INK,
+      lineColor: RULE,
       lineWidth: 0.2,
+      overflow: "linebreak",
+      valign: "middle",
+      fillColor: [255, 255, 255],
     },
     headStyles: {
       font: "helvetica",
-      fillColor: [220, 220, 220],
-      textColor: [0, 0, 0],
+      fillColor: [245, 245, 245],
+      textColor: INK,
       fontStyle: "bold",
-      halign: "center",
+      fontSize: 7.5,
+      cellPadding: { top: 3, right: 2.2, bottom: 3, left: 2.2 },
+      valign: "middle",
+      lineColor: RULE_STRONG,
+      lineWidth: 0.25,
+    },
+    bodyStyles: {
+      fillColor: [255, 255, 255],
+    },
+    alternateRowStyles: {
+      fillColor: [255, 255, 255],
     },
     columnStyles: {
-      0: { cellWidth: 88 },
-      1: { halign: "right", cellWidth: 28 },
-      2: { halign: "right", cellWidth: 32 },
-      3: { halign: "right", cellWidth: 32 },
+      0: { cellWidth: 14, halign: "center" },
+      1: { cellWidth: usableWidth - 14 - 32 - 28 - 32, halign: "left" },
+      2: { cellWidth: 32, halign: "right" },
+      3: { cellWidth: 28, halign: "right" },
+      4: { cellWidth: 32, halign: "right" },
     },
-    margin: { left: margin, right: margin },
+    margin: { left: MARGIN, right: MARGIN, top: MARGIN + 4, bottom: 16 },
+    didParseCell: (data) => {
+      if (data.section === "head") {
+        const align = (
+          data.column.index === 0 ? "center" : data.column.index === 1 ? "left" : "right"
+        ) as "left" | "center" | "right"
+        data.cell.styles.halign = align
+      }
+    },
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const finalY = (doc as any).lastAutoTable?.finalY ?? y + 20
-  let footerY = addSummaryBlock(doc, invoice, finalY + 10, margin, pageWidth)
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const bottomMargin = 14
+  let footerY = ((doc as any).lastAutoTable?.finalY ?? y + 20) + 6
+  const summaryReserve = 55
 
-  if (footerY > pageHeight - bottomMargin) {
+  if (footerY > pageHeight - summaryReserve - 50) {
     doc.addPage()
-    footerY = 16
+    footerY = MARGIN + 4
   }
 
-  if (invoice.notes) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(9)
-    doc.setTextColor(60, 60, 60)
-    doc.text("Notes", margin, footerY)
+  footerY = addSummaryBlock(doc, invoice, footerY, pageWidth)
+  footerY = addPaymentAndNotes(doc, profile, invoice, footerY, pageWidth, pageHeight)
+
+  // Minimal page footer — company details already in header
+  const pages = doc.getNumberOfPages()
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i)
+    drawHRule(doc, pageHeight - 10, pageWidth)
     doc.setFont("helvetica", "normal")
-    const noteLines = doc.splitTextToSize(pdfText(invoice.notes), pageWidth - margin * 2)
-    doc.text(noteLines, margin, footerY + 6)
-    footerY += 6 + noteLines.length * 4 + 6
-  }
-
-  const terms = invoice.terms || profile.termsAndConditions
-  if (terms) {
-    if (footerY > pageHeight - bottomMargin) {
-      doc.addPage()
-      footerY = 16
+    doc.setFontSize(6.5)
+    doc.setTextColor(...MUTED)
+    doc.text("Thank you for your business.", MARGIN, pageHeight - 6)
+    if (pages > 1) {
+      doc.text(`Page ${i} of ${pages}`, pageWidth - MARGIN, pageHeight - 6, {
+        align: "right",
+      })
     }
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(9)
-    doc.text("Terms & Conditions", margin, footerY)
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8)
-    doc.setTextColor(90, 90, 90)
-    const termLines = doc.splitTextToSize(pdfText(terms), pageWidth - margin * 2)
-    doc.text(termLines, margin, footerY + 6)
-    footerY += 6 + termLines.length * 3.5 + 8
   }
-
-  footerY += 4
-  doc.setDrawColor(220, 220, 220)
-  doc.line(margin, footerY, pageWidth - margin, footerY)
-  doc.setFontSize(8)
-  doc.setTextColor(120, 120, 120)
-  const footerText = pdfText(
-    [profile.companyName, [profile.phone, profile.email].filter(Boolean).join(" | ")]
-      .filter(Boolean)
-      .join(" | "),
-  )
-  doc.text(footerText, pageWidth / 2, footerY + 5, { align: "center" })
 
   const arrayBuffer = doc.output("arraybuffer")
   return Buffer.from(arrayBuffer)

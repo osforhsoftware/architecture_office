@@ -8,6 +8,7 @@ import {
   allowsMultiAssignee,
   isReviewStep,
   isWorkStep,
+  parseSelectedDocuments,
   parseSelectedServices,
   roleForStep,
   type ProjectPackage,
@@ -24,9 +25,9 @@ import {
   DEFAULT_INVOICE_TERMS,
   INVOICE_STATUSES,
   KMAP_FLOOR_ROWS,
+  isValidKmapFloorKey,
+  PAYMENT_METHODS,
   RETURN_REASONS,
-  SECTION_ROLE,
-  STAFF_ROLES,
   ADMIN_ROLE,
   SUPER_ADMIN_ROLE,
   firstStageInSection,
@@ -37,6 +38,25 @@ import {
   showsResidentialDetails,
   userHasRole,
 } from "./constants"
+import {
+  defaultRoleLabel,
+  getDepartmentById,
+  getDepartmentNames,
+  getStaffRoleLabels,
+  listDepartments,
+  makeRoleKey,
+  resolveRoleKey,
+  roleForSection,
+} from "./departments"
+import {
+  getProjectServiceById,
+  listProjectServiceDefs,
+  makeServiceKey,
+} from "./project-services"
+import {
+  checklistItemsFromTemplates,
+  getDocumentTemplateById,
+} from "./document-templates"
 import { hashPassword, verifyPassword } from "./password"
 import {
   calculateInvoiceTotals,
@@ -52,6 +72,11 @@ import {
 } from "./invoice-utils"
 import { getOfficeProfile, persistOfficeProfile } from "./queries"
 import { parseStaffRoles, syncStaffRoles } from "./staff-roles"
+import { resolveStaffAvatarFromForm } from "./staff-avatar"
+import {
+  invoicePaymentDeleteConfirmationPhrase,
+  paymentDeleteConfirmationPhrase,
+} from "./payment-utils"
 import { staffDeleteConfirmationPhrase } from "./staff-utils"
 import {
   getProjectOrThrow,
@@ -140,7 +165,7 @@ async function notify(userId: number, type: string, title: string, message: stri
 }
 
 async function notifyRole(role: string, title: string, message: string) {
-  const roleKey = roleToKey(role)
+  const roleKey = (await resolveRoleKey(role)) ?? roleToKey(role)
   const staff = (await sql`
     SELECT DISTINCT u.id
     FROM app_users u
@@ -221,8 +246,8 @@ function revalidateClientPaths(clientId?: number) {
   if (clientId) revalidatePath(`/admin/clients/${clientId}`)
 }
 
-function parseClientAadhaarNumbers(formData: FormData): string[] {
-  const raw = String(formData.get("aadhaar_numbers") || "").trim()
+function parseClientStringList(formData: FormData, key: string): string[] {
+  const raw = String(formData.get(key) || "").trim()
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as unknown
@@ -239,17 +264,18 @@ function parseClientAddressFields(formData: FormData) {
   return {
     street: String(formData.get("street") || "").trim() || null,
     district: String(formData.get("district") || "").trim() || null,
-    aadhaarNumbers: parseClientAadhaarNumbers(formData),
+    aadhaarNumbers: parseClientStringList(formData, "aadhaar_numbers"),
+    linkedNumbers: parseClientStringList(formData, "linked_numbers"),
   }
 }
 
 export async function createClient(formData: FormData) {
-  const admin = await requireSuperAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
+  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
   if (!name || !phone) return { error: "Name and phone are required." }
 
@@ -260,8 +286,11 @@ export async function createClient(formData: FormData) {
 
   // RETURNING removed — wrapper returns [{ id: lastInsertId }] automatically
   const rows = (await sql`
-    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers)
-    VALUES (${name}, ${phone}, ${email}, ${address}, ${street}, ${district}, ${sql.json(aadhaarNumbers)})
+    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+    VALUES (
+      ${name}, ${phone}, ${email}, ${address}, ${street}, ${district},
+      ${sql.json(aadhaarNumbers)}, ${sql.json(linkedNumbers)}
+    )
   `) as { id: number }[]
 
   await logAudit(admin.id, "client.create", "client", rows[0].id, { name, phone })
@@ -270,13 +299,13 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClient(formData: FormData) {
-  const admin = await requireSuperAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
+  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
   if (!id || !name || !phone) return { error: "Name and phone are required." }
 
@@ -288,7 +317,8 @@ export async function updateClient(formData: FormData) {
       address = ${address},
       street = ${street},
       district = ${district},
-      aadhaar_numbers = ${sql.json(aadhaarNumbers)}
+      aadhaar_numbers = ${sql.json(aadhaarNumbers)},
+      linked_numbers = ${sql.json(linkedNumbers)}
     WHERE id = ${id}
   `
   await logAudit(admin.id, "client.update", "client", id, { name })
@@ -297,13 +327,13 @@ export async function updateClient(formData: FormData) {
 }
 
 export async function registerClientWithProject(formData: FormData) {
-  const admin = await requireSuperAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const clientName = String(formData.get("client_name") || "").trim()
   const projectName = String(formData.get("project_name") || "").trim()
   const phone = String(formData.get("phone") || "").trim()
   const email = String(formData.get("email") || "").trim() || null
   const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers } = parseClientAddressFields(formData)
+  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
   if (!clientName || !phone) return { error: "Client name and phone are required." }
   if (!projectName) return { error: "Project name is required." }
@@ -314,8 +344,11 @@ export async function registerClientWithProject(formData: FormData) {
   if (existing.length) return { error: "A client with this phone already exists." }
 
   const clientRows = (await sql`
-    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers)
-    VALUES (${clientName}, ${phone}, ${email}, ${address}, ${street}, ${district}, ${sql.json(aadhaarNumbers)})
+    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+    VALUES (
+      ${clientName}, ${phone}, ${email}, ${address}, ${street}, ${district},
+      ${sql.json(aadhaarNumbers)}, ${sql.json(linkedNumbers)}
+    )
   `) as { id: number }[]
 
   const clientId = clientRows[0].id
@@ -339,18 +372,19 @@ function parseStaffActive(formData: FormData): boolean {
   return value === "on" || value === "true"
 }
 
-function isValidStaffRole(role: string): role is (typeof STAFF_ROLES)[number] {
-  return (STAFF_ROLES as readonly string[]).includes(role)
+async function isValidStaffRole(role: string): Promise<boolean> {
+  const allowed = await getStaffRoleLabels(false)
+  return allowed.includes(role)
 }
 
 export async function createStaff(formData: FormData) {
-  const admin = await requireAdminOrSuperAdmin()
+  const admin = await requireSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const username = String(formData.get("username") || "").trim()
   const password = String(formData.get("password") || "")
-  const roles = parseStaffRoles(formData)
+  const roles = await parseStaffRoles(formData)
   const legacyRole = String(formData.get("role") || "").trim()
-  if (!roles.length && isValidStaffRole(legacyRole)) {
+  if (!roles.length && (await isValidStaffRole(legacyRole))) {
     roles.push(legacyRole)
   }
   const email = String(formData.get("email") || "").trim() || null
@@ -362,7 +396,9 @@ export async function createStaff(formData: FormData) {
   }
   if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
   if (password.length < 6) return { error: "Password must be at least 6 characters." }
-  if (roles.some((role) => !isValidStaffRole(role))) return { error: "Invalid staff role." }
+  for (const role of roles) {
+    if (!(await isValidStaffRole(role))) return { error: "Invalid staff role." }
+  }
 
   const primaryRole = roles[0]
 
@@ -380,11 +416,20 @@ export async function createStaff(formData: FormData) {
   const staffId = rows[0].id
   await syncStaffRoles(staffId, roles)
 
+  const avatarResult = await resolveStaffAvatarFromForm(formData, staffId, null)
+  if (avatarResult.error) return { error: avatarResult.error }
+  if (avatarResult.avatarUrl) {
+    await sql`
+      UPDATE app_users SET avatar_url = ${avatarResult.avatarUrl} WHERE id = ${staffId}
+    `
+  }
+
   await logAudit(admin.id, "staff.create", "user", staffId, {
     name,
     username,
     role: primaryRole,
     roles,
+    avatar_url: avatarResult.avatarUrl,
   })
   revalidatePath("/admin/staff")
   revalidatePath("/admin/departments")
@@ -398,9 +443,9 @@ export async function updateStaff(formData: FormData) {
   const name = String(formData.get("name") || "").trim()
   const username = String(formData.get("username") || "").trim()
   const password = String(formData.get("password") || "")
-  const roles = parseStaffRoles(formData)
+  const roles = await parseStaffRoles(formData)
   const legacyRole = String(formData.get("role") || "").trim()
-  if (!roles.length && isValidStaffRole(legacyRole)) roles.push(legacyRole)
+  if (!roles.length && (await isValidStaffRole(legacyRole))) roles.push(legacyRole)
   const email = String(formData.get("email") || "").trim() || null
   const phone = String(formData.get("phone") || "").trim() || null
   const active = parseStaffActive(formData)
@@ -410,7 +455,9 @@ export async function updateStaff(formData: FormData) {
   }
   if (/\s/.test(username)) return { error: "Username cannot contain spaces." }
   if (password && password.length < 6) return { error: "Password must be at least 6 characters." }
-  if (roles.some((role) => !isValidStaffRole(role))) return { error: "Invalid staff role." }
+  for (const role of roles) {
+    if (!(await isValidStaffRole(role))) return { error: "Invalid staff role." }
+  }
   if (id === admin.id && !active) {
     return { error: "You cannot deactivate your own account." }
   }
@@ -418,8 +465,8 @@ export async function updateStaff(formData: FormData) {
   const primaryRole = roles[0]
 
   const current = (await sql`
-    SELECT id, role, password FROM app_users WHERE id = ${id} LIMIT 1
-  `) as { id: number; role: string; password: string }[]
+    SELECT id, role, password, avatar_url FROM app_users WHERE id = ${id} LIMIT 1
+  `) as { id: number; role: string; password: string; avatar_url: string | null }[]
   if (!current.length) return { error: "Staff member not found." }
   if (isPrivilegedRole(current[0].role)) {
     return { error: "Admin accounts cannot be edited here. Use Admin Management." }
@@ -430,12 +477,20 @@ export async function updateStaff(formData: FormData) {
   `) as { id: number }[]
   if (duplicate.length) return { error: "A user with this username already exists." }
 
+  const avatarResult = await resolveStaffAvatarFromForm(
+    formData,
+    id,
+    current[0].avatar_url ?? null,
+  )
+  if (avatarResult.error) return { error: avatarResult.error }
+
   const hash = password ? await hashPassword(password) : current[0].password
 
   await sql`
     UPDATE app_users
     SET username = ${username}, password = ${hash}, role = ${primaryRole}, name = ${name},
-        email = ${email}, phone = ${phone}, active = ${active}
+        email = ${email}, phone = ${phone}, active = ${active},
+        avatar_url = ${avatarResult.avatarUrl}
     WHERE id = ${id}
   `
   await syncStaffRoles(id, roles)
@@ -446,10 +501,12 @@ export async function updateStaff(formData: FormData) {
     role: primaryRole,
     roles,
     active,
+    avatar_url: avatarResult.avatarUrl,
   })
   revalidatePath("/admin/staff")
   revalidatePath("/admin/departments")
   revalidatePath("/admin/projects")
+  revalidatePath("/staff/profile")
   return { success: true }
 }
 
@@ -496,6 +553,508 @@ export async function deleteStaff(formData: FormData) {
   revalidatePath("/admin/departments")
   revalidatePath("/admin/projects")
   return { success: true }
+}
+
+// ---------- Departments ----------
+
+function revalidateServicePaths() {
+  revalidatePath("/admin/services")
+  revalidatePath("/admin/documents")
+  revalidatePath("/admin/projects")
+  revalidatePath("/admin/invoices")
+  revalidatePath("/admin/invoices/new")
+  revalidatePath("/admin")
+  revalidatePath("/staff")
+}
+
+function revalidateDocumentPaths() {
+  revalidatePath("/admin/documents")
+  revalidatePath("/admin/projects")
+  revalidatePath("/admin")
+  revalidatePath("/staff")
+}
+
+function revalidateDepartmentPaths() {
+  revalidatePath("/admin/departments")
+  revalidatePath("/admin/staff")
+  revalidatePath("/admin/projects")
+  revalidatePath("/admin")
+  revalidatePath("/staff")
+}
+
+export async function createDepartment(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const name = String(formData.get("name") || "").trim()
+  const roleLabelInput = String(formData.get("role_label") || "").trim()
+  const role_label = roleLabelInput || defaultRoleLabel(name)
+  const role_key = makeRoleKey(name)
+
+  if (!name) return { error: "Department name is required." }
+  if (name.length > 100) return { error: "Department name is too long." }
+  if (!role_label) return { error: "Staff role label is required." }
+
+  const existing = await listDepartments({ includeInactive: true })
+  if (existing.some((d) => d.name.toLowerCase() === name.toLowerCase())) {
+    return { error: "A department with this name already exists." }
+  }
+  if (existing.some((d) => d.role_label.toLowerCase() === role_label.toLowerCase())) {
+    return { error: "A department with this staff role already exists." }
+  }
+  if (existing.some((d) => d.role_key === role_key)) {
+    return { error: "A department with a similar name already exists." }
+  }
+
+  const maxSort = existing.reduce((max, d) => Math.max(max, d.sort_order), 0)
+
+  try {
+    const rows = (await sql`
+      INSERT INTO departments (name, role_label, role_key, sort_order, active)
+      VALUES (${name}, ${role_label}, ${role_key}, ${maxSort + 10}, 1)
+    `) as { id: number }[]
+
+    await logAudit(admin.id, "department.create", "department", rows[0].id, {
+      name,
+      role_label,
+      role_key,
+    })
+    revalidateDepartmentPaths()
+    return { success: true, departmentId: rows[0].id }
+  } catch (error) {
+    console.error("[departments] create failed:", error)
+    return { error: "Could not create department. Run db:migrate-departments if the table is missing." }
+  }
+}
+
+export async function updateDepartment(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  const name = String(formData.get("name") || "").trim()
+  const roleLabelInput = String(formData.get("role_label") || "").trim()
+  const active = formData.get("active") === "on" || formData.get("active") === "true"
+
+  if (!id || !name) return { error: "Department name is required." }
+  if (name.length > 100) return { error: "Department name is too long." }
+
+  const current = await getDepartmentById(id)
+  if (!current) return { error: "Department not found." }
+
+  const role_label = roleLabelInput || current.role_label || defaultRoleLabel(name)
+
+  const existing = await listDepartments({ includeInactive: true })
+  if (existing.some((d) => d.id !== id && d.name.toLowerCase() === name.toLowerCase())) {
+    return { error: "A department with this name already exists." }
+  }
+  if (existing.some((d) => d.id !== id && d.role_label.toLowerCase() === role_label.toLowerCase())) {
+    return { error: "A department with this staff role already exists." }
+  }
+
+  try {
+    await sql`
+      UPDATE departments
+      SET name = ${name}, role_label = ${role_label}, active = ${active}
+      WHERE id = ${id}
+    `
+
+    if (current.name !== name) {
+      await sql`UPDATE projects SET section = ${name} WHERE section = ${current.name}`
+      try {
+        await sql`UPDATE services SET section = ${name} WHERE section = ${current.name}`
+      } catch {
+        /* services table may be absent on older DBs */
+      }
+      try {
+        await sql`UPDATE workflow_steps SET section = ${name} WHERE section = ${current.name}`
+      } catch {
+        /* workflow_steps may be absent on older DBs */
+      }
+    }
+
+    if (current.role_label !== role_label) {
+      await sql`UPDATE app_users SET role = ${role_label} WHERE role = ${current.role_label}`
+      try {
+        await sql`UPDATE services SET role = ${role_label} WHERE role = ${current.role_label}`
+      } catch {
+        /* services table may be absent on older DBs */
+      }
+    }
+
+    await logAudit(admin.id, "department.update", "department", id, {
+      from: current.name,
+      to: name,
+      role_label,
+      active,
+    })
+    revalidateDepartmentPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[departments] update failed:", error)
+    return { error: "Could not update department." }
+  }
+}
+
+export async function deleteDepartment(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  if (!id) return { error: "Department is required." }
+
+  const current = await getDepartmentById(id)
+  if (!current) return { error: "Department not found." }
+
+  const projectCount = (await sql`
+    SELECT COUNT(*) AS count FROM projects WHERE section = ${current.name}
+  `) as { count: number }[]
+  if (Number(projectCount[0]?.count ?? 0) > 0) {
+    return {
+      error: `Cannot delete "${current.name}" while ${projectCount[0].count} project(s) still use it. Move or close those projects first.`,
+    }
+  }
+
+  const staffCount = (await sql`
+    SELECT COUNT(DISTINCT u.id) AS count
+    FROM app_users u
+    LEFT JOIN staff_roles sr ON sr.user_id = u.id
+    WHERE u.role = ${current.role_label} OR sr.role_key = ${current.role_key}
+  `) as { count: number }[]
+  if (Number(staffCount[0]?.count ?? 0) > 0) {
+    return {
+      error: `Cannot delete "${current.name}" while staff still have the "${current.role_label}" role. Reassign those staff first.`,
+    }
+  }
+
+  try {
+    await sql`DELETE FROM staff_roles WHERE role_key = ${current.role_key}`
+    await sql`DELETE FROM departments WHERE id = ${id}`
+    await logAudit(admin.id, "department.delete", "department", id, {
+      name: current.name,
+      role_label: current.role_label,
+      role_key: current.role_key,
+    })
+    revalidateDepartmentPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[departments] delete failed:", error)
+    return { error: "Could not delete department." }
+  }
+}
+
+// ---------- Project services (catalog) ----------
+
+export async function createProjectService(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const label = String(formData.get("label") || "").trim()
+    const section = String(formData.get("section") || "").trim()
+    const roleInput = String(formData.get("role") || "").trim()
+    const keyInput = String(formData.get("service_key") || "").trim()
+    const service_key = keyInput ? makeServiceKey(keyInput) : makeServiceKey(label)
+
+    if (!label) return { error: "Service name is required." }
+    if (label.length > 255) return { error: "Service name is too long." }
+    if (!section) return { error: "Department is required." }
+    if (!service_key) return { error: "Service key is required." }
+
+    const departments = await listDepartments({ activeOnly: true })
+    const dept = departments.find((d) => d.name === section)
+    if (!dept) return { error: "Select a valid department." }
+    const role = roleInput || dept.role_label
+
+    const dupKey = (await sql`
+      SELECT id FROM services WHERE service_key = ${service_key} LIMIT 1
+    `) as { id: number }[]
+    if (dupKey[0]) return { error: "A service with this key already exists." }
+
+    const dupLabel = (await sql`
+      SELECT id FROM services WHERE LOWER(label) = ${label.toLowerCase()} LIMIT 1
+    `) as { id: number }[]
+    if (dupLabel[0]) return { error: "A service with this name already exists." }
+
+    const sortRows = (await sql`
+      SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM services
+    `) as { max_sort: number }[]
+    const nextSort = Number(sortRows[0]?.max_sort ?? 0) + 1
+
+    const rows = (await sql`
+      INSERT INTO services (service_key, label, section, role, sort_order, active)
+      VALUES (${service_key}, ${label}, ${section}, ${role}, ${nextSort}, 1)
+    `) as { id: number }[]
+
+    const serviceId = Number(rows[0]?.id)
+    if (!serviceId) {
+      return { error: "Service was created but no id was returned. Please refresh and check the list." }
+    }
+
+    await logAudit(admin.id, "service.create", "service", serviceId, {
+      service_key,
+      label,
+      section,
+      role,
+    })
+    revalidateServicePaths()
+    return { success: true, serviceId }
+  } catch (error) {
+    console.error("[project-services] create failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Super Admin can manage services." }
+    }
+    return {
+      error: "Could not create service. Run db:migrate-workflow if the services table is missing.",
+    }
+  }
+}
+
+export async function updateProjectService(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const id = Number(formData.get("id"))
+    const label = String(formData.get("label") || "").trim()
+    const section = String(formData.get("section") || "").trim()
+    const roleInput = String(formData.get("role") || "").trim()
+    const sortOrder = Number(formData.get("sort_order") || 0)
+    const active = formData.get("active") === "on" || formData.get("active") === "true"
+
+    if (!id || !label) return { error: "Service name is required." }
+    if (label.length > 255) return { error: "Service name is too long." }
+    if (!section) return { error: "Department is required." }
+
+    const current = await getProjectServiceById(id)
+    if (!current) return { error: "Service not found." }
+
+    const departments = await listDepartments({ includeInactive: true })
+    const dept = departments.find((d) => d.name === section)
+    if (!dept) return { error: "Select a valid department." }
+    const role = roleInput || dept.role_label || current.role
+
+    const dupLabel = (await sql`
+      SELECT id FROM services
+      WHERE LOWER(label) = ${label.toLowerCase()} AND id <> ${id}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dupLabel[0]) return { error: "A service with this name already exists." }
+
+    await sql`
+      UPDATE services
+      SET label = ${label},
+          section = ${section},
+          role = ${role},
+          sort_order = ${Number.isFinite(sortOrder) ? sortOrder : current.sort_order},
+          active = ${active}
+      WHERE id = ${id}
+    `
+
+    if (current.label !== label || current.section !== section) {
+      try {
+        await sql`
+          UPDATE workflow_steps
+          SET label = ${label}, section = ${section}
+          WHERE service_key = ${current.service_key} AND step_type = 'service'
+        `
+        await sql`
+          UPDATE workflow_steps
+          SET section = ${section}
+          WHERE service_key = ${current.service_key} AND step_type = 'admin_review'
+        `
+      } catch {
+        /* workflow_steps may be absent */
+      }
+    }
+
+    await logAudit(admin.id, "service.update", "service", id, {
+      service_key: current.service_key,
+      from: current.label,
+      to: label,
+      section,
+      role,
+      active,
+    })
+    revalidateServicePaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[project-services] update failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Super Admin can manage services." }
+    }
+    return { error: "Could not update service." }
+  }
+}
+
+export async function deleteProjectService(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  if (!id) return { error: "Service is required." }
+
+  const current = await getProjectServiceById(id)
+  if (!current) return { error: "Service not found." }
+
+  try {
+    const usage = (await sql`
+      SELECT COUNT(*) AS count FROM project_services WHERE service_key = ${current.service_key}
+    `) as { count: number }[]
+    if (Number(usage[0]?.count ?? 0) > 0) {
+      return {
+        error: `Cannot delete "${current.label}" while ${usage[0].count} project(s) still use it. Hide it instead.`,
+      }
+    }
+
+    await sql`DELETE FROM services WHERE id = ${id}`
+    await logAudit(admin.id, "service.delete", "service", id, {
+      service_key: current.service_key,
+      label: current.label,
+    })
+    revalidateServicePaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[project-services] delete failed:", error)
+    return { error: "Could not delete service." }
+  }
+}
+
+// ---------- Document templates (catalog) ----------
+
+export async function createDocumentTemplate(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const label = String(formData.get("label") || "").trim()
+    const serviceKey = String(formData.get("service_key") || "").trim()
+
+    if (!label) return { error: "Document name is required." }
+    if (label.length > 255) return { error: "Document name is too long." }
+    if (!serviceKey) return { error: "Service is required." }
+
+    const service = await listProjectServiceDefs({ includeInactive: true }).then((rows) =>
+      rows.find((s) => s.key === serviceKey),
+    )
+    if (!service) return { error: "Select a valid service." }
+
+    const dup = (await sql`
+      SELECT id FROM document_templates
+      WHERE service_key = ${serviceKey} AND LOWER(label) = ${label.toLowerCase()}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dup[0]) return { error: "This document already exists for that service." }
+
+    const sortRows = (await sql`
+      SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM document_templates
+    `) as { max_sort: number }[]
+    const nextSort = Number(sortRows[0]?.max_sort ?? 0) + 1
+
+    const rows = (await sql`
+      INSERT INTO document_templates (service_key, label, sort_order, active)
+      VALUES (${serviceKey}, ${label}, ${nextSort}, 1)
+    `) as { id: number }[]
+
+    const documentId = Number(rows[0]?.id)
+    if (!documentId) {
+      return { error: "Document was created but no id was returned. Please refresh." }
+    }
+
+    await logAudit(admin.id, "document.create", "document_template", documentId, {
+      service_key: serviceKey,
+      label,
+    })
+    revalidateDocumentPaths()
+    return { success: true, documentId }
+  } catch (error) {
+    console.error("[document-templates] create failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Super Admin can manage documents." }
+    }
+    return {
+      error:
+        "Could not create document. Run npm run db:migrate-documents if the table is missing.",
+    }
+  }
+}
+
+export async function updateDocumentTemplate(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const id = Number(formData.get("id"))
+    const label = String(formData.get("label") || "").trim()
+    const serviceKey = String(formData.get("service_key") || "").trim()
+    const sortOrder = Number(formData.get("sort_order") || 0)
+    const active = formData.get("active") === "on" || formData.get("active") === "true"
+
+    if (!id || !label) return { error: "Document name is required." }
+    if (label.length > 255) return { error: "Document name is too long." }
+    if (!serviceKey) return { error: "Service is required." }
+
+    const current = await getDocumentTemplateById(id)
+    if (!current) return { error: "Document not found." }
+
+    const service = await listProjectServiceDefs({ includeInactive: true }).then((rows) =>
+      rows.find((s) => s.key === serviceKey),
+    )
+    if (!service) return { error: "Select a valid service." }
+
+    const dup = (await sql`
+      SELECT id FROM document_templates
+      WHERE service_key = ${serviceKey}
+        AND LOWER(label) = ${label.toLowerCase()}
+        AND id <> ${id}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dup[0]) return { error: "This document already exists for that service." }
+
+    await sql`
+      UPDATE document_templates
+      SET label = ${label},
+          service_key = ${serviceKey},
+          sort_order = ${Number.isFinite(sortOrder) ? sortOrder : current.sort_order},
+          active = ${active}
+      WHERE id = ${id}
+    `
+
+    await logAudit(admin.id, "document.update", "document_template", id, {
+      from: current.label,
+      to: label,
+      service_key: serviceKey,
+      active,
+    })
+    revalidateDocumentPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[document-templates] update failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Super Admin can manage documents." }
+    }
+    return { error: "Could not update document." }
+  }
+}
+
+export async function deleteDocumentTemplate(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  if (!id) return { error: "Document is required." }
+
+  const current = await getDocumentTemplateById(id)
+  if (!current) return { error: "Document not found." }
+
+  try {
+    const itemKey = `${current.service_key}::${current.label}`
+    const usage = (await sql`
+      SELECT COUNT(*) AS count FROM checklist_items WHERE item_key = ${itemKey}
+    `) as { count: number }[]
+    if (Number(usage[0]?.count ?? 0) > 0) {
+      return {
+        error: `Cannot delete "${current.label}" while ${usage[0].count} project(s) still reference it. Hide it instead.`,
+      }
+    }
+
+    await sql`DELETE FROM document_templates WHERE id = ${id}`
+    await logAudit(admin.id, "document.delete", "document_template", id, {
+      service_key: current.service_key,
+      label: current.label,
+    })
+    revalidateDocumentPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[document-templates] delete failed:", error)
+    return { error: "Could not delete document." }
+  }
 }
 
 // ---------- Admin account management (Super Admin only) ----------
@@ -692,6 +1251,56 @@ async function nextInvoiceNumber(): Promise<string> {
   return `INV-${year}-${String(next).padStart(4, "0")}`
 }
 
+async function nextDrawingNumber(): Promise<string> {
+  const year = new Date().getFullYear()
+  const prefix = `DRW-${year}-`
+  const rows = (await sql`
+    SELECT drawing_number FROM projects
+    WHERE drawing_number LIKE ${`${prefix}%`}
+  `) as { drawing_number: string }[]
+  let maxSeq = 0
+  for (const row of rows) {
+    const suffix = row.drawing_number.slice(prefix.length)
+    if (!/^\d+$/.test(suffix)) continue
+    const seq = Number.parseInt(suffix, 10)
+    if (seq > maxSeq) maxSeq = seq
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`
+}
+
+async function assertDrawingNumberAvailable(
+  drawingNumber: string | null,
+  excludeProjectId?: number,
+): Promise<string | null> {
+  if (!drawingNumber) return null
+  const rows = excludeProjectId
+    ? ((await sql`
+        SELECT id, name FROM projects
+        WHERE drawing_number = ${drawingNumber} AND id <> ${excludeProjectId}
+        LIMIT 1
+      `) as { id: number; name: string }[])
+    : ((await sql`
+        SELECT id, name FROM projects
+        WHERE drawing_number = ${drawingNumber}
+        LIMIT 1
+      `) as { id: number; name: string }[])
+  if (!rows.length) return null
+  return `Drawing number ${drawingNumber} is already used by "${rows[0].name}".`
+}
+
+export async function generateDrawingNumber() {
+  const user = await requireUser()
+  if (
+    !isAdmin(user) &&
+    !userHasRole(user, "Planning Staff") &&
+    user.role !== "Planning Staff"
+  ) {
+    return { error: "Only Admin or Planning Staff can generate drawing numbers." }
+  }
+  const drawingNumber = await nextDrawingNumber()
+  return { drawingNumber }
+}
+
 function parseResidentialDetails(formData: FormData, type: string | null) {
   if (!showsResidentialDetails(type)) {
     return {
@@ -726,9 +1335,13 @@ export async function createProject(formData: FormData) {
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
   const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const referName = String(formData.get("refer_name") || "").trim() || null
   const projectPackage = (String(formData.get("project_package") || "full") as ProjectPackage)
   const residential = parseResidentialDetails(formData, type)
-  const selectedServices = parseSelectedServices(formData, projectPackage)
+  const serviceCatalog = await listProjectServiceDefs({ activeOnly: true })
+  const selectedServices = parseSelectedServices(formData, projectPackage, serviceCatalog)
+  const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
+  const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
 
   if (!name || !clientId) return { error: "Project name and client are required." }
   if (
@@ -740,6 +1353,9 @@ export async function createProject(formData: FormData) {
     return { error: "Select at least one project service." }
   }
 
+  const drawingConflict = await assertDrawingNumberAvailable(drawingNumber)
+  if (drawingConflict) return { error: drawingConflict }
+
   const code = await nextProjectCode()
   const invoice = await nextInvoiceNumber()
 
@@ -747,19 +1363,19 @@ export async function createProject(formData: FormData) {
     INSERT INTO projects (
       code, name, client_id, location, type, priority, status, section, current_stage,
       due_date, project_amount, invoice_number, project_package,
-      building_number, building_permit_number, drawing_number,
+      building_number, building_permit_number, drawing_number, refer_name,
       req_architectural_plan, req_building_permit, req_regularization
     )
     VALUES (
       ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
       ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
-      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber},
+      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${referName},
       ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
     )
   `) as { id: number }[]
 
   const projectId = rows[0].id
-  await seedProjectWorkflow(projectId, selectedServices)
+  await seedProjectWorkflow(projectId, selectedServices, selectedDocuments)
 
   for (const floor of KMAP_FLOOR_ROWS) {
     await sql`
@@ -783,9 +1399,14 @@ export async function updateProjectDetails(formData: FormData) {
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
   const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
+  const referName = String(formData.get("refer_name") || "").trim() || null
   const residential = parseResidentialDetails(formData, type)
 
   if (!id || !name) return { error: "Project name is required." }
+
+  const drawingConflict = await assertDrawingNumberAvailable(drawingNumber, id)
+  if (drawingConflict) return { error: drawingConflict }
 
   await sql`
     UPDATE projects
@@ -794,6 +1415,8 @@ export async function updateProjectDetails(formData: FormData) {
         building_number = ${residential.buildingNumber},
         building_permit_number = ${residential.buildingPermitNumber},
         drawing_number = ${drawingNumber},
+        edgebook_number = ${edgebookNumber},
+        refer_name = ${referName},
         req_architectural_plan = ${residential.reqArchitecturalPlan},
         req_building_permit = ${residential.reqBuildingPermit},
         req_regularization = ${residential.reqRegularization},
@@ -873,19 +1496,22 @@ export async function assignToDepartment(formData: FormData) {
 
   if (!id || !section) return { error: "Select a department." }
 
+  const knownSections = await getDepartmentNames(true)
+  if (!knownSections.includes(section)) return { error: "Invalid department." }
+
   const stage = firstStageInSection(section)
   let staffId = assignee
+  const sectionRole = await roleForSection(section)
+  const roleKey = sectionRole ? await resolveRoleKey(sectionRole) : null
 
-  if (!staffId && SECTION_ROLE[section]) {
-    const role = SECTION_ROLE[section]
-    const roleKey = roleToKey(role)
+  if (!staffId && sectionRole) {
     const staff = (await sql`
       SELECT DISTINCT u.id
       FROM app_users u
       LEFT JOIN staff_roles sr ON sr.user_id = u.id
       WHERE u.active = true
         AND (
-          u.role = ${role}
+          u.role = ${sectionRole}
           OR (${roleKey} IS NOT NULL AND sr.role_key = ${roleKey})
         )
       ORDER BY u.id
@@ -905,8 +1531,8 @@ export async function assignToDepartment(formData: FormData) {
   if (staffId) {
     const project = await getProjectOrThrow(id)
     await notify(staffId, "Project Assigned", "Project in your department", project.name)
-  } else if (SECTION_ROLE[section]) {
-    await notifyRole(SECTION_ROLE[section], "Department queue updated", `Project moved to ${section}`)
+  } else if (sectionRole) {
+    await notifyRole(sectionRole, "Department queue updated", `Project moved to ${section}`)
   }
   await logAudit(admin.id, "project.move_department", "project", id, { section, staffId })
   revalidateProjectPaths(id)
@@ -1069,9 +1695,10 @@ export async function approveSectionReview(formData: FormData) {
   }
 
   let assignees = staffIds
-  const role = roleForStep(following)
+  const serviceCatalog = await listProjectServiceDefs({ includeInactive: true })
+  const role = roleForStep(following, serviceCatalog)
   if (!assignees.length && role) {
-    const roleKey = roleToKey(role)
+    const roleKey = (await resolveRoleKey(role)) ?? roleToKey(role)
     const staff = (await sql`
       SELECT DISTINCT u.id
       FROM app_users u
@@ -1355,15 +1982,31 @@ export async function updateProjectKmapAreas(formData: FormData) {
 
   if (!Array.isArray(areas)) return { error: "Invalid area data." }
 
-  const allowedKeys = new Set<string>(KMAP_FLOOR_ROWS.map((f) => f.key))
+  const keptKeys = new Set<string>()
+
   for (const row of areas) {
-    if (!allowedKeys.has(row.floor_key)) continue
+    if (!isValidKmapFloorKey(row.floor_key)) continue
     const plinth = row.plinth_area != null ? Number(row.plinth_area) : null
     const floor = row.floor_area != null ? Number(row.floor_area) : null
+    keptKeys.add(row.floor_key)
 
     await sql`
-      UPDATE project_kmap_areas
-      SET plinth_area = ${plinth}, floor_area = ${floor}
+      INSERT INTO project_kmap_areas (project_id, floor_key, plinth_area, floor_area)
+      VALUES (${projectId}, ${row.floor_key}, ${plinth}, ${floor})
+      ON DUPLICATE KEY UPDATE
+        plinth_area = ${plinth},
+        floor_area = ${floor}
+    `
+  }
+
+  const existing = (await sql`
+    SELECT floor_key FROM project_kmap_areas WHERE project_id = ${projectId}
+  `) as { floor_key: string }[]
+
+  for (const row of existing) {
+    if (keptKeys.has(row.floor_key)) continue
+    await sql`
+      DELETE FROM project_kmap_areas
       WHERE project_id = ${projectId} AND floor_key = ${row.floor_key}
     `
   }
@@ -1395,6 +2038,9 @@ export async function updateProjectDrawingNumber(formData: FormData) {
   } else {
     return { error: "Only Admin or Planning Staff can update the drawing number." }
   }
+
+  const drawingConflict = await assertDrawingNumberAvailable(drawingNumber, projectId)
+  if (drawingConflict) return { error: drawingConflict }
 
   await sql`
     UPDATE projects SET drawing_number = ${drawingNumber}, updated_at = now()
@@ -1460,33 +2106,131 @@ export async function deleteProjectFile(formData: FormData) {
 
 // ---------- Payments ----------
 
+async function syncProjectPaymentTotals(projectId: number) {
+  const sumRows = (await sql`
+    SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE project_id = ${projectId}
+  `) as { total: string }[]
+  const paid = Number(sumRows[0]?.total ?? 0)
+
+  const rows = (await sql`
+    SELECT project_amount FROM projects WHERE id = ${projectId}
+  `) as { project_amount: string }[]
+  const total = Number(rows[0]?.project_amount ?? 0)
+  const payStatus = paid <= 0 ? "Unpaid" : paid >= total && total > 0 ? "Paid" : "Partially Paid"
+
+  await sql`
+    UPDATE projects
+    SET advance_received = ${paid}, payment_status = ${payStatus}, updated_at = now()
+    WHERE id = ${projectId}
+  `
+}
+
 export async function recordPayment(formData: FormData) {
   const user = await requireBillingAccess()
   const projectId = Number(formData.get("project_id"))
   const amount = Number(formData.get("amount") || 0)
-  const method = String(formData.get("method") || "Cash")
+  const method = String(formData.get("method") || "Cash").trim()
   const note = String(formData.get("note") || "").trim() || null
   if (!projectId || amount <= 0) return { error: "Enter a valid amount." }
+  if (!PAYMENT_METHODS.includes(method as (typeof PAYMENT_METHODS)[number])) {
+    return { error: "Invalid payment method." }
+  }
 
   await sql`
     INSERT INTO payments (project_id, amount, method, note, recorded_by)
     VALUES (${projectId}, ${amount}, ${method}, ${note}, ${user.id})
   `
-  await sql`
-    UPDATE projects SET advance_received = advance_received + ${amount}, updated_at = now()
-    WHERE id = ${projectId}
-  `
-
-  const rows = (await sql`
-    SELECT project_amount, advance_received FROM projects WHERE id = ${projectId}
-  `) as { project_amount: string; advance_received: string }[]
-  const total = Number(rows[0]?.project_amount ?? 0)
-  const paid = Number(rows[0]?.advance_received ?? 0)
-  const payStatus = paid <= 0 ? "Unpaid" : paid >= total && total > 0 ? "Paid" : "Partially Paid"
-  await sql`UPDATE projects SET payment_status = ${payStatus} WHERE id = ${projectId}`
+  await syncProjectPaymentTotals(projectId)
 
   await logAudit(user.id, "payment.record", "project", projectId, { amount, method })
   revalidateProjectPaths(projectId)
+  revalidateBillingPaths()
+  return { success: true }
+}
+
+export async function updatePayment(formData: FormData) {
+  const user = await requireBillingAccess()
+  const id = Number(formData.get("id"))
+  const amount = Number(formData.get("amount") || 0)
+  const method = String(formData.get("method") || "Cash").trim()
+  const note = String(formData.get("note") || "").trim() || null
+
+  if (!id) return { error: "Payment is required." }
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter a valid amount." }
+  if (!PAYMENT_METHODS.includes(method as (typeof PAYMENT_METHODS)[number])) {
+    return { error: "Invalid payment method." }
+  }
+
+  const existing = (await sql`
+    SELECT id, project_id, amount, method, note FROM payments WHERE id = ${id} LIMIT 1
+  `) as {
+    id: number
+    project_id: number
+    amount: string
+    method: string
+    note: string | null
+  }[]
+  if (!existing.length) return { error: "Payment not found." }
+
+  const projectId = existing[0].project_id
+
+  await sql`
+    UPDATE payments
+    SET amount = ${amount}, method = ${method}, note = ${note}
+    WHERE id = ${id}
+  `
+  await syncProjectPaymentTotals(projectId)
+
+  await logAudit(user.id, "payment.update", "payment", id, {
+    projectId,
+    from: {
+      amount: existing[0].amount,
+      method: existing[0].method,
+      note: existing[0].note,
+    },
+    to: { amount, method, note },
+  })
+  revalidateProjectPaths(projectId)
+  revalidateBillingPaths()
+  return { success: true }
+}
+
+export async function deletePayment(formData: FormData) {
+  const user = await requireBillingAccess()
+  const id = Number(formData.get("id"))
+  const confirmation = String(formData.get("confirmation") || "").trim()
+
+  if (!id) return { error: "Payment is required." }
+
+  const existing = (await sql`
+    SELECT id, project_id, amount, method, note FROM payments WHERE id = ${id} LIMIT 1
+  `) as {
+    id: number
+    project_id: number
+    amount: string
+    method: string
+    note: string | null
+  }[]
+  if (!existing.length) return { error: "Payment not found." }
+
+  const expected = paymentDeleteConfirmationPhrase(id)
+  if (confirmation !== expected) {
+    return { error: `Type ${expected} exactly to confirm deletion.` }
+  }
+
+  const projectId = existing[0].project_id
+
+  await sql`DELETE FROM payments WHERE id = ${id}`
+  await syncProjectPaymentTotals(projectId)
+
+  await logAudit(user.id, "payment.delete", "payment", id, {
+    projectId,
+    amount: existing[0].amount,
+    method: existing[0].method,
+    note: existing[0].note,
+  })
+  revalidateProjectPaths(projectId)
+  revalidateBillingPaths()
   return { success: true }
 }
 
@@ -1533,7 +2277,8 @@ async function nextDocumentInvoiceNumber(): Promise<string> {
 function parseInvoiceForm(formData: FormData) {
   const lineItems = parseLineItemsJson(String(formData.get("line_items") || "[]"))
   const taxPercent = sanitizeInvoicePercent(String(formData.get("tax_percent") || 0))
-  const discountPercent = sanitizeInvoicePercent(String(formData.get("discount_percent") || 0))
+  // Line-level discounts are the source of truth; invoice-level % stays at 0.
+  const discountPercent = 0
   const totals = calculateInvoiceTotals(lineItems, taxPercent, discountPercent)
   const fields = sanitizeInvoiceFormFields({
     invoiceNumber: String(formData.get("invoice_number") || "").trim(),
@@ -1543,6 +2288,7 @@ function parseInvoiceForm(formData: FormData) {
     clientPhone: String(formData.get("client_phone") || "").trim(),
     clientTaxId: String(formData.get("client_tax_id") || "").trim(),
     projectName: String(formData.get("project_name") || "").trim(),
+    projectLocation: String(formData.get("project_location") || "").trim(),
     notes: String(formData.get("notes") || "").trim(),
     terms: String(formData.get("terms") || "").trim(),
   })
@@ -1558,6 +2304,7 @@ function parseInvoiceForm(formData: FormData) {
     clientPhone: fields.clientPhone || null,
     clientTaxId: fields.clientTaxId || null,
     projectName: fields.projectName || null,
+    projectLocation: fields.projectLocation || null,
     notes: fields.notes || null,
     terms: fields.terms || null,
     status: String(formData.get("status") || "Draft").trim() as InvoiceStatus,
@@ -1618,8 +2365,14 @@ export async function createInvoiceFromProject(projectId: number) {
 
   if (amount > 0) {
     await sql`
-      INSERT INTO invoice_line_items (invoice_id, description, quantity, unit, unit_price, amount, sort_order)
-      VALUES (${invoiceId}, ${`Architectural services — ${project.name}`}, 1, 'Nos', ${amount}, ${amount}, 0)
+      INSERT INTO invoice_line_items (
+        invoice_id, description, quantity, unit, unit_price,
+        discount_amount, discount_percent, amount, sort_order
+      )
+      VALUES (
+        ${invoiceId}, ${`Architectural services — ${project.name}`}, 1, 'Nos', ${amount},
+        0, 0, ${amount}, 0
+      )
     `
   }
 
@@ -1643,6 +2396,7 @@ export async function saveInvoice(formData: FormData) {
     clientPhone: data.clientPhone ?? "",
     clientTaxId: data.clientTaxId ?? "",
     projectName: data.projectName ?? "",
+    projectLocation: data.projectLocation ?? "",
     notes: data.notes ?? "",
     terms: data.terms ?? "",
   })
@@ -1674,7 +2428,7 @@ export async function saveInvoice(formData: FormData) {
         project_name     = ${data.projectName},
         notes            = ${data.notes},
         terms            = ${data.terms},
-        subtotal         = ${data.totals.subtotal},
+        subtotal         = ${data.totals.taxableAmount},
         tax_percent      = ${data.taxPercent},
         tax_amount       = ${data.totals.taxAmount},
         discount_percent = ${data.discountPercent},
@@ -1687,8 +2441,14 @@ export async function saveInvoice(formData: FormData) {
     await sql`DELETE FROM invoice_line_items WHERE invoice_id = ${id}`
     for (const item of data.storedLineItems) {
       await sql`
-        INSERT INTO invoice_line_items (invoice_id, description, quantity, unit, unit_price, amount, sort_order)
-        VALUES (${id}, ${item.description}, ${item.quantity}, ${item.unit ?? "Nos"}, ${item.unit_price}, ${item.amount}, ${item.sort_order ?? 0})
+        INSERT INTO invoice_line_items (
+          invoice_id, description, quantity, unit, unit_price,
+          discount_amount, discount_percent, amount, sort_order
+        )
+        VALUES (
+          ${id}, ${item.description}, ${item.quantity}, ${item.unit ?? "Nos"}, ${item.unit_price},
+          ${item.discount_amount ?? "0"}, ${item.discount_percent ?? "0"}, ${item.amount}, ${item.sort_order ?? 0}
+        )
       `
     }
     await logAudit(user.id, "invoice.update", "invoice", id, { invoiceNumber })
@@ -1707,7 +2467,7 @@ export async function saveInvoice(formData: FormData) {
       ${data.projectId}, ${invoiceNumber}, ${data.status}, ${data.invoiceDate}, ${data.dueDate},
       ${data.clientName}, ${data.clientAddress}, ${data.clientEmail}, ${data.clientPhone}, ${data.clientTaxId},
       ${data.projectName}, ${data.notes}, ${data.terms || DEFAULT_INVOICE_TERMS},
-      ${data.totals.subtotal}, ${data.taxPercent}, ${data.totals.taxAmount},
+      ${data.totals.taxableAmount}, ${data.taxPercent}, ${data.totals.taxAmount},
       ${data.discountPercent}, ${data.totals.discountAmount}, ${data.totals.total}, 0, ${data.totals.total}, ${user.id}
     )
   `) as { id: number }[]
@@ -1715,8 +2475,14 @@ export async function saveInvoice(formData: FormData) {
   const invoiceId = rows[0].id
   for (const item of data.storedLineItems) {
     await sql`
-      INSERT INTO invoice_line_items (invoice_id, description, quantity, unit, unit_price, amount, sort_order)
-      VALUES (${invoiceId}, ${item.description}, ${item.quantity}, ${item.unit ?? "Nos"}, ${item.unit_price}, ${item.amount}, ${item.sort_order ?? 0})
+      INSERT INTO invoice_line_items (
+        invoice_id, description, quantity, unit, unit_price,
+        discount_amount, discount_percent, amount, sort_order
+      )
+      VALUES (
+        ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unit ?? "Nos"}, ${item.unit_price},
+        ${item.discount_amount ?? "0"}, ${item.discount_percent ?? "0"}, ${item.amount}, ${item.sort_order ?? 0}
+      )
     `
   }
 
@@ -1782,6 +2548,89 @@ export async function recordInvoicePayment(formData: FormData) {
   return { success: true }
 }
 
+export async function deleteInvoicePayment(formData: FormData) {
+  const user = await requireBillingAccess()
+  const id = Number(formData.get("id"))
+  const confirmation = String(formData.get("confirmation") || "").trim()
+
+  if (!id) return { error: "Payment is required." }
+
+  const existing = (await sql`
+    SELECT id, invoice_id, amount, method, notes, payment_date
+    FROM invoice_payments
+    WHERE id = ${id}
+    LIMIT 1
+  `) as {
+    id: number
+    invoice_id: number
+    amount: string
+    method: string
+    notes: string | null
+    payment_date: string
+  }[]
+  if (!existing.length) return { error: "Payment not found." }
+
+  const expected = invoicePaymentDeleteConfirmationPhrase(id)
+  if (confirmation !== expected) {
+    return { error: `Type ${expected} exactly to confirm deletion.` }
+  }
+
+  const payment = existing[0]
+  const invoiceId = payment.invoice_id
+  const amount = Number(payment.amount)
+
+  await sql`DELETE FROM invoice_payments WHERE id = ${id}`
+
+  const invRows = (await sql`
+    SELECT total, amount_paid, project_id, status, due_date
+    FROM invoices
+    WHERE id = ${invoiceId}
+  `) as {
+    total: string
+    amount_paid: string
+    project_id: number | null
+    status: InvoiceStatus
+    due_date: string | null
+  }[]
+  const inv = invRows[0]
+  if (!inv) return { error: "Invoice not found." }
+
+  const newPaid = Math.max(0, Number(inv.amount_paid) - amount)
+  const total = Number(inv.total)
+  const balance = Math.max(0, total - newPaid)
+
+  let status: InvoiceStatus = inv.status
+  if (status !== "Cancelled" && status !== "Draft") {
+    if (newPaid >= total && total > 0) status = "Paid"
+    else if (newPaid > 0) status = "Partially Paid"
+    else if (
+      inv.due_date &&
+      new Date(inv.due_date) < new Date(new Date().toDateString())
+    ) {
+      status = "Overdue"
+    } else if (status === "Paid" || status === "Partially Paid" || status === "Overdue") {
+      status = "Pending"
+    }
+  }
+
+  await sql`
+    UPDATE invoices
+    SET amount_paid = ${newPaid}, balance = ${balance}, status = ${status}, updated_at = now()
+    WHERE id = ${invoiceId}
+  `
+
+  await logAudit(user.id, "invoice.payment.delete", "invoice", invoiceId, {
+    paymentId: id,
+    amount: payment.amount,
+    method: payment.method,
+    notes: payment.notes,
+    paymentDate: payment.payment_date,
+  })
+  revalidateBillingPaths(invoiceId)
+  if (inv.project_id) revalidateProjectPaths(inv.project_id)
+  return { success: true }
+}
+
 export async function markInvoiceSent(invoiceId: number) {
   const user = await requireBillingAccess()
   if (!invoiceId) return { error: "Invalid invoice." }
@@ -1820,6 +2669,32 @@ export async function saveOfficeProfile(formData: FormData) {
     logoDataUrl,
     termsAndConditions:
       String(formData.get("terms_and_conditions") || "").trim() || DEFAULT_INVOICE_TERMS,
+    tagline: String(formData.get("tagline") || "").trim() || existing.tagline,
+    bankName: String(formData.get("bank_name") || "").trim(),
+    accountName: String(formData.get("account_name") || "").trim(),
+    accountNumber: String(formData.get("account_number") || "").trim(),
+    ifsc: String(formData.get("ifsc") || "").trim(),
+    upiId: String(formData.get("upi_id") || "").trim(),
+    architectName: String(formData.get("architect_name") || "").trim(),
+    architectDesignation: String(formData.get("architect_designation") || "").trim(),
+  }
+
+  const qrRaw = String(formData.get("qr_code_data_url") || "").trim()
+  if (qrRaw === "") {
+    profile.qrCodeDataUrl = null
+  } else if (qrRaw !== "__KEEP__") {
+    if (qrRaw.startsWith("/") || qrRaw.startsWith("data:")) {
+      profile.qrCodeDataUrl = qrRaw
+    }
+  }
+
+  const sigRaw = String(formData.get("signature_data_url") || "").trim()
+  if (sigRaw === "") {
+    profile.signatureDataUrl = null
+  } else if (sigRaw !== "__KEEP__") {
+    if (sigRaw.startsWith("/") || sigRaw.startsWith("data:")) {
+      profile.signatureDataUrl = sigRaw
+    }
   }
 
   if (!profile.companyName) return { error: "Company name is required." }
@@ -1849,10 +2724,17 @@ export async function updateOwnProfile(formData: FormData) {
   if (!name) return { error: "Name is required." }
 
   const rows = (await sql`
-    SELECT password FROM app_users WHERE id = ${user.id} LIMIT 1
-  `) as { password: string }[]
+    SELECT password, avatar_url FROM app_users WHERE id = ${user.id} LIMIT 1
+  `) as { password: string; avatar_url: string | null }[]
   const stored = rows[0]?.password
   if (!stored) return { error: "Account not found." }
+
+  const avatarResult = await resolveStaffAvatarFromForm(
+    formData,
+    user.id,
+    rows[0].avatar_url ?? null,
+  )
+  if (avatarResult.error) return { error: avatarResult.error }
 
   if (newPassword) {
     if (!currentPassword) return { error: "Enter your current password to set a new one." }
@@ -1862,18 +2744,23 @@ export async function updateOwnProfile(formData: FormData) {
     const hash = await hashPassword(newPassword)
     await sql`
       UPDATE app_users
-      SET name = ${name}, email = ${email}, phone = ${phone}, password = ${hash}
+      SET name = ${name}, email = ${email}, phone = ${phone}, password = ${hash},
+          avatar_url = ${avatarResult.avatarUrl}
       WHERE id = ${user.id}
     `
   } else {
     await sql`
       UPDATE app_users
-      SET name = ${name}, email = ${email}, phone = ${phone}
+      SET name = ${name}, email = ${email}, phone = ${phone},
+          avatar_url = ${avatarResult.avatarUrl}
       WHERE id = ${user.id}
     `
   }
 
-  await logAudit(user.id, "profile.update", "user", user.id, { name })
+  await logAudit(user.id, "profile.update", "user", user.id, {
+    name,
+    avatar_url: avatarResult.avatarUrl,
+  })
   revalidatePath("/staff/profile")
   revalidatePath("/staff")
   return { success: true }

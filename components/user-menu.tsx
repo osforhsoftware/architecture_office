@@ -6,6 +6,7 @@ import type { AppUser } from "@/lib/types"
 import { formatRolesLabel } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { UserAvatar } from "@/components/user-avatar"
 
 export function UserMenu({
   user,
@@ -17,9 +18,7 @@ export function UserMenu({
   return (
     <div className={cn("flex items-center gap-2 sm:gap-3", className)}>
       <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-          {user.name.charAt(0)}
-        </div>
+        <UserAvatar name={user.name} avatarUrl={user.avatar_url} className="size-8" />
         <div className="hidden min-w-0 leading-tight sm:block">
           <p className="max-w-[10rem] truncate text-sm font-medium md:max-w-[12rem]">
             {user.name}

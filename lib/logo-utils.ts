@@ -49,6 +49,10 @@ export async function resolveLogoDataUrl(
 export async function resolveOfficeLogoForPdf(
   profile: OfficeProfile,
 ): Promise<OfficeProfile> {
-  const logoDataUrl = await resolveLogoDataUrl(profile.logoDataUrl)
-  return { ...profile, logoDataUrl }
+  const [logoDataUrl, qrCodeDataUrl, signatureDataUrl] = await Promise.all([
+    resolveLogoDataUrl(profile.logoDataUrl),
+    resolveLogoDataUrl(profile.qrCodeDataUrl),
+    resolveLogoDataUrl(profile.signatureDataUrl),
+  ])
+  return { ...profile, logoDataUrl, qrCodeDataUrl, signatureDataUrl }
 }

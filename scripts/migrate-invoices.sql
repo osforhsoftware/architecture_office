@@ -38,14 +38,16 @@ CREATE TABLE IF NOT EXISTS invoices (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS invoice_line_items (
-  id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  invoice_id   INT NOT NULL,
-  description  TEXT NOT NULL,
-  quantity     DECIMAL(10,2) DEFAULT 1,
-  unit         VARCHAR(50)   DEFAULT 'Nos',
-  unit_price   DECIMAL(12,2) DEFAULT 0,
-  amount       DECIMAL(12,2) DEFAULT 0,
-  sort_order   INT DEFAULT 0,
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  invoice_id       INT NOT NULL,
+  description      TEXT NOT NULL,
+  quantity         DECIMAL(10,2) DEFAULT 1,
+  unit             VARCHAR(50)   DEFAULT 'Nos',
+  unit_price       DECIMAL(12,2) DEFAULT 0,
+  discount_amount  DECIMAL(12,2) NOT NULL DEFAULT 0,
+  discount_percent DECIMAL(5,2)  NOT NULL DEFAULT 0,
+  amount           DECIMAL(12,2) DEFAULT 0,
+  sort_order       INT DEFAULT 0,
   CONSTRAINT fk_m_line_items_invoice FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

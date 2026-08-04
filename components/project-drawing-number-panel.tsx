@@ -5,7 +5,10 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { updateProjectDrawingNumber } from "@/lib/actions"
+import {
+  generateDrawingNumber,
+  updateProjectDrawingNumber,
+} from "@/lib/actions"
 import { formControlClass } from "@/components/form-section"
 
 export function ProjectDrawingNumberPanel({
@@ -19,6 +22,7 @@ export function ProjectDrawingNumberPanel({
 }) {
   const [value, setValue] = useState(drawingNumber ?? "")
   const [pending, startTransition] = useTransition()
+  const [generating, startGenerate] = useTransition()
 
   useEffect(() => {
     setValue(drawingNumber ?? "")
@@ -35,6 +39,22 @@ export function ProjectDrawingNumberPanel({
       else toast.success("Drawing number saved")
     })
   }
+
+  function onGenerate() {
+    startGenerate(async () => {
+      const res = await generateDrawingNumber()
+      if (res?.error) {
+        toast.error(res.error)
+        return
+      }
+      if (res?.drawingNumber) {
+        setValue(res.drawingNumber)
+        toast.success("Drawing number generated")
+      }
+    })
+  }
+
+  const busy = pending || generating
 
   return (
     <div className="flex flex-col gap-3">
@@ -53,17 +73,29 @@ export function ProjectDrawingNumberPanel({
             <Label htmlFor={`drawing-number-${projectId}`} className="text-sm font-medium">
               Drawing number
             </Label>
-            <Input
-              id={`drawing-number-${projectId}`}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="e.g. DRW-2024-001"
-              disabled={pending}
-              className={formControlClass}
-            />
+            <div className="flex gap-2">
+              <Input
+                id={`drawing-number-${projectId}`}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="e.g. DRW-2026-0001"
+                disabled={busy}
+                className={formControlClass}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={onGenerate}
+                className="shrink-0"
+              >
+                {generating ? "Generating..." : "Auto generate"}
+              </Button>
+            </div>
           </div>
           <div className="flex justify-end">
-            <Button type="button" size="sm" disabled={pending} onClick={onSave}>
+            <Button type="button" size="sm" disabled={busy} onClick={onSave}>
               {pending ? "Saving..." : "Save drawing number"}
             </Button>
           </div>
@@ -80,18 +112,49 @@ export function DrawingNumberField({
   idPrefix?: string
   defaultValue?: string
 }) {
+  const [value, setValue] = useState(defaultValue)
+  const [generating, startGenerate] = useTransition()
+
+  function onGenerate() {
+    startGenerate(async () => {
+      const res = await generateDrawingNumber()
+      if (res?.error) {
+        toast.error(res.error)
+        return
+      }
+      if (res?.drawingNumber) {
+        setValue(res.drawingNumber)
+        toast.success("Drawing number generated")
+      }
+    })
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={`${idPrefix}drawing_number`} className="text-sm font-medium">
         Drawing Number
       </Label>
-      <Input
-        id={`${idPrefix}drawing_number`}
-        name="drawing_number"
-        placeholder="e.g. DRW-2024-001"
-        defaultValue={defaultValue}
-        className={formControlClass}
-      />
+      <div className="flex gap-2">
+        <Input
+          id={`${idPrefix}drawing_number`}
+          name="drawing_number"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="e.g. DRW-2026-0001"
+          disabled={generating}
+          className={formControlClass}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={generating}
+          onClick={onGenerate}
+          className="shrink-0"
+        >
+          {generating ? "Generating..." : "Auto generate"}
+        </Button>
+      </div>
     </div>
   )
 }

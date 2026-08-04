@@ -1,9 +1,11 @@
 import { Suspense } from "react"
 import { getCurrentUser } from "@/lib/auth"
+import { getDepartmentNames } from "@/lib/departments"
+import { listProjectServiceDefs } from "@/lib/project-services"
+import { listDocumentTemplates, toDocumentOption } from "@/lib/document-templates"
 import { getClients, getProjectsPaginated } from "@/lib/queries"
 import {
   PROJECT_STATUSES,
-  SECTIONS,
   isSuperAdmin,
   userIsBillingStaff,
 } from "@/lib/constants"
@@ -32,7 +34,7 @@ export default async function AdminProjectsPage({
   const status = params.status ?? "all"
   const section = billingOnly ? "Billing" : (params.section ?? "all")
 
-  const [result, clients] = await Promise.all([
+  const [result, clients, departmentNames, services, documentRows] = await Promise.all([
     getProjectsPaginated({
       search,
       status,
@@ -42,7 +44,14 @@ export default async function AdminProjectsPage({
       pageSize: params.pageSize,
     }),
     billingOnly ? Promise.resolve([]) : getClients(),
+    getDepartmentNames(true),
+    listProjectServiceDefs({ activeOnly: true }),
+    billingOnly
+      ? Promise.resolve([])
+      : listDocumentTemplates({ activeOnly: true }),
   ])
+
+  const documentTemplates = documentRows.map(toDocumentOption)
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,7 +74,11 @@ export default async function AdminProjectsPage({
         {!billingOnly ? (
           <div className="flex flex-wrap gap-2">
             {isFullAdmin ? <ProjectsExportButton /> : null}
-            <ProjectDialog clients={clients} />
+            <ProjectDialog
+              clients={clients}
+              services={services}
+              documentTemplates={documentTemplates}
+            />
           </div>
         ) : null}
       </div>
@@ -77,7 +90,7 @@ export default async function AdminProjectsPage({
           status={status}
           section={section}
           statusOptions={[...PROJECT_STATUSES]}
-          sectionOptions={billingOnly ? ["Billing"] : [...SECTIONS]}
+          sectionOptions={billingOnly ? ["Billing"] : departmentNames}
           hideSectionFilter={billingOnly}
         />
       </Suspense>

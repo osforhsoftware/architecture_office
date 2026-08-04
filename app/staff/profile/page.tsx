@@ -11,9 +11,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { StaffProfileSettings } from "@/components/staff-profile-settings"
 import { StaffProjectCard } from "@/components/staff-project-card"
+import { UserAvatar } from "@/components/user-avatar"
 import { getCurrentUser } from "@/lib/auth"
 import { logoutAction } from "@/lib/actions"
-import { departmentForRole, formatRolesLabel, rolesOf } from "@/lib/constants"
+import { formatRolesLabel, rolesOf } from "@/lib/constants"
+import { getRoleSectionMap } from "@/lib/departments"
 import { getStaffAllProjects, getStaffDashboardStats } from "@/lib/queries"
 import { staffOwnsProject } from "@/lib/project-access"
 
@@ -31,15 +33,17 @@ export default async function StaffProfilePage() {
   if (!user) return null
 
   const roleLabel = formatRolesLabel(user)
-  const departmentLabel =
-    [...new Set(rolesOf(user).map((role) => departmentForRole(role)).filter(Boolean))].join(", ") ||
-    null
   const memberSince = formatMemberSince(user.created_at)
 
-  const [stats, projects] = await Promise.all([
+  const [stats, projects, roleSectionMap] = await Promise.all([
     getStaffDashboardStats(user.id, user.name),
     getStaffAllProjects(user.id, user.name),
+    getRoleSectionMap(),
   ])
+
+  const departmentLabel =
+    [...new Set(rolesOf(user).map((role) => roleSectionMap[role]).filter(Boolean))].join(", ") ||
+    null
 
   const completedProjects = projects
     .filter(
@@ -60,9 +64,12 @@ export default async function StaffProfilePage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
       <div className="flex flex-col items-center gap-3 pt-2 text-center">
-        <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 text-2xl font-semibold text-primary">
-          {user.name.charAt(0)}
-        </div>
+        <UserAvatar
+          name={user.name}
+          avatarUrl={user.avatar_url}
+          className="size-20 text-2xl"
+          textClassName="bg-primary/10 text-primary"
+        />
         <div>
           <h2 className="text-xl font-semibold">{user.name}</h2>
           <p className="text-sm text-muted-foreground">{roleLabel}</p>

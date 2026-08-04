@@ -93,9 +93,10 @@ function createPool(): mysql.Pool {
         const n = typeof val === "number" ? val : Number.parseFloat(String(val))
         return Number.isFinite(n) ? n : 0
       }
-      // JSON columns → parsed object
+      // JSON columns → parsed object.
+      // Use "utf-8" (not "utf8") so mysql2 skips the BINARY charset warning.
       if (field.type === "JSON") {
-        const val = field.string()
+        const val = field.string("utf-8")
         if (val === null) return null
         try {
           return JSON.parse(val)
@@ -116,7 +117,7 @@ declare global {
 }
 
 /** Bump when pool options (e.g. typeCast) change so dev HMR recreates the pool. */
-const MYSQL_POOL_VERSION = 3
+const MYSQL_POOL_VERSION = 4
 
 function poolConfigKey(): string {
   const c = parseMysqlConfig()
@@ -239,8 +240,9 @@ async function execSql(strings: TemplateStringsArray, ...values: unknown[]): Pro
 
   // INSERT / UPDATE / DELETE – return a synthetic id row when available
   const header = result as mysql.ResultSetHeader
-  if (typeof header.insertId === "number" && header.insertId > 0) {
-    return [{ id: header.insertId }]
+  const insertId = Number(header.insertId)
+  if (Number.isFinite(insertId) && insertId > 0) {
+    return [{ id: insertId }]
   }
   return []
 }

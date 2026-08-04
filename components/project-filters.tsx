@@ -10,10 +10,11 @@ import {
 } from "@/components/ui/select"
 import { PRIORITIES, PROJECT_STATUSES, SECTIONS } from "@/lib/constants"
 
-export function ProjectFilters() {
+export function ProjectFilters({ sectionOptions }: { sectionOptions?: string[] }) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
+  const sections = sectionOptions?.length ? sectionOptions : [...SECTIONS]
 
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(params.toString())
@@ -50,7 +51,7 @@ export function ProjectFilters() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All sections</SelectItem>
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <SelectItem key={s} value={s}>
               {s}
             </SelectItem>

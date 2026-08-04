@@ -17,6 +17,7 @@ import { ResidentialPropertyFields } from "@/components/residential-details-sect
 import { DrawingNumberField } from "@/components/project-drawing-number-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { openProjectPrint } from "@/components/project-print-button"
 import { createProject } from "@/lib/actions"
 import {
   PRIORITIES,
@@ -26,20 +27,54 @@ import {
   showsResidentialPropertyFields,
   type ResidentialServiceKey,
 } from "@/lib/constants"
-import { PROJECT_SERVICES } from "@/lib/workflow"
+import {
+  serviceByKey,
+  type DocumentTemplateOption,
+  type ProjectServiceDef,
+  type ServiceKey,
+} from "@/lib/workflow"
 import type { Client } from "@/lib/types"
+
+/** Residential custom keys that map into the workflow catalog. */
+const SERVICE_ALIASES: Record<string, ServiceKey> = {
+  architectural_plan: "architecture_design",
+}
+
+function resolveServiceKeys(
+  keys: readonly string[],
+  catalog: readonly ProjectServiceDef[],
+): ServiceKey[] {
+  const valid = new Set(catalog.map((s) => s.key))
+  const resolved: ServiceKey[] = []
+  for (const key of keys) {
+    const mapped = SERVICE_ALIASES[key] ?? key
+    if (!valid.has(mapped)) continue
+    if (!resolved.includes(mapped)) resolved.push(mapped)
+  }
+  return resolved
+}
 
 const TYPE_OPTIONS = PROJECT_TYPES.map((t) => ({ value: t, label: t }))
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }))
 
-export function ProjectDialog({ clients }: { clients: Client[] }) {
+export function ProjectDialog({
+  clients,
+  services,
+  documentTemplates = [],
+}: {
+  clients: Client[]
+  services: ProjectServiceDef[]
+  documentTemplates?: DocumentTemplateOption[]
+}) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projectType, setProjectType] = useState("Residential")
+  const [customType, setCustomType] = useState("")
   const [projectPackage, setProjectPackage] = useState<"full" | "custom">("full")
   const [selectedServices, setSelectedServices] = useState<string[]>([])
   const [pending, startTransition] = useTransition()
 
+  const isOtherType = projectType === "Other"
   const isResidential = showsResidentialDetails(projectType)
   const showPropertyFields =
     isResidential &&
@@ -60,20 +95,42 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
   )
 
   const serviceOptions = useMemo(() => {
-    const core = PROJECT_SERVICES.map((s) => ({ value: s.key, label: s.label }))
+    const core = services.map((s) => ({ value: s.key, label: s.label }))
     if (!isResidential) return core
 
     const residential = RESIDENTIAL_SERVICE_TYPES.map((s) => ({
-      value: s.key,
+      value: s.key as string,
       label: s.label,
     }))
-    const residentialKeys = new Set(residential.map((s) => s.value))
+    const residentialKeys = new Set<string>(residential.map((s) => s.value))
     return [...residential, ...core.filter((s) => !residentialKeys.has(s.value))]
-  }, [isResidential])
+  }, [isResidential, services])
+
+  const activeServiceKeys = useMemo(() => {
+    if (projectPackage === "full") return services.map((s) => s.key)
+    return resolveServiceKeys(selectedServices, services)
+  }, [projectPackage, selectedServices, services])
+
+  const documentOptions = useMemo(() => {
+    const selected = new Set(activeServiceKeys)
+    return documentTemplates
+      .filter((item) => selected.has(item.serviceKey))
+      .map((item) => ({
+        value: item.itemKey,
+        label: item.label,
+        description: serviceByKey(item.serviceKey, services)?.label ?? item.serviceKey,
+      }))
+  }, [activeServiceKeys, documentTemplates, services])
+
+  const documentSelectKey = useMemo(
+    () => `${projectPackage}:${activeServiceKeys.join(",")}`,
+    [projectPackage, activeServiceKeys],
+  )
 
   useEffect(() => {
     if (!open) return
     setProjectType("Residential")
+    setCustomType("")
     setProjectPackage("full")
     setSelectedServices([])
     setError(null)
@@ -81,6 +138,14 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
 
   function onSubmit(formData: FormData) {
     setError(null)
+    if (isOtherType) {
+      const custom = customType.trim()
+      if (!custom) {
+        setError("Please enter a custom project type.")
+        return
+      }
+      formData.set("type", custom)
+    }
     formData.set("project_package", projectPackage)
     startTransition(async () => {
       const res = await createProject(formData)
@@ -90,6 +155,9 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
       }
       toast.success("Project created")
       setOpen(false)
+      if (res?.projectId) {
+        openProjectPrint(res.projectId)
+      }
     })
   }
 
@@ -122,6 +190,24 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
                       />
                     </FormField>
 
+                    <FormField label="Refer name" htmlFor="project-refer-name">
+                      <Input
+                        id="project-refer-name"
+                        name="refer_name"
+                        placeholder="Who referred this project"
+                        className={formControlClass}
+                      />
+                    </FormField>
+
+                    <FormField label="Edgebook number" htmlFor="project-edgebook-number">
+                      <Input
+                        id="project-edgebook-number"
+                        name="edgebook_number"
+                        placeholder="e.g. EB-2024-001"
+                        className={formControlClass}
+                      />
+                    </FormField>
+
                     <FormField label="Client" htmlFor="project-client">
                       <FormSelect
                         id="project-client"
@@ -147,12 +233,41 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
                           id="project-type"
                           name="type"
                           value={projectType}
-                          onValueChange={(value) => setProjectType(value ?? "Residential")}
+                          onValueChange={(value) => {
+                            const next = value ?? "Residential"
+                            setProjectType(next)
+                            if (next !== "Other") setCustomType("")
+                          }}
                           options={TYPE_OPTIONS}
                           className={formControlClass}
                         />
                       </FormField>
                     </div>
+
+                    <AnimatePresence initial={false}>
+                      {isOtherType ? (
+                        <motion.div
+                          key="custom-project-type"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <FormField label="Custom type" htmlFor="project-custom-type">
+                            <Input
+                              id="project-custom-type"
+                              name="custom_type"
+                              value={customType}
+                              onChange={(e) => setCustomType(e.target.value)}
+                              placeholder="Enter project type"
+                              required
+                              className={formControlClass}
+                            />
+                          </FormField>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
 
                     <DrawingNumberField idPrefix="project-" />
                   </div>
@@ -221,6 +336,31 @@ export function ProjectDialog({ clients }: { clients: Client[] }) {
                     </div>
                   ) : null}
                 </FormSection>
+
+                {documentOptions.length > 0 ? (
+                  <FormSection title="Documents">
+                    <FormField label="Required documents">
+                      <FormMultiSelect
+                        key={documentSelectKey}
+                        name="documents"
+                        placeholder="Select documents for this project..."
+                        searchPlaceholder="Search documents..."
+                        options={documentOptions}
+                      />
+                    </FormField>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {projectPackage === "custom"
+                        ? "Pick only the documents needed for the selected services."
+                        : "Pick only the documents needed for this project."}
+                    </p>
+                  </FormSection>
+                ) : projectPackage === "custom" ? (
+                  <FormSection title="Documents">
+                    <p className="text-sm text-muted-foreground">
+                      Select services above to choose the documents required for this project.
+                    </p>
+                  </FormSection>
+                ) : null}
 
                 <FormSection title="Timeline & Budget">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

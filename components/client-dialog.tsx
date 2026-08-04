@@ -4,7 +4,12 @@ import { useEffect, useState, useTransition } from "react"
 import { Plus, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
-import { AadhaarFields } from "@/components/aadhaar-fields"
+import {
+  IdentityPairFields,
+  splitIdentityPairs,
+  zipIdentityPairs,
+  type IdentityPair,
+} from "@/components/identity-pair-fields"
 import {
   FormDialogBody,
   FormDialogFooter,
@@ -34,7 +39,9 @@ export function ClientDialog({ client }: { client?: Client }) {
   const [address, setAddress] = useState("")
   const [street, setStreet] = useState("")
   const [district, setDistrict] = useState<string | null>(null)
-  const [aadhaarNumbers, setAadhaarNumbers] = useState<string[]>([""])
+  const [identityPairs, setIdentityPairs] = useState<IdentityPair[]>([
+    { aadhaar: "", linked: "" },
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -44,18 +51,17 @@ export function ClientDialog({ client }: { client?: Client }) {
     setAddress(client?.address ?? "")
     setStreet(client?.street ?? "")
     setDistrict(client?.district ?? null)
-    setAadhaarNumbers(
-      client?.aadhaar_numbers?.length ? [...client.aadhaar_numbers] : [""],
+    setIdentityPairs(
+      zipIdentityPairs(client?.aadhaar_numbers ?? [], client?.linked_numbers ?? []),
     )
     setError(null)
   }, [open, client])
 
   function onSubmit(formData: FormData) {
     setError(null)
-    formData.set(
-      "aadhaar_numbers",
-      JSON.stringify(aadhaarNumbers.map((n) => n.trim()).filter(Boolean)),
-    )
+    const { aadhaarNumbers, linkedNumbers } = splitIdentityPairs(identityPairs)
+    formData.set("aadhaar_numbers", JSON.stringify(aadhaarNumbers))
+    formData.set("linked_numbers", JSON.stringify(linkedNumbers))
     startTransition(async () => {
       const res = isEdit ? await updateClient(formData) : await createClient(formData)
       if (res?.error) {
@@ -136,15 +142,14 @@ export function ClientDialog({ client }: { client?: Client }) {
 
                 <FormSection title="Address">
                   <div className="flex flex-col gap-3">
-                    <FormField label="Address" htmlFor={`${fieldId}-address`}>
-                      <Textarea
-                        id={`${fieldId}-address`}
-                        name="address"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        className={formTextareaClass}
-                      />
-                    </FormField>
+                    <Textarea
+                      id={`${fieldId}-address`}
+                      name="address"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className={formTextareaClass}
+                      aria-label="Address"
+                    />
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <FormField label="Street" htmlFor={`${fieldId}-street`}>
@@ -172,7 +177,7 @@ export function ClientDialog({ client }: { client?: Client }) {
                 </FormSection>
 
                 <FormSection title="Identity">
-                  <AadhaarFields values={aadhaarNumbers} onChange={setAadhaarNumbers} />
+                  <IdentityPairFields values={identityPairs} onChange={setIdentityPairs} />
                 </FormSection>
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}

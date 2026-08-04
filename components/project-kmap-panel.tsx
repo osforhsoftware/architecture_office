@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { Info } from "lucide-react"
+import { Info, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,11 +12,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { updateProjectKmapAreas } from "@/lib/actions"
-import { KMAP_FLOOR_ROWS } from "@/lib/constants"
+import {
+  KMAP_FLOOR_ROWS,
+  KMAP_MAX_FLOORS,
+  kmapFloorLabel,
+  kmapFloorNumber,
+  nextKmapFloorKey,
+} from "@/lib/constants"
 import type { ProjectKmapArea } from "@/lib/types"
 
 const TOTAL_TOOLTIP =
-  "Automatically calculated by adding all floor values (Ground + First + Second + Third)."
+  "Sum of all floor values, then multiplied by 9 for square feet."
+
+const DEFAULT_FLOOR_KEYS = new Set<string>(KMAP_FLOOR_ROWS.map((f) => f.key))
 
 type RowState = {
   floor_key: string
@@ -30,13 +38,22 @@ function toNumber(value: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function sortFloorKeys(keys: string[]): string[] {
+  return [...keys].sort((a, b) => kmapFloorNumber(a) - kmapFloorNumber(b))
+}
+
 function buildRows(areas: ProjectKmapArea[]): RowState[] {
   const byKey = new Map(areas.map((a) => [a.floor_key, a]))
-  return KMAP_FLOOR_ROWS.map((floor) => {
-    const row = byKey.get(floor.key)
+  const keys =
+    areas.length > 0
+      ? areas.map((a) => a.floor_key)
+      : KMAP_FLOOR_ROWS.map((floor) => floor.key)
+
+  return sortFloorKeys([...new Set(keys)]).map((key) => {
+    const row = byKey.get(key)
     return {
-      floor_key: floor.key,
-      label: floor.label,
+      floor_key: key,
+      label: kmapFloorLabel(key),
       plinth_area: row?.plinth_area != null ? String(row.plinth_area) : "",
       floor_area: row?.floor_area != null ? String(row.floor_area) : "",
     }
@@ -44,7 +61,8 @@ function buildRows(areas: ProjectKmapArea[]): RowState[] {
 }
 
 function formatTotal(value: number): string {
-  return `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })} m²`
+  const sqFt = value * 9
+  return `${sqFt.toLocaleString("en-IN", { maximumFractionDigits: 2 })} sq ft`
 }
 
 export function ProjectKmapPanel({
@@ -65,8 +83,37 @@ export function ProjectKmapPanel({
     return { plinth, floor }
   }, [rows])
 
+  const canAddFloor = rows.length < KMAP_MAX_FLOORS
+
   function updateRow(index: number, patch: Partial<RowState>) {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  }
+
+  function addFloor() {
+    const nextKey = nextKmapFloorKey(rows.map((row) => row.floor_key))
+    if (!nextKey) {
+      toast.error(`Maximum of ${KMAP_MAX_FLOORS} floors reached`)
+      return
+    }
+    if (rows.some((r) => r.floor_key === nextKey)) return
+
+    setRows((prev) =>
+      sortFloorKeys([...prev.map((row) => row.floor_key), nextKey]).map((key) => {
+        const existing = prev.find((row) => row.floor_key === key)
+        if (existing) return existing
+        return {
+          floor_key: nextKey,
+          label: kmapFloorLabel(nextKey),
+          plinth_area: "",
+          floor_area: "",
+        }
+      }),
+    )
+  }
+
+  function removeFloor(floorKey: string) {
+    if (DEFAULT_FLOOR_KEYS.has(floorKey)) return
+    setRows((prev) => prev.filter((row) => row.floor_key !== floorKey))
   }
 
   function onSave() {
@@ -83,17 +130,32 @@ export function ProjectKmapPanel({
     startTransition(async () => {
       const res = await updateProjectKmapAreas(fd)
       if (res?.error) toast.error(res.error)
-      else toast.success("K-Map areas saved")
+      else toast.success("Areas saved")
     })
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h3 className="text-sm font-semibold">K-Map Capture</h3>
-        <p className="text-xs text-muted-foreground">
-          Floor plinth and floor areas in square metres.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Area Capture</h3>
+          <p className="text-xs text-muted-foreground">
+            Floor plinth and floor areas in square feet.
+          </p>
+        </div>
+
+        {!readOnly ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending || !canAddFloor}
+            onClick={addFloor}
+          >
+            <Plus className="size-4" />
+            Add floor
+          </Button>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border/60">
@@ -101,8 +163,9 @@ export function ProjectKmapPanel({
           <thead>
             <tr className="border-b border-border/60 bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-3 py-2.5 font-medium">Floor</th>
-              <th className="px-3 py-2.5 font-medium">Plinth Area (M²)</th>
-              <th className="px-3 py-2.5 font-medium">Floor Area (M²)</th>
+              <th className="px-3 py-2.5 font-medium">Plinth Area (Sq Ft)</th>
+              <th className="px-3 py-2.5 font-medium">Floor Area (Sq Ft)</th>
+              {!readOnly ? <th className="w-12 px-2 py-2.5" /> : null}
             </tr>
           </thead>
           <tbody>
@@ -135,6 +198,23 @@ export function ProjectKmapPanel({
                     className="h-8"
                   />
                 </td>
+                {!readOnly ? (
+                  <td className="px-2 py-2">
+                    {!DEFAULT_FLOOR_KEYS.has(row.floor_key) ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        disabled={pending}
+                        onClick={() => removeFloor(row.floor_key)}
+                        aria-label={`Remove ${row.label}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    ) : null}
+                  </td>
+                ) : null}
               </tr>
             ))}
             <tr className="bg-muted/30 font-semibold">
@@ -163,6 +243,7 @@ export function ProjectKmapPanel({
               <td className="px-3 py-2.5 tabular-nums" aria-live="polite">
                 {formatTotal(totals.floor)}
               </td>
+              {!readOnly ? <td /> : null}
             </tr>
           </tbody>
         </table>
@@ -171,7 +252,7 @@ export function ProjectKmapPanel({
       {!readOnly ? (
         <div className="flex justify-end">
           <Button type="button" size="sm" disabled={pending} onClick={onSave}>
-            {pending ? "Saving..." : "Save K-Map areas"}
+            {pending ? "Saving..." : "Save areas"}
           </Button>
         </div>
       ) : null}

@@ -11,8 +11,11 @@ import {
 import { ArrowRight, Building2 } from "lucide-react"
 import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
+import { DepartmentDialog } from "@/components/department-dialog"
+import { DepartmentDeleteDialog } from "@/components/department-delete-dialog"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
+import { Badge } from "@/components/ui/badge"
 import type { PaginatedResult } from "@/lib/pagination"
 import type { DepartmentRow } from "@/lib/queries"
 
@@ -32,7 +35,10 @@ function DepartmentsTableInner({ result, search }: DepartmentsDataTableProps) {
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Building2 className="size-4" />
             </div>
-            <span className="font-medium">{row.original.section}</span>
+            <div className="flex flex-col">
+              <span className="font-medium">{row.original.section}</span>
+              <span className="text-xs text-muted-foreground">{row.original.role_label}</span>
+            </div>
           </div>
         ),
       },
@@ -58,15 +64,29 @@ function DepartmentsTableInner({ result, search }: DepartmentsDataTableProps) {
         ),
       },
       {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) =>
+          row.original.active_flag ? (
+            <Badge variant="secondary">Active</Badge>
+          ) : (
+            <Badge variant="outline">Hidden</Badge>
+          ),
+      },
+      {
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <Link
-            href={`/admin/projects?section=${encodeURIComponent(row.original.section)}`}
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            View projects <ArrowRight className="size-3" />
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link
+              href={`/admin/projects?section=${encodeURIComponent(row.original.section)}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              View projects <ArrowRight className="size-3" />
+            </Link>
+            <DepartmentDialog department={row.original} />
+            <DepartmentDeleteDialog department={row.original} />
+          </div>
         ),
       },
     ],

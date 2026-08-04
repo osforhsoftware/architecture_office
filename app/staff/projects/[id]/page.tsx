@@ -12,6 +12,7 @@ import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { PriorityBadge, StatusBadge } from "@/components/status-badges"
 import { getCurrentUser } from "@/lib/auth"
 import { isOfficeAdmin, projectProgressPercent, userIsPlanningStaff } from "@/lib/constants"
+import { getDepartmentNames, getSectionRoleMap } from "@/lib/departments"
 import {
   getChecklist,
   getCurrentWorkflowStep,
@@ -58,7 +59,7 @@ export default async function StaffProjectDetailPage({
   const canEditDrawingNumber =
     isPlanningStaff && canEdit && project.section === "Planning & Design"
 
-  const [staff, checklist, files, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep] = await Promise.all([
+  const [staff, checklist, files, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap] = await Promise.all([
     getStaffUsers(),
     getChecklist(projectId),
     getProjectFiles(projectId),
@@ -67,6 +68,8 @@ export default async function StaffProjectDetailPage({
     getProjectKmapAreas(projectId),
     getWorkflowSteps(projectId),
     getCurrentWorkflowStep(projectId),
+    getDepartmentNames(true),
+    getSectionRoleMap(),
   ])
 
   const stage = currentStep
@@ -127,6 +130,8 @@ export default async function StaffProjectDetailPage({
               isAdmin={false}
               userRole={user.role}
               readOnly={false}
+              departmentOptions={departmentOptions}
+              sectionRoleMap={sectionRoleMap}
             />
           </CardContent>
         </Card>
@@ -144,6 +149,8 @@ export default async function StaffProjectDetailPage({
               isAdmin={false}
               userRole={user.role}
               readOnly
+              departmentOptions={departmentOptions}
+              sectionRoleMap={sectionRoleMap}
             />
           </CardContent>
         </Card>

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS app_users (
   name        VARCHAR(255) NOT NULL,
   email       VARCHAR(255),
   phone       VARCHAR(50),
+  avatar_url  VARCHAR(500),
   active      TINYINT(1) NOT NULL DEFAULT 1,
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -26,6 +27,20 @@ CREATE TABLE IF NOT EXISTS staff_roles (
     FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Dynamic office departments (section names + linked staff role labels/keys).
+CREATE TABLE IF NOT EXISTS departments (
+  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  role_label  VARCHAR(100) NOT NULL,
+  role_key    VARCHAR(50)  NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0,
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_departments_name (name),
+  UNIQUE KEY uq_departments_role_key (role_key),
+  UNIQUE KEY uq_departments_role_label (role_label)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS clients (
   id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name             VARCHAR(500) NOT NULL,
@@ -35,6 +50,7 @@ CREATE TABLE IF NOT EXISTS clients (
   street           VARCHAR(500),
   district         VARCHAR(100),
   aadhaar_numbers  JSON,
+  linked_numbers   JSON,
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -59,6 +75,8 @@ CREATE TABLE IF NOT EXISTS projects (
   building_number  VARCHAR(100),
   building_permit_number VARCHAR(100),
   drawing_number   VARCHAR(100),
+  edgebook_number  VARCHAR(100),
+  refer_name       VARCHAR(255),
   req_architectural_plan TINYINT(1) DEFAULT 0,
   req_building_permit    TINYINT(1) DEFAULT 0,
   req_regularization     TINYINT(1) DEFAULT 0,
@@ -68,7 +86,8 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_projects_client   FOREIGN KEY (client_id)   REFERENCES clients(id),
-  CONSTRAINT fk_projects_assigned FOREIGN KEY (assigned_to) REFERENCES app_users(id)
+  CONSTRAINT fk_projects_assigned FOREIGN KEY (assigned_to) REFERENCES app_users(id),
+  UNIQUE KEY uq_projects_drawing_number (drawing_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS project_assignees (
@@ -92,12 +111,38 @@ CREATE TABLE IF NOT EXISTS services (
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT IGNORE INTO services (service_key, label, section, role, sort_order) VALUES
+  ('site_survey', 'Site Survey / Measurement', 'Planning & Design', 'Planning Staff', 1),
+  ('architecture_design', 'Architecture Design', 'Planning & Design', 'Planning Staff', 2),
+  ('concept_design', 'Concept Design', 'Planning & Design', 'Planning Staff', 3),
+  ('plot_sketch', 'Plot Sketch', 'Planning & Design', 'Planning Staff', 4),
+  ('building_permit', 'Building Permit', 'Building Permit', 'Permit Staff', 5),
+  ('permit_renewal', 'Permit Renewal', 'Building Permit', 'Permit Staff', 6),
+  ('3d_elevation', '3D Elevation', '3D & Interior', '3D Staff', 7),
+  ('interior_design', 'Interior Design', '3D & Interior', '3D Staff', 8),
+  ('working_drawings', 'Working Drawings', 'Estimation & Construction', 'Estimation Staff', 9),
+  ('estimation', 'Estimation', 'Estimation & Construction', 'Estimation Staff', 10),
+  ('construction_supervision', 'Construction Supervision', 'Estimation & Construction', 'Estimation Staff', 11),
+  ('valuation', 'Valuation Course', 'Estimation & Construction', 'Estimation Staff', 12);
+
 CREATE TABLE IF NOT EXISTS project_services (
   project_id   INT NOT NULL,
   service_key  VARCHAR(100) NOT NULL,
   created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (project_id, service_key),
   CONSTRAINT fk_ps_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS document_templates (
+  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  service_key VARCHAR(100) NOT NULL,
+  label       VARCHAR(255) NOT NULL,
+  sort_order  INT NOT NULL DEFAULT 0,
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_document_template (service_key, label),
+  KEY idx_document_templates_service (service_key),
+  KEY idx_document_templates_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS workflow_steps (
@@ -275,14 +320,16 @@ CREATE TABLE IF NOT EXISTS invoices (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS invoice_line_items (
-  id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  invoice_id   INT NOT NULL,
-  description  TEXT NOT NULL,
-  quantity     DECIMAL(10,2) DEFAULT 1,
-  unit         VARCHAR(50)   DEFAULT 'Nos',
-  unit_price   DECIMAL(12,2) DEFAULT 0,
-  amount       DECIMAL(12,2) DEFAULT 0,
-  sort_order   INT DEFAULT 0,
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  invoice_id       INT NOT NULL,
+  description      TEXT NOT NULL,
+  quantity         DECIMAL(10,2) DEFAULT 1,
+  unit             VARCHAR(50)   DEFAULT 'Nos',
+  unit_price       DECIMAL(12,2) DEFAULT 0,
+  discount_amount  DECIMAL(12,2) NOT NULL DEFAULT 0,
+  discount_percent DECIMAL(5,2)  NOT NULL DEFAULT 0,
+  amount           DECIMAL(12,2) DEFAULT 0,
+  sort_order       INT DEFAULT 0,
   CONSTRAINT fk_line_items_invoice FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -325,5 +372,304 @@ CREATE INDEX IF NOT EXISTS idx_invoices_due_date         ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at       ON invoices(created_at);
 CREATE INDEX IF NOT EXISTS idx_invoice_line_items_inv    ON invoice_line_items(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_inv      ON invoice_payments(invoice_id);
+
+-- ---------------------------------------------------------------------------
+-- Finance & Expense Management (see also scripts/migrate-finance.sql)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS income_categories (
+  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  icon        VARCHAR(100) DEFAULT 'CircleDollarSign',
+  color       VARCHAR(50)  DEFAULT '#16a34a',
+  active      TINYINT(1)   DEFAULT 1,
+  sort_order  INT          DEFAULT 0,
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_income_categories_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS expense_categories (
+  id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  icon        VARCHAR(100) DEFAULT 'Receipt',
+  color       VARCHAR(50)  DEFAULT '#dc2626',
+  active      TINYINT(1)   DEFAULT 1,
+  sort_order  INT          DEFAULT 0,
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_expense_categories_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_accounts (
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name             VARCHAR(255) NOT NULL,
+  account_type     VARCHAR(50)  NOT NULL DEFAULT 'bank',
+  bank_name        VARCHAR(255),
+  account_number   VARCHAR(100),
+  opening_balance  DECIMAL(14,2) NOT NULL DEFAULT 0,
+  current_balance  DECIMAL(14,2) NOT NULL DEFAULT 0,
+  active           TINYINT(1)    DEFAULT 1,
+  notes            TEXT,
+  deleted_at       DATETIME,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_finance_accounts_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS vendors (
+  id                   INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name                 VARCHAR(500) NOT NULL,
+  phone                VARCHAR(50),
+  email                VARCHAR(255),
+  gst                  VARCHAR(50),
+  address              TEXT,
+  notes                TEXT,
+  outstanding_balance  DECIMAL(14,2) NOT NULL DEFAULT 0,
+  active               TINYINT(1) DEFAULT 1,
+  deleted_at           DATETIME,
+  created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at           DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_income (
+  id                INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  receipt_number    VARCHAR(50)  NOT NULL,
+  income_date       DATE         NOT NULL,
+  client_id         INT,
+  project_id        INT,
+  invoice_id        INT,
+  category_id       INT,
+  account_id        INT,
+  payment_method    VARCHAR(100) NOT NULL,
+  amount            DECIMAL(14,2) NOT NULL,
+  reference_number  VARCHAR(255),
+  notes             TEXT,
+  attachment_path   TEXT,
+  status            VARCHAR(50)  NOT NULL DEFAULT 'Approved',
+  created_by        INT,
+  approved_by       INT,
+  approved_at       DATETIME,
+  deleted_at        DATETIME,
+  created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_finance_income_receipt (receipt_number),
+  CONSTRAINT fk_fi_client   FOREIGN KEY (client_id)   REFERENCES clients(id)            ON DELETE SET NULL,
+  CONSTRAINT fk_fi_project  FOREIGN KEY (project_id)  REFERENCES projects(id)           ON DELETE SET NULL,
+  CONSTRAINT fk_fi_invoice  FOREIGN KEY (invoice_id)  REFERENCES invoices(id)           ON DELETE SET NULL,
+  CONSTRAINT fk_fi_category FOREIGN KEY (category_id) REFERENCES income_categories(id)  ON DELETE SET NULL,
+  CONSTRAINT fk_fi_account  FOREIGN KEY (account_id)  REFERENCES finance_accounts(id)   ON DELETE SET NULL,
+  CONSTRAINT fk_fi_creator  FOREIGN KEY (created_by)  REFERENCES app_users(id)          ON DELETE SET NULL,
+  CONSTRAINT fk_fi_approver FOREIGN KEY (approved_by) REFERENCES app_users(id)          ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_expenses (
+  id                INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  expense_number    VARCHAR(50)  NOT NULL,
+  expense_date      DATE         NOT NULL,
+  vendor_id         INT,
+  project_id        INT,
+  category_id       INT,
+  account_id        INT,
+  amount            DECIMAL(14,2) NOT NULL,
+  gst_amount        DECIMAL(14,2) NOT NULL DEFAULT 0,
+  payment_method    VARCHAR(100) NOT NULL,
+  reference_number  VARCHAR(255),
+  notes             TEXT,
+  bill_path         TEXT,
+  status            VARCHAR(50)  NOT NULL DEFAULT 'Draft',
+  created_by        INT,
+  approved_by       INT,
+  approved_at       DATETIME,
+  paid_at           DATETIME,
+  deleted_at        DATETIME,
+  created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_finance_expenses_number (expense_number),
+  CONSTRAINT fk_fe_vendor   FOREIGN KEY (vendor_id)   REFERENCES vendors(id)              ON DELETE SET NULL,
+  CONSTRAINT fk_fe_project  FOREIGN KEY (project_id)  REFERENCES projects(id)             ON DELETE SET NULL,
+  CONSTRAINT fk_fe_category FOREIGN KEY (category_id) REFERENCES expense_categories(id)   ON DELETE SET NULL,
+  CONSTRAINT fk_fe_account  FOREIGN KEY (account_id)  REFERENCES finance_accounts(id)     ON DELETE SET NULL,
+  CONSTRAINT fk_fe_creator  FOREIGN KEY (created_by)  REFERENCES app_users(id)            ON DELETE SET NULL,
+  CONSTRAINT fk_fe_approver FOREIGN KEY (approved_by) REFERENCES app_users(id)            ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS staff_expenses (
+  id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  claim_number        VARCHAR(50)  NOT NULL,
+  staff_id            INT NOT NULL,
+  project_id          INT,
+  category            VARCHAR(100) NOT NULL,
+  amount              DECIMAL(14,2) NOT NULL,
+  claim_date          DATE NOT NULL,
+  receipt_path        TEXT,
+  gps_lat             DECIMAL(10,7),
+  gps_lng             DECIMAL(10,7),
+  notes               TEXT,
+  status              VARCHAR(50) NOT NULL DEFAULT 'Submitted',
+  dept_reviewed_by    INT,
+  dept_reviewed_at    DATETIME,
+  admin_approved_by   INT,
+  admin_approved_at   DATETIME,
+  paid_by             INT,
+  paid_at             DATETIME,
+  account_id          INT,
+  rejection_reason    TEXT,
+  deleted_at          DATETIME,
+  created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_staff_expenses_claim (claim_number),
+  CONSTRAINT fk_se_staff    FOREIGN KEY (staff_id)          REFERENCES app_users(id)        ON DELETE CASCADE,
+  CONSTRAINT fk_se_project  FOREIGN KEY (project_id)        REFERENCES projects(id)         ON DELETE SET NULL,
+  CONSTRAINT fk_se_dept     FOREIGN KEY (dept_reviewed_by)  REFERENCES app_users(id)        ON DELETE SET NULL,
+  CONSTRAINT fk_se_admin    FOREIGN KEY (admin_approved_by) REFERENCES app_users(id)        ON DELETE SET NULL,
+  CONSTRAINT fk_se_paid     FOREIGN KEY (paid_by)           REFERENCES app_users(id)        ON DELETE SET NULL,
+  CONSTRAINT fk_se_account  FOREIGN KEY (account_id)        REFERENCES finance_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS vendor_payments (
+  id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  vendor_id       INT NOT NULL,
+  expense_id      INT,
+  amount          DECIMAL(14,2) NOT NULL,
+  payment_date    DATE NOT NULL,
+  payment_method  VARCHAR(100) NOT NULL,
+  account_id      INT,
+  reference       VARCHAR(255),
+  notes           TEXT,
+  created_by      INT,
+  deleted_at      DATETIME,
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_vp_vendor  FOREIGN KEY (vendor_id)  REFERENCES vendors(id)            ON DELETE CASCADE,
+  CONSTRAINT fk_vp_expense FOREIGN KEY (expense_id) REFERENCES finance_expenses(id)   ON DELETE SET NULL,
+  CONSTRAINT fk_vp_account FOREIGN KEY (account_id) REFERENCES finance_accounts(id)   ON DELETE SET NULL,
+  CONSTRAINT fk_vp_creator FOREIGN KEY (created_by) REFERENCES app_users(id)          ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS bank_transfers (
+  id                INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  transfer_number   VARCHAR(50) NOT NULL,
+  from_account_id   INT NOT NULL,
+  to_account_id     INT NOT NULL,
+  amount            DECIMAL(14,2) NOT NULL,
+  transfer_date     DATE NOT NULL,
+  reference         VARCHAR(255),
+  notes             TEXT,
+  created_by        INT,
+  deleted_at        DATETIME,
+  created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_bank_transfers_number (transfer_number),
+  CONSTRAINT fk_bt_from    FOREIGN KEY (from_account_id) REFERENCES finance_accounts(id),
+  CONSTRAINT fk_bt_to      FOREIGN KEY (to_account_id)   REFERENCES finance_accounts(id),
+  CONSTRAINT fk_bt_creator FOREIGN KEY (created_by)      REFERENCES app_users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_transactions (
+  id                  INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  transaction_number  VARCHAR(50)  NOT NULL,
+  transaction_date    DATE         NOT NULL,
+  txn_type            VARCHAR(50)  NOT NULL,
+  account_id          INT,
+  amount              DECIMAL(14,2) NOT NULL,
+  direction           VARCHAR(10)  NOT NULL,
+  payment_method      VARCHAR(100),
+  project_id          INT,
+  description         TEXT,
+  ref_type            VARCHAR(50),
+  ref_id              INT,
+  created_by          INT,
+  deleted_at          DATETIME,
+  created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_finance_txn_number (transaction_number),
+  CONSTRAINT fk_ft_account FOREIGN KEY (account_id)  REFERENCES finance_accounts(id) ON DELETE SET NULL,
+  CONSTRAINT fk_ft_project FOREIGN KEY (project_id)  REFERENCES projects(id)         ON DELETE SET NULL,
+  CONSTRAINT fk_ft_creator FOREIGN KEY (created_by)  REFERENCES app_users(id)        ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cash_book (
+  id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  entry_date       DATE NOT NULL,
+  transaction_id   VARCHAR(50) NOT NULL,
+  income_amount    DECIMAL(14,2) NOT NULL DEFAULT 0,
+  expense_amount   DECIMAL(14,2) NOT NULL DEFAULT 0,
+  balance          DECIMAL(14,2) NOT NULL DEFAULT 0,
+  account_id       INT,
+  payment_method   VARCHAR(100),
+  project_id       INT,
+  description      TEXT,
+  entry_type       VARCHAR(50) NOT NULL DEFAULT 'transaction',
+  ref_type         VARCHAR(50),
+  ref_id           INT,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cb_account FOREIGN KEY (account_id) REFERENCES finance_accounts(id) ON DELETE SET NULL,
+  CONSTRAINT fk_cb_project FOREIGN KEY (project_id) REFERENCES projects(id)         ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS project_finance (
+  id                 INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  project_id         INT NOT NULL,
+  project_value      DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_income       DECIMAL(14,2) NOT NULL DEFAULT 0,
+  total_expense      DECIMAL(14,2) NOT NULL DEFAULT 0,
+  advance_received   DECIMAL(14,2) NOT NULL DEFAULT 0,
+  balance_amount     DECIMAL(14,2) NOT NULL DEFAULT 0,
+  net_profit         DECIMAL(14,2) NOT NULL DEFAULT 0,
+  profit_percent     DECIMAL(8,2)  NOT NULL DEFAULT 0,
+  updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_project_finance_project (project_id),
+  CONSTRAINT fk_pf_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_attachments (
+  id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  entity_type  VARCHAR(50)  NOT NULL,
+  entity_id    INT          NOT NULL,
+  file_name    VARCHAR(500) NOT NULL,
+  file_path    TEXT         NOT NULL,
+  mime_type    VARCHAR(100),
+  uploaded_by  INT,
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_fa_uploader FOREIGN KEY (uploaded_by) REFERENCES app_users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS approval_logs (
+  id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  entity_type  VARCHAR(50)  NOT NULL,
+  entity_id    INT          NOT NULL,
+  action       VARCHAR(100) NOT NULL,
+  from_status  VARCHAR(50),
+  to_status    VARCHAR(50),
+  user_id      INT,
+  comment      TEXT,
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_al_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_notifications (
+  id           INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id      INT NOT NULL,
+  type         VARCHAR(100) NOT NULL,
+  title        VARCHAR(500) NOT NULL,
+  message      TEXT,
+  entity_type  VARCHAR(50),
+  entity_id    INT,
+  `read`       TINYINT(1) DEFAULT 0,
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_fn_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS finance_settings (
+  `key`       VARCHAR(255) NOT NULL PRIMARY KEY,
+  value       JSON NOT NULL,
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX IF NOT EXISTS idx_fi_date        ON finance_income(income_date);
+CREATE INDEX IF NOT EXISTS idx_fi_status      ON finance_income(status);
+CREATE INDEX IF NOT EXISTS idx_fe_date        ON finance_expenses(expense_date);
+CREATE INDEX IF NOT EXISTS idx_fe_status      ON finance_expenses(status);
+CREATE INDEX IF NOT EXISTS idx_se_staff       ON staff_expenses(staff_id);
+CREATE INDEX IF NOT EXISTS idx_ft_date        ON finance_transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_cb_date        ON cash_book(entry_date);
+CREATE INDEX IF NOT EXISTS idx_vendors_name   ON vendors(name);
+CREATE INDEX IF NOT EXISTS idx_fn_user_read   ON finance_notifications(user_id, `read`);
 
 SET FOREIGN_KEY_CHECKS = 1;

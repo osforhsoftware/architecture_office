@@ -48,7 +48,7 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   try {
     const rows = (await withDbRetry(
       () => sql`
-        SELECT id, username, role, name, email, phone, active, created_at
+        SELECT id, username, role, name, email, phone, avatar_url, active, created_at
         FROM app_users
         WHERE id = ${userId}
         LIMIT 1

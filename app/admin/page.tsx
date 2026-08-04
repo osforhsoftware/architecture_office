@@ -6,9 +6,9 @@ import { getCurrentUser } from "@/lib/auth"
 import {
   ADMIN_ROLE,
   PROJECT_STATUSES,
-  SECTIONS,
   formatCurrency,
 } from "@/lib/constants"
+import { getDepartmentNames } from "@/lib/departments"
 import {
   getDashboardStats,
   getKpiSparklines,
@@ -47,7 +47,7 @@ export default async function AdminDashboard({
   const status = params.status ?? "all"
   const section = params.section ?? "all"
 
-  const [stats, sparklines, revenueTrend, projectsResult, returned, payments, staffPerf] =
+  const [stats, sparklines, revenueTrend, projectsResult, returned, payments, staffPerf, departmentNames] =
     await Promise.all([
       getDashboardStats(),
       getKpiSparklines(),
@@ -62,6 +62,7 @@ export default async function AdminDashboard({
       getReturnedProjects(),
       getRecentPayments(5),
       getStaffPerformance(),
+      getDepartmentNames(true),
     ])
 
   const currentMonth = toSafeNumber(
@@ -277,7 +278,7 @@ export default async function AdminDashboard({
             status={status}
             section={section}
             statusOptions={[...PROJECT_STATUSES]}
-            sectionOptions={[...SECTIONS]}
+            sectionOptions={departmentNames}
           />
         </Suspense>
       </div>

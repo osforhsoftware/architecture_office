@@ -39,6 +39,8 @@ export function ProjectWorkflowPanel({
   staff,
   isAdmin,
   readOnly = false,
+  departmentOptions,
+  sectionRoleMap,
 }: {
   project: Project
   workflowSteps: WorkflowStepRecord[]
@@ -47,6 +49,10 @@ export function ProjectWorkflowPanel({
   isAdmin: boolean
   userRole: string
   readOnly?: boolean
+  /** Active department names for the move-to-department select */
+  departmentOptions?: string[]
+  /** section name → staff role label */
+  sectionRoleMap?: Record<string, string>
 }) {
   const [pending, startTransition] = useTransition()
   const [status, setStatus] = useState(project.status)
@@ -56,10 +62,13 @@ export function ProjectWorkflowPanel({
   }, [project.status])
 
   const multiAssign = currentStep ? allowsMultiAssignee(currentStep) : false
-  const stepRole = currentStep ? roleForStep(currentStep) : null
+  const roleMap = sectionRoleMap ?? SECTION_ROLE
+  const stepRole = currentStep
+    ? roleForStep(currentStep) ?? roleMap[currentStep.section] ?? null
+    : null
   const sectionStaff = staff.filter((s) => {
     if (stepRole) return userHasRole(s, stepRole)
-    const sectionRole = SECTION_ROLE[project.section]
+    const sectionRole = roleMap[project.section]
     return sectionRole ? userHasRole(s, sectionRole) : false
   })
 
@@ -83,9 +92,10 @@ export function ProjectWorkflowPanel({
     [staff],
   )
 
+  const sections = departmentOptions?.length ? departmentOptions : [...SECTIONS]
   const sectionOptions = useMemo(
-    () => SECTIONS.map((s) => ({ value: s, label: s })),
-    [],
+    () => sections.map((s) => ({ value: s, label: s })),
+    [sections],
   )
 
   const completedCount = workflowSteps.filter((s) => s.step_status === "completed").length

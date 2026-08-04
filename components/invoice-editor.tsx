@@ -3,15 +3,17 @@
 import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  Download,
-  Mail,
-  Plus,
-  Printer,
-  Save,
-  Trash2,
-} from "lucide-react"
+import { Download, Mail, Printer, Save } from "lucide-react"
 import { toast } from "sonner"
+import { InvoiceLineItemsTable } from "@/components/invoice/invoice-line-items-table"
+import {
+  InvoiceFooterPreview,
+  InvoiceNotesSection,
+  InvoicePaymentDetails,
+  InvoiceTermsSection,
+} from "@/components/invoice/invoice-sections"
+import { InvoiceTotalsPanel } from "@/components/invoice/invoice-totals-panel"
+import { InvoicePaymentDeleteDialog } from "@/components/invoice-payment-delete-dialog"
 import { InvoiceStatusBadge } from "@/components/status-badges"
 import { FormSelect } from "@/components/form-select"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -36,48 +38,57 @@ import { INVOICE_STATUSES, PAYMENT_METHODS, formatCurrency } from "@/lib/constan
 import { apiUrl } from "@/lib/app-urls"
 import {
   calculateInvoiceTotals,
-  formatInvoiceCurrency,
   INVOICE_LIMITS,
-  parseInvoiceInputNumber,
   sanitizeInvoiceFormFields,
   sanitizeInvoicePercent,
   sanitizeInvoiceText,
   sanitizeLineItemInput,
   toDateInputValue,
+  type InvoiceServicePreset,
   type LineItemInput,
 } from "@/lib/invoice-utils"
 import type { InvoicePayment, InvoiceStatus, InvoiceWithDetails, OfficeProfile } from "@/lib/types"
 import type { InvoiceProjectOption } from "@/lib/queries"
 
 function emptyLineItem(): LineItemInput {
-  return { description: "", quantity: 1, unit: "1", unit_price: 0, amount: 0 }
+  return sanitizeLineItemInput({
+    description: "",
+    quantity: 1,
+    unit: "Nos",
+    unit_price: 0,
+    discount_amount: 0,
+    discount_percent: 0,
+  })
 }
-
-const LINE_ITEM_COLS =
-  "sm:grid-cols-[minmax(0,1fr)_6.5rem_6.5rem_5.5rem_minmax(7.5rem,auto)_2.25rem]"
-const LINE_ITEM_ROW = `grid gap-2 sm:grid sm:items-end sm:gap-x-2 ${LINE_ITEM_COLS}`
 
 function applyProjectToForm(project: InvoiceProjectOption): Pick<
   InvoiceFormState,
-  "projectId" | "projectName" | "clientName" | "clientPhone" | "clientEmail" | "clientAddress" | "clientTaxId"
+  | "projectId"
+  | "projectName"
+  | "projectLocation"
+  | "clientName"
+  | "clientPhone"
+  | "clientEmail"
+  | "clientAddress"
+  | "clientTaxId"
 > {
   return {
     projectId: project.id,
     projectName: sanitizeInvoiceText(project.name, INVOICE_LIMITS.maxProjectNameLength),
+    projectLocation: sanitizeInvoiceText(
+      project.location ?? "",
+      INVOICE_LIMITS.maxProjectLocationLength,
+    ),
     clientName: sanitizeInvoiceText(project.client_name, INVOICE_LIMITS.maxClientNameLength),
     clientPhone: sanitizeInvoiceText(project.client_phone, INVOICE_LIMITS.maxClientPhoneLength),
     clientEmail: sanitizeInvoiceText(project.client_email, INVOICE_LIMITS.maxClientEmailLength),
-    clientAddress: sanitizeInvoiceText(project.client_address, INVOICE_LIMITS.maxClientAddressLength),
+    clientAddress: sanitizeInvoiceText(
+      project.client_address,
+      INVOICE_LIMITS.maxClientAddressLength,
+    ),
     clientTaxId: "",
   }
 }
-
-const CLIENT_FIELDS = [
-  ["clientName", "Client Name", "text", INVOICE_LIMITS.maxClientNameLength],
-  ["clientPhone", "Phone", "tel", INVOICE_LIMITS.maxClientPhoneLength],
-  ["clientEmail", "Email", "email", INVOICE_LIMITS.maxClientEmailLength],
-  ["clientTaxId", "GST Number", "text", INVOICE_LIMITS.maxClientTaxIdLength],
-] as const
 
 interface InvoiceFormState {
   invoiceNumber: string
@@ -89,10 +100,10 @@ interface InvoiceFormState {
   clientPhone: string
   clientTaxId: string
   projectName: string
+  projectLocation: string
   notes: string
   terms: string
   taxPercent: number
-  discountPercent: number
   status: InvoiceStatus
   projectId: number | null
 }
@@ -112,6 +123,7 @@ function buildInitialForm(
       clientPhone: invoice.client_phone ?? "",
       clientTaxId: invoice.client_tax_id ?? "",
       projectName: invoice.project_name ?? "",
+      projectLocation: invoice.project_location ?? "",
       notes: invoice.notes ?? "",
       terms: invoice.terms ?? profile.termsAndConditions,
     })
@@ -125,10 +137,10 @@ function buildInitialForm(
       clientPhone: fields.clientPhone,
       clientTaxId: fields.clientTaxId,
       projectName: fields.projectName,
+      projectLocation: fields.projectLocation,
       notes: fields.notes,
       terms: fields.terms,
       taxPercent: sanitizeInvoicePercent(invoice.tax_percent ?? 18),
-      discountPercent: sanitizeInvoicePercent(invoice.discount_percent ?? 0),
       status: invoice.status ?? "Draft",
       projectId: invoice.project_id ?? null,
     }
@@ -146,7 +158,6 @@ function buildInitialForm(
       notes: fields.notes,
       terms: fields.terms,
       taxPercent: 18,
-      discountPercent: 0,
       status: "Draft",
       clientName: fields.clientName,
       clientAddress: fields.clientAddress,
@@ -154,6 +165,7 @@ function buildInitialForm(
       clientPhone: fields.clientPhone,
       clientTaxId: fields.clientTaxId,
       projectName: fields.projectName,
+      projectLocation: fields.projectLocation,
       projectId: preselectedProject.id,
     }
   }
@@ -168,10 +180,10 @@ function buildInitialForm(
     clientPhone: emptyFields.clientPhone,
     clientTaxId: emptyFields.clientTaxId,
     projectName: emptyFields.projectName,
+    projectLocation: emptyFields.projectLocation,
     notes: emptyFields.notes,
     terms: profile.termsAndConditions.slice(0, INVOICE_LIMITS.maxTermsLength),
     taxPercent: 18,
-    discountPercent: 0,
     status: "Draft",
     projectId: null,
   }
@@ -183,12 +195,14 @@ export function InvoiceEditor({
   suggestedInvoiceNumber,
   projects = [],
   initialProjectId,
+  servicePresets,
 }: {
   invoice?: InvoiceWithDetails
   profile: OfficeProfile
   suggestedInvoiceNumber?: string
   projects?: InvoiceProjectOption[]
   initialProjectId?: number
+  servicePresets?: InvoiceServicePreset[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -209,6 +223,8 @@ export function InvoiceEditor({
           quantity: Number(item.quantity) || 1,
           unit: item.unit ?? "Nos",
           unit_price: Number(item.unit_price) || 0,
+          discount_amount: Number(item.discount_amount) || 0,
+          discount_percent: Number(item.discount_percent) || 0,
         }),
       )
     }
@@ -241,7 +257,7 @@ export function InvoiceEditor({
 
   function handleProjectChange(value: string) {
     if (value === "none") {
-      setForm((f) => ({ ...f, projectId: null, projectName: "" }))
+      setForm((f) => ({ ...f, projectId: null, projectName: "", projectLocation: "" }))
       return
     }
     const project = projects.find((p) => String(p.id) === value)
@@ -263,9 +279,11 @@ export function InvoiceEditor({
   }
 
   const totals = useMemo(
-    () => calculateInvoiceTotals(lineItems, form.taxPercent, form.discountPercent),
-    [lineItems, form.taxPercent, form.discountPercent],
+    () => calculateInvoiceTotals(lineItems, form.taxPercent, 0),
+    [lineItems, form.taxPercent],
   )
+
+  const amountPaid = Number(invoice?.amount_paid ?? 0)
 
   function updateLineItem(index: number, patch: Partial<LineItemInput>) {
     setLineItems((items) =>
@@ -276,21 +294,9 @@ export function InvoiceEditor({
     )
   }
 
-  function handleQuantityChange(index: number, raw: string) {
-    const quantity = parseInvoiceInputNumber(raw)
-    updateLineItem(index, { quantity })
-  }
-
-  function handleUnitPriceChange(index: number, raw: string) {
-    const unit_price = parseInvoiceInputNumber(raw)
-    updateLineItem(index, { unit_price })
-  }
-
   function addLineItem() {
     setLineItems((items) =>
-      items.length >= INVOICE_LIMITS.maxLineItems
-        ? items
-        : [...items, emptyLineItem()],
+      items.length >= INVOICE_LIMITS.maxLineItems ? items : [...items, emptyLineItem()],
     )
   }
 
@@ -312,10 +318,11 @@ export function InvoiceEditor({
       fd.set("client_phone", form.clientPhone)
       fd.set("client_tax_id", form.clientTaxId)
       fd.set("project_name", form.projectName)
+      fd.set("project_location", form.projectLocation)
       fd.set("notes", form.notes)
       fd.set("terms", form.terms)
       fd.set("tax_percent", String(form.taxPercent))
-      fd.set("discount_percent", String(form.discountPercent))
+      fd.set("discount_percent", "0")
       fd.set("status", form.status)
       fd.set("line_items", JSON.stringify(lineItems.filter((i) => i.description.trim())))
 
@@ -364,7 +371,10 @@ export function InvoiceEditor({
                 <>
                   {" "}
                   ·{" "}
-                  <Link href={`/admin/projects/${invoice.project_id}`} className="text-primary hover:underline">
+                  <Link
+                    href={`/admin/projects/${invoice.project_id}`}
+                    className="text-primary hover:underline"
+                  >
                     View project
                   </Link>
                 </>
@@ -372,7 +382,7 @@ export function InvoiceEditor({
             </p>
           ) : isNew ? (
             <p className="mt-1 text-sm text-muted-foreground">
-              Fill in the details below, then create the invoice to download PDF or print.
+              Premium architecture invoice — live totals update as you edit.
             </p>
           ) : null}
         </div>
@@ -429,36 +439,45 @@ export function InvoiceEditor({
         </div>
       </div>
 
-      <div className="invoice-editor-form flex flex-col gap-4">
-          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <h3 className="text-sm font-semibold">Invoice Details</h3>
+      <div className="invoice-editor-form grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* Header meta */}
+          <section className="border border-neutral-900/15 bg-white p-5">
+            <div className="flex flex-col gap-4 border-b border-neutral-900/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                  {profile.companyName || "Architecture Studio"}
+                </p>
+                <p className="mt-1 text-xs text-neutral-400">
+                  {profile.tagline || "Architecture • Interiors • Planning"}
+                </p>
+              </div>
+              <div className="sm:text-right">
+                <p className="text-2xl font-semibold tracking-[0.08em] text-neutral-900">INVOICE</p>
+                <div className="mt-1 h-0.5 w-full bg-[#19B5D8] sm:ml-auto sm:w-28" />
+              </div>
+            </div>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label>Project</Label>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Project
+                </Label>
                 <FormSelect
                   value={form.projectId ? String(form.projectId) : "none"}
                   onValueChange={(value) => value && handleProjectChange(value)}
                   placeholder="Select a project"
+                  searchPlaceholder="Search projects..."
+                  searchable
+                  emptyMessage="No projects match your search."
                   options={projectOptions}
+                  className="rounded-none border-neutral-900/15"
                 />
-                {form.projectId ? (
-                  <p className="text-xs text-muted-foreground">
-                    Linked to project · appears in project billing history ·{" "}
-                    <Link
-                      href={`/admin/projects/${form.projectId}`}
-                      className="text-primary hover:underline"
-                    >
-                      View project
-                    </Link>
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Select a project to auto-fill client details and link this invoice
-                  </p>
-                )}
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Invoice Number</Label>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Invoice Number
+                </Label>
                 <Input
                   value={form.invoiceNumber}
                   maxLength={INVOICE_LIMITS.maxInvoiceNumberLength}
@@ -473,10 +492,13 @@ export function InvoiceEditor({
                   }
                   placeholder="Auto-generated"
                   readOnly={!isNew}
+                  className="rounded-none border-neutral-900/15"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Status</Label>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Status
+                </Label>
                 <Select
                   value={form.status}
                   onValueChange={(v) => {
@@ -494,258 +516,208 @@ export function InvoiceEditor({
                     }
                   }}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="rounded-none border-neutral-900/15">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {INVOICE_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Invoice Date</Label>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Invoice Date
+                </Label>
                 <Input
                   type="date"
                   value={form.invoiceDate}
                   onChange={(e) => setForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+                  className="rounded-none border-neutral-900/15"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Due Date</Label>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Due Date
+                </Label>
                 <Input
                   type="date"
                   value={form.dueDate}
                   onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  className="rounded-none border-neutral-900/15"
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <h3 className="text-sm font-semibold">Client Information</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {CLIENT_FIELDS.map(([key, label, type, maxLength]) => (
-                <div key={key} className="flex flex-col gap-2">
-                  <Label>{label}</Label>
-                  <Input
-                    type={type}
-                    maxLength={maxLength}
-                    value={form[key as keyof typeof form] as string}
+          {/* Bill To / Project */}
+          <section className="grid border border-neutral-900/15 bg-white sm:grid-cols-2">
+            <div className="border-b border-neutral-900/10 p-5 sm:border-b-0 sm:border-r">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-900">
+                Bill To
+              </h3>
+              <div className="mt-4 grid gap-3">
+                {(
+                  [
+                    ["clientName", "Client Name", "text", INVOICE_LIMITS.maxClientNameLength],
+                    ["clientPhone", "Phone", "tel", INVOICE_LIMITS.maxClientPhoneLength],
+                    ["clientEmail", "Email", "email", INVOICE_LIMITS.maxClientEmailLength],
+                    ["clientTaxId", "GST Number", "text", INVOICE_LIMITS.maxClientTaxIdLength],
+                  ] as const
+                ).map(([key, label, type, maxLength]) => (
+                  <div key={key} className="flex flex-col gap-1.5">
+                    <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                      {label}
+                    </Label>
+                    <Input
+                      type={type}
+                      maxLength={maxLength}
+                      value={form[key]}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          [key]: sanitizeInvoiceText(e.target.value, maxLength),
+                        }))
+                      }
+                      className="rounded-none border-neutral-900/15"
+                    />
+                  </div>
+                ))}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                    Address
+                  </Label>
+                  <Textarea
+                    value={form.clientAddress}
+                    maxLength={INVOICE_LIMITS.maxClientAddressLength}
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,
-                        [key]: sanitizeInvoiceText(e.target.value, maxLength),
+                        clientAddress: sanitizeInvoiceText(
+                          e.target.value,
+                          INVOICE_LIMITS.maxClientAddressLength,
+                        ),
                       }))
                     }
+                    rows={2}
+                    className="rounded-none border-neutral-900/15"
                   />
                 </div>
-              ))}
-              <div className="flex flex-col gap-2 sm:col-span-2">
-                <Label>Address</Label>
-                <Textarea
-                  value={form.clientAddress}
-                  maxLength={INVOICE_LIMITS.maxClientAddressLength}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      clientAddress: sanitizeInvoiceText(
-                        e.target.value,
-                        INVOICE_LIMITS.maxClientAddressLength,
-                      ),
-                    }))
-                  }
-                  rows={2}
-                />
               </div>
             </div>
-          </div>
-
-          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Line Items</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLineItem}
-                disabled={lineItems.length >= INVOICE_LIMITS.maxLineItems}
-              >
-                <Plus className="size-4" /> Add Item
-              </Button>
-            </div>
-            <div className="mt-4 overflow-x-auto">
-              <div className="min-w-[36rem] space-y-3">
-                <div className={`hidden px-3 sm:grid sm:items-end sm:gap-x-2 ${LINE_ITEM_COLS}`}>
-                  <span className="text-xs font-medium text-muted-foreground">Service Description</span>
-                  <span className="text-xs font-medium text-muted-foreground">Rate (₹)</span>
-                  <span className="text-xs font-medium text-muted-foreground">SQFT / M2</span>
-                  <span className="text-xs font-medium text-muted-foreground">Multiplier</span>
-                  <span className="text-xs font-medium text-muted-foreground text-right">Total Amount</span>
-                  <span className="sr-only">Remove</span>
+            <div className="p-5">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-900">
+                Project Information
+              </h3>
+              <div className="mt-4 grid gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                    Project Name
+                  </Label>
+                  <Input
+                    value={form.projectName}
+                    maxLength={INVOICE_LIMITS.maxProjectNameLength}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        projectName: sanitizeInvoiceText(
+                          e.target.value,
+                          INVOICE_LIMITS.maxProjectNameLength,
+                        ),
+                      }))
+                    }
+                    className="rounded-none border-neutral-900/15"
+                  />
                 </div>
-                {lineItems.map((item, index) => (
-                  <div
-                    key={index}
-                    className={`rounded-lg border border-border/50 p-3 ${LINE_ITEM_ROW}`}
-                  >
-                    <div>
-                      <Label className="text-xs sm:sr-only">Service Description</Label>
-                      <Input
-                        value={item.description}
-                        maxLength={INVOICE_LIMITS.maxDescriptionLength}
-                        onChange={(e) => updateLineItem(index, { description: e.target.value })}
-                        placeholder="e.g. Architectural Planning & Design"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs sm:sr-only">Rate (₹)</Label>
-                      <Input
-                        type="number"
-                        min={INVOICE_LIMITS.minUnitPrice}
-                        max={INVOICE_LIMITS.maxUnitPrice}
-                        step="0.01"
-                        value={item.unit_price}
-                        onChange={(e) => handleUnitPriceChange(index, e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs sm:sr-only">SQFT / M2</Label>
-                      <Input
-                        type="number"
-                        min={INVOICE_LIMITS.minQuantity}
-                        max={INVOICE_LIMITS.maxQuantity}
-                        step="0.01"
-                        value={item.quantity}
-                        onChange={(e) => handleQuantityChange(index, e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs sm:sr-only">Multiplier</Label>
-                      <Input
-                        value={item.unit ?? "1"}
-                        maxLength={INVOICE_LIMITS.maxUnitLength}
-                        onChange={(e) =>
-                          updateLineItem(index, {
-                            unit: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxUnitLength),
-                          })
-                        }
-                        placeholder="1"
-                        className="min-w-[5rem]"
-                      />
-                    </div>
-                    <div className="flex items-end justify-end gap-2">
-                      <div className="min-w-0 text-right">
-                        <Label className="text-xs sm:sr-only">Total Amount</Label>
-                        <p className="py-2 text-sm font-medium tabular-nums">
-                          {formatInvoiceCurrency(item.amount)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-end justify-end sm:justify-center">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => removeLineItem(index)}
-                        disabled={lineItems.length <= 1}
-                        aria-label="Remove line item"
-                      >
-                        <Trash2 className="size-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                    Location
+                  </Label>
+                  <Input
+                    value={form.projectLocation}
+                    maxLength={INVOICE_LIMITS.maxProjectLocationLength}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        projectLocation: sanitizeInvoiceText(
+                          e.target.value,
+                          INVOICE_LIMITS.maxProjectLocationLength,
+                        ),
+                      }))
+                    }
+                    className="rounded-none border-neutral-900/15"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                    GST / Tax (%)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={form.taxPercent}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        taxPercent: sanitizeInvoicePercent(e.target.value),
+                      }))
+                    }
+                    className="rounded-none border-neutral-900/15"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <h3 className="text-sm font-semibold">Tax & Discount</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label>GST / VAT (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.taxPercent}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, taxPercent: sanitizeInvoicePercent(e.target.value) }))
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Discount (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.discountPercent}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, discountPercent: sanitizeInvoicePercent(e.target.value) }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="mt-4 space-y-1 rounded-lg bg-muted/40 p-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="truncate tabular-nums">{formatCurrency(totals.subtotal)}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Tax</span>
-                <span className="truncate tabular-nums">{formatCurrency(totals.taxAmount)}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Discount</span>
-                <span className="truncate tabular-nums">-{formatCurrency(totals.discountAmount)}</span>
-              </div>
-              <div className="flex justify-between gap-4 border-t border-border/50 pt-2 font-semibold">
-                <span>Grand Total</span>
-                <span className="truncate tabular-nums">{formatCurrency(totals.total)}</span>
-              </div>
-            </div>
-          </div>
+          <InvoiceLineItemsTable
+            lineItems={lineItems}
+            onChange={updateLineItem}
+            onAdd={addLineItem}
+            onRemove={removeLineItem}
+            servicePresets={servicePresets}
+          />
 
-          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <h3 className="text-sm font-semibold">Notes & Terms</h3>
-            <div className="mt-4 grid gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Notes</Label>
-                <Textarea
-                  value={form.notes}
-                  maxLength={INVOICE_LIMITS.maxNotesLength}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      notes: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxNotesLength),
-                    }))
-                  }
-                  rows={3}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Terms & Conditions</Label>
-                <Textarea
-                  value={form.terms}
-                  maxLength={INVOICE_LIMITS.maxTermsLength}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      terms: sanitizeInvoiceText(e.target.value, INVOICE_LIMITS.maxTermsLength),
-                    }))
-                  }
-                  rows={3}
-                />
-              </div>
-            </div>
+          <InvoicePaymentDetails profile={profile} />
+          <InvoiceNotesSection
+            notes={form.notes}
+            maxLength={INVOICE_LIMITS.maxNotesLength}
+            onChange={(notes) =>
+              setForm((f) => ({
+                ...f,
+                notes: sanitizeInvoiceText(notes, INVOICE_LIMITS.maxNotesLength),
+              }))
+            }
+          />
+          <InvoiceTermsSection
+            terms={form.terms}
+            maxLength={INVOICE_LIMITS.maxTermsLength}
+            onChange={(terms) =>
+              setForm((f) => ({
+                ...f,
+                terms: sanitizeInvoiceText(terms, INVOICE_LIMITS.maxTermsLength),
+              }))
+            }
+          />
+          <InvoiceFooterPreview profile={profile} />
+
+          <div className="lg:hidden">
+            <InvoiceTotalsPanel
+              totals={totals}
+              taxPercent={form.taxPercent}
+              amountPaid={amountPaid}
+              sticky={false}
+            />
           </div>
 
           {invoice?.id && invoice.status === "Draft" ? (
             <Button
               variant="secondary"
+              className="rounded-none"
               onClick={() => {
                 startTransition(async () => {
                   const res = await markInvoiceSent(invoice.id)
@@ -770,6 +742,16 @@ export function InvoiceEditor({
               onSubmit={handlePaymentSubmit}
             />
           ) : null}
+        </div>
+
+        <div className="hidden lg:block">
+          <InvoiceTotalsPanel
+            totals={totals}
+            taxPercent={form.taxPercent}
+            amountPaid={amountPaid}
+            sticky
+          />
+        </div>
       </div>
     </div>
   )
@@ -787,12 +769,16 @@ function InvoicePaymentsSection({
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
 }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-      <h3 className="text-sm font-semibold">Payment Tracking</h3>
+    <section className="border border-neutral-900/15 bg-white p-5">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-900">
+        Payment Tracking
+      </h3>
       <form onSubmit={onSubmit} className="mt-4 grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="invoice_id" value={invoiceId} />
-        <div className="flex flex-col gap-2">
-          <Label>Amount Paid</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+            Amount Paid
+          </Label>
           <Input
             name="amount"
             type="number"
@@ -800,54 +786,75 @@ function InvoicePaymentsSection({
             max={INVOICE_LIMITS.maxPaymentAmount}
             step="0.01"
             required
+            className="rounded-none border-neutral-900/15"
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label>Payment Date</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+            Payment Date
+          </Label>
           <Input
             name="payment_date"
             type="date"
             defaultValue={new Date().toISOString().slice(0, 10)}
+            className="rounded-none border-neutral-900/15"
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label>Payment Method</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+            Payment Method
+          </Label>
           <Select name="method" defaultValue="UPI">
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger className="rounded-none border-neutral-900/15">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {PAYMENT_METHODS.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label>Payment Notes</Label>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+            Payment Notes
+          </Label>
           <Textarea
             name="notes"
             maxLength={INVOICE_LIMITS.maxPaymentNotesLength}
             placeholder="Transaction reference, etc."
+            className="rounded-none border-neutral-900/15"
           />
         </div>
-        <Button type="submit" disabled={pending} className="sm:col-span-2">
+        <Button type="submit" disabled={pending} className="rounded-none sm:col-span-2">
           {pending ? "Recording..." : "Record Payment"}
         </Button>
       </form>
       {payments.length > 0 ? (
-        <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
+        <ul className="mt-4 divide-y divide-neutral-900/10 border border-neutral-900/10">
           {payments.map((p) => (
-            <li key={p.id} className="flex justify-between p-3 text-sm">
-              <div>
-                <p className="font-medium">₹{Number(p.amount).toLocaleString("en-IN")} · {p.method}</p>
-                <p className="text-xs text-muted-foreground">
+            <li
+              key={p.id}
+              className="flex flex-col gap-3 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="font-medium">
+                  {formatCurrency(p.amount)} · {p.method}
+                </p>
+                <p className="text-xs text-neutral-500">
                   {new Date(p.payment_date).toLocaleDateString("en-IN")}
                   {p.notes ? ` · ${p.notes}` : ""}
                 </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <InvoicePaymentDeleteDialog payment={p} />
               </div>
             </li>
           ))}
         </ul>
       ) : null}
-    </div>
+    </section>
   )
 }

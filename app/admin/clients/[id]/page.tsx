@@ -58,6 +58,11 @@ export default async function ClientDetailPage({
                   Aadhaar: {client.aadhaar_numbers.join(", ")}
                 </p>
               ) : null}
+              {client.linked_numbers?.length ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Linked: {client.linked_numbers.join(", ")}
+                </p>
+              ) : null}
             </div>
           </div>
           <ClientDialog client={client} />

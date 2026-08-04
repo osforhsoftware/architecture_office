@@ -6,6 +6,8 @@ export type Role =
   | "3D Staff"
   | "Estimation Staff"
   | "Billing Staff"
+  /** Custom department staff roles from the departments table */
+  | (string & {})
 
 /** Machine-style role keys used by middleware / guards */
 export const ROLE_KEYS = {
@@ -18,7 +20,7 @@ export const ROLE_KEYS = {
   BILLING_STAFF: "BILLING_STAFF",
 } as const
 
-export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS]
+export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS] | (string & {})
 
 export const SUPER_ADMIN_ROLE = "Super Admin" as const
 export const ADMIN_ROLE = "Admin" as const
@@ -39,10 +41,11 @@ export const ALL_ROLES: Role[] = [SUPER_ADMIN_ROLE, ADMIN_ROLE, ...STAFF_ROLES]
 /** SQL-safe list for excluding Super Admin + Admin from staff directories */
 export const PRIVILEGED_ROLE_SQL = `'Super Admin', 'Admin'`
 
-/** Routes office Admin may access under /admin (staff + projects only) */
+/** Routes office Admin may access under /admin (clients + projects + finance) */
 export const ADMIN_ROUTE_PREFIXES = [
-  "/admin/staff",
+  "/admin/clients",
   "/admin/projects",
+  "/admin/finance",
 ] as const
 
 /** Routes Billing Staff may access under /admin */
@@ -51,6 +54,7 @@ export const BILLING_STAFF_ROUTE_PREFIXES = [
   "/admin/invoices",
   "/admin/projects",
   "/admin/notifications",
+  "/admin/finance",
 ] as const
 
 /** Routes only Super Admin may access under /admin */
@@ -143,8 +147,9 @@ export function isPrivilegedRole(role: string): boolean {
   return isOfficeAdmin(role)
 }
 
+/** Any non-admin role is treated as a department staff role (supports dynamic departments). */
 export function isStaffRole(role: string): boolean {
-  return (STAFF_ROLES as readonly string[]).includes(role)
+  return Boolean(role) && !isPrivilegedRole(role)
 }
 
 export function isBillingStaff(role: string): boolean {
@@ -195,14 +200,19 @@ export function canAccessReports(role: string): boolean {
   return isSuperAdmin(role)
 }
 
-/** Admin may only add staff / projects (not full office management) */
-export function canAddStaffAndProjects(role: string): boolean {
+/** Admin may only add clients / projects (not full office management) */
+export function canAddClientsAndProjects(role: string): boolean {
   return isOfficeAdmin(role)
 }
 
-/** True when the user has at least one department staff role (any of STAFF_ROLES). */
+/** @deprecated Use canAddClientsAndProjects */
+export function canAddStaffAndProjects(role: string): boolean {
+  return canAddClientsAndProjects(role)
+}
+
+/** True when the user has at least one non-admin (department) role. */
 export function userIsStaffRole(user: { role: string; roles?: readonly string[] }): boolean {
-  return userHasAnyRole(user, STAFF_ROLES)
+  return rolesOf(user).some((role) => isStaffRole(role))
 }
 
 export function userIsBillingStaff(user: {
@@ -360,6 +370,7 @@ export const PROJECT_TYPES = [
   "Industrial",
   "Institutional",
   "Renovation",
+  "Other",
 ] as const
 
 export type ProjectType = (typeof PROJECT_TYPES)[number]
@@ -434,12 +445,74 @@ export const CHECKLIST_ITEMS = [
   "Labour Cess",
 ] as const
 
-export const KMAP_FLOOR_ROWS = [
-  { key: "ground_floor", label: "Ground Floor" },
-  { key: "first_floor", label: "First Floor" },
-  { key: "second_floor", label: "Second Floor" },
-  { key: "third_floor", label: "Third Floor" },
-] as const
+/** Default floors seeded on every new project. */
+export const KMAP_DEFAULT_FLOOR_COUNT = 2
+
+/** Max floors that can be added via Area Capture. */
+export const KMAP_MAX_FLOORS = 50
+
+const LEGACY_FLOOR_NUMBERS: Record<string, number> = {
+  basement: 0,
+  ground_floor: 0,
+  first_floor: 1,
+  second_floor: 2,
+  third_floor: 3,
+  fourth_floor: 4,
+  fifth_floor: 5,
+  sixth_floor: 6,
+  seventh_floor: 7,
+  eighth_floor: 8,
+  ninth_floor: 9,
+  tenth_floor: 10,
+  terrace: 11,
+}
+
+/** Default floors seeded on every new project (Floor 1, Floor 2). */
+export const KMAP_FLOOR_ROWS = Array.from({ length: KMAP_DEFAULT_FLOOR_COUNT }, (_, i) => {
+  const n = i + 1
+  return { key: `floor_${n}`, label: `Floor ${n}` }
+})
+
+export function kmapFloorKey(n: number): string {
+  return `floor_${n}`
+}
+
+export function kmapFloorNumber(key: string): number {
+  const match = /^floor_(\d+)$/.exec(key)
+  if (match) return Number(match[1])
+  return LEGACY_FLOOR_NUMBERS[key] ?? 0
+}
+
+export function kmapFloorLabel(key: string): string {
+  const match = /^floor_(\d+)$/.exec(key)
+  if (match) return `Floor ${match[1]}`
+  if (key in LEGACY_FLOOR_NUMBERS) {
+    return key
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+      .replace("Terrace", "Terrace / Roof")
+  }
+  return key
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+export function isValidKmapFloorKey(key: string): boolean {
+  if (/^floor_\d+$/.test(key)) {
+    const n = kmapFloorNumber(key)
+    return n >= 1 && n <= KMAP_MAX_FLOORS
+  }
+  return key in LEGACY_FLOOR_NUMBERS
+}
+
+export function nextKmapFloorKey(existingKeys: string[]): string | null {
+  const max = existingKeys.reduce((m, key) => Math.max(m, kmapFloorNumber(key)), 0)
+  const next = Math.max(max + 1, 1)
+  if (next > KMAP_MAX_FLOORS) return null
+  return kmapFloorKey(next)
+}
 
 export const RETURN_REASONS = [
   "Missing Documents",

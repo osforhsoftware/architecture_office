@@ -54,6 +54,16 @@ export function ProjectChecklist({
 
   return (
     <div className="flex flex-col gap-5">
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center">
+          <FileText className="mx-auto size-8 text-muted-foreground/50" />
+          <p className="mt-3 text-sm font-medium">No documents for this project</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Documents are chosen when the project is created, based on the selected services.
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -140,6 +150,8 @@ export function ProjectChecklist({
           </div>
         </div>
       ))}
+        </>
+      )}
     </div>
   )
 }

@@ -9,26 +9,28 @@ import {
   LayoutDashboard,
   Users,
   Bell,
+  Wallet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isBillingStaff, isSuperAdmin, type Role } from "@/lib/constants"
 
 const OFFICE_ADMIN_NAV = [
+  { href: "/admin/clients", label: "Clients", icon: Users, exact: false },
   { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
-  { href: "/admin/staff", label: "Staff", icon: Users, exact: false },
+  { href: "/admin/finance", label: "Finance", icon: Wallet, exact: false },
 ]
 
 const BILLING_STAFF_NAV = [
   { href: "/admin/billing", label: "Billing", icon: CreditCard, exact: false },
   { href: "/admin/invoices", label: "Invoices", icon: FileText, exact: false },
-  { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
+  { href: "/admin/finance", label: "Finance", icon: Wallet, exact: false },
   { href: "/admin/notifications", label: "Alerts", icon: Bell, exact: false },
 ]
 
 const SUPER_ADMIN_NAV = [
   { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
-  { href: "/admin/users", label: "Users", icon: Users, exact: false },
+  { href: "/admin/finance", label: "Finance", icon: Wallet, exact: false },
   { href: "/admin/billing", label: "Billing", icon: CreditCard, exact: false },
 ]
 

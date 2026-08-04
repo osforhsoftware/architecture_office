@@ -3,13 +3,13 @@ import { sql } from "./db"
 import { getProjectSiteAssignees } from "./queries"
 import type { AppUser, Project } from "./types"
 import {
-  SECTION_ROLE,
   isBillingStaff,
   isOfficeAdmin,
   rolesOf,
   userCanAccessBilling as canUserAccessBilling,
   userHasRole,
 } from "./constants"
+import { roleForSection } from "./departments"
 
 export async function getProjectOrThrow(id: number): Promise<Project> {
   const rows = (await sql`
@@ -83,8 +83,8 @@ export function staffCanEditProject(user: AppUser, project: Project): boolean {
   ].includes(project.status)
 }
 
-export function staffSectionMatches(user: AppUser, project: Project): boolean {
-  const required = SECTION_ROLE[project.section]
+export async function staffSectionMatches(user: AppUser, project: Project): Promise<boolean> {
+  const required = await roleForSection(project.section)
   if (!required) return false
   return userHasRole(user, required)
 }

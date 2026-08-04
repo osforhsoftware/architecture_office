@@ -1,12 +1,15 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, Mail, MapPin, Phone, User } from "lucide-react"
+import { ArrowLeft, Mail, MapPin, Phone, User, Wallet } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { BillingStaffProjectView } from "@/components/billing-staff-project-view"
 import { ProjectChecklist } from "@/components/project-checklist"
 import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
 import { ProjectPaymentsPanel } from "@/components/project-payments-panel"
+import { ProjectPrintButton } from "@/components/project-print-button"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { ProjectActivityFeed } from "@/components/project-activity-feed"
 import { WorkflowTimeline } from "@/components/workflow-timeline"
@@ -21,6 +24,7 @@ import {
   projectProgressPercent,
   userIsBillingStaff,
 } from "@/lib/constants"
+import { getDepartmentNames, getSectionRoleMap } from "@/lib/departments"
 import {
   getChecklist,
   getClient,
@@ -52,7 +56,7 @@ export default async function AdminProjectDetailPage({
   const billingOnly = userIsBillingStaff(user) && user.role === "Billing Staff"
   if (billingOnly && project.section !== "Billing") notFound()
 
-  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep] =
+  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap] =
     await Promise.all([
       getClient(project.client_id),
       getStaffUsers(),
@@ -65,6 +69,8 @@ export default async function AdminProjectDetailPage({
       getProjectKmapAreas(projectId),
       getWorkflowSteps(projectId),
       getCurrentWorkflowStep(projectId),
+      getDepartmentNames(true),
+      getSectionRoleMap(),
     ])
 
   const progress = projectProgressPercent(project.current_stage, workflowSteps)
@@ -96,26 +102,37 @@ export default async function AdminProjectDetailPage({
             </div>
             <p className="mt-1 font-mono text-sm text-muted-foreground">{project.code}</p>
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Amount</p>
-              <p className="font-semibold">{formatCurrency(project.project_amount)}</p>
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Link
+                href={`/admin/finance/project/${project.id}`}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              >
+                <Wallet className="size-4" /> Project Finance
+              </Link>
+              <ProjectPrintButton projectId={project.id} />
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Progress</p>
-              <p className="font-semibold">{progress}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Due Date</p>
-              <p className="font-semibold">
-                {project.due_date
-                  ? new Date(project.due_date).toLocaleDateString("en-IN")
-                  : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Invoice</p>
-              <p className="font-semibold">{project.invoice_number ?? "—"}</p>
+            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Amount</p>
+                <p className="font-semibold">{formatCurrency(project.project_amount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Progress</p>
+                <p className="font-semibold">{progress}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Due Date</p>
+                <p className="font-semibold">
+                  {project.due_date
+                    ? new Date(project.due_date).toLocaleDateString("en-IN")
+                    : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Invoice</p>
+                <p className="font-semibold">{project.invoice_number ?? "—"}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -211,6 +228,16 @@ export default async function AdminProjectDetailPage({
                 <dt className="text-muted-foreground">Drawing No.</dt>
                 <dd className="font-medium">{project.drawing_number ?? "—"}</dd>
               </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Edgebook No.</dt>
+                <dd className="font-medium">{project.edgebook_number ?? "—"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground shrink-0">Refer name</dt>
+                <dd className="max-w-[160px] truncate text-right font-medium">
+                  {project.refer_name ?? "—"}
+                </dd>
+              </div>
             </dl>
           </div>
 
@@ -261,6 +288,8 @@ export default async function AdminProjectDetailPage({
               staff={staff}
               isAdmin
               userRole={user.role}
+              departmentOptions={departmentOptions}
+              sectionRoleMap={sectionRoleMap}
             />
           </div>
 

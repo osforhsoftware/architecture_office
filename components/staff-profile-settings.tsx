@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Pencil } from "lucide-react"
+import { Pencil, Upload, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormField, FormSection, formControlClass } from "@/components/form-section"
 import { updateOwnProfile } from "@/lib/actions"
+import { publicAssetUrl } from "@/lib/app-urls"
 import type { AppUser } from "@/lib/types"
 
 function buildForm(user: AppUser) {
@@ -18,6 +19,8 @@ function buildForm(user: AppUser) {
     phone: user.phone ?? "",
     currentPassword: "",
     newPassword: "",
+    avatarPreview: publicAssetUrl(user.avatar_url) ?? null,
+    removeAvatar: false,
   }
 }
 
@@ -25,7 +28,27 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(() => buildForm(user))
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [pending, startTransition] = useTransition()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  function onAvatarChange(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.")
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Profile image must be under 2MB.")
+      return
+    }
+    setAvatarFile(file)
+    setForm((f) => ({
+      ...f,
+      avatarPreview: URL.createObjectURL(file),
+      removeAvatar: false,
+    }))
+  }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -35,6 +58,8 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
     fd.set("phone", form.phone)
     fd.set("current_password", form.currentPassword)
     fd.set("new_password", form.newPassword)
+    if (form.removeAvatar) fd.set("remove_avatar", "true")
+    if (avatarFile) fd.set("avatar", avatarFile)
 
     startTransition(async () => {
       const res = await updateOwnProfile(fd)
@@ -44,7 +69,22 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
       }
       toast.success("Profile updated")
       setEditing(false)
-      setForm((prev) => ({ ...buildForm({ ...user, ...prev }), currentPassword: "", newPassword: "" }))
+      setAvatarFile(null)
+      setForm((prev) => ({
+        ...buildForm({
+          ...user,
+          name: prev.name,
+          email: prev.email || null,
+          phone: prev.phone || null,
+          avatar_url: prev.removeAvatar
+            ? null
+            : prev.avatarPreview?.startsWith("blob:")
+              ? user.avatar_url
+              : prev.avatarPreview,
+        }),
+        currentPassword: "",
+        newPassword: "",
+      }))
       router.refresh()
     })
   }
@@ -60,6 +100,7 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
             size="sm"
             onClick={() => {
               setForm(buildForm(user))
+              setAvatarFile(null)
               setEditing(true)
             }}
           >
@@ -69,7 +110,7 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Update your name, contact details, or password.
+            Update your photo, name, contact details, or password.
           </p>
         </CardContent>
       </Card>
@@ -83,6 +124,67 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <FormSection title="Profile photo">
+            <div className="flex items-center gap-4">
+              {form.avatarPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.avatarPreview}
+                  alt="Profile preview"
+                  className="size-16 rounded-full border border-border object-cover"
+                />
+              ) : (
+                <div className="flex size-16 items-center justify-center rounded-full border border-dashed border-border bg-muted/30 text-muted-foreground">
+                  <UserRound className="size-7" />
+                </div>
+              )}
+              <div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    onAvatarChange(e.target.files?.[0] ?? null)
+                    e.target.value = ""
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  <Upload className="size-4" />
+                  {form.avatarPreview ? "Change photo" : "Upload photo"}
+                </Button>
+                {form.avatarPreview ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
+                    disabled={pending}
+                    onClick={() => {
+                      setAvatarFile(null)
+                      setForm((f) => ({
+                        ...f,
+                        avatarPreview: null,
+                        removeAvatar: true,
+                      }))
+                    }}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  PNG, JPEG, or WebP. Max 2MB.
+                </p>
+              </div>
+            </div>
+          </FormSection>
+
           <FormSection title="Contact">
             <FormField label="Name">
               <Input
@@ -141,6 +243,7 @@ export function StaffProfileSettings({ user }: { user: AppUser }) {
               disabled={pending}
               onClick={() => {
                 setForm(buildForm(user))
+                setAvatarFile(null)
                 setEditing(false)
               }}
             >

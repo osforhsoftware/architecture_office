@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input"
 import { formControlClass } from "@/components/form-section"
 import { cn } from "@/lib/utils"
 
-const MAX_AADHAAR = 5
-
 type AadhaarFieldsProps = {
   values: string[]
   onChange: (values: string[]) => void
@@ -20,7 +18,6 @@ export function AadhaarFields({ values, onChange, className }: AadhaarFieldsProp
   }
 
   function add() {
-    if (values.length >= MAX_AADHAAR) return
     onChange([...values, ""])
   }
 
@@ -31,16 +28,13 @@ export function AadhaarFields({ values, onChange, className }: AadhaarFieldsProp
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">Aadhaar number</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="min-h-9"
-          onClick={add}
-          disabled={values.length >= MAX_AADHAAR}
-        >
+        <div>
+          <p className="text-sm font-medium">Aadhaar number</p>
+          <p className="text-xs text-muted-foreground">Add as many Aadhaar numbers as needed.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="min-h-9 shrink-0" onClick={add}>
           <Plus className="size-4" />
+          Add
         </Button>
       </div>
       <div className="flex flex-col gap-2">
