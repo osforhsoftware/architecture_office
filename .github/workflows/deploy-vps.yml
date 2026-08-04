@@ -96,17 +96,24 @@ jobs:
             npm run build
 
             echo "== restart pm2 app only =="
+            # Production process is architecture_office (underscore). Remove any accidental hyphen duplicate.
             if pm2 describe architecture-office >/dev/null 2>&1; then
-              pm2 restart architecture-office --update-env
-            else
-              # Start isolated on port 3000 if process missing; do not touch other pm2 apps
-              PORT=3000 pm2 start npm --name architecture-office -- start
-              pm2 save || true
+              echo "Removing duplicate PM2 process architecture-office"
+              pm2 delete architecture-office || true
             fi
 
-            sleep 3
+            if pm2 describe architecture_office >/dev/null 2>&1; then
+              pm2 restart architecture_office --update-env
+            else
+              # Start only this app; do not touch other pm2 apps
+              PORT=3000 pm2 start npm --name architecture_office -- start
+              pm2 save || true
+            fi
+            pm2 save || true
+
+            sleep 4
             pm2 list
-            pm2 show architecture-office | sed -n '1,40p' || true
+            pm2 show architecture_office | sed -n '1,50p' || true
 
             if command -v nginx >/dev/null 2>&1; then
               NGINX_SNAP_AFTER=$(mktemp)
@@ -119,15 +126,16 @@ jobs:
             fi
 
             echo "== HTTP check =="
-            CODE=$(curl -s -o /tmp/ao_home.html -w "%{http_code}" --max-time 20 http://127.0.0.1:3000/ || true)
-            echo "local_app_http=$CODE"
             CODE80=$(curl -s -o /tmp/ao_ip.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
             echo "local_port80_http=$CODE80"
-            head -c 400 /tmp/ao_ip.html || true
+            # 200 OK or 307 redirect to /login are both healthy for this app
+            CODE_FOLLOW=$(curl -sL -o /tmp/ao_follow.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
+            echo "local_port80_follow_http=$CODE_FOLLOW"
+            head -c 400 /tmp/ao_follow.html || true
             echo
-            if [ "$CODE" != "200" ] && [ "$CODE80" != "200" ]; then
-              echo "WARN: expected 200 from app or nginx; dumping recent logs"
-              pm2 logs architecture-office --lines 80 --nostream || true
+            if [ "$CODE_FOLLOW" != "200" ] && [ "$CODE80" != "200" ] && [ "$CODE80" != "307" ]; then
+              echo "WARN: unexpected HTTP from nginx; dumping recent logs"
+              pm2 logs architecture_office --lines 80 --nostream || true
               exit 1
             fi
             echo "DEPLOY_OK"
