@@ -15,21 +15,37 @@ const pool = mysql.createPool({
   charset: "utf8mb4",
 })
 
+function normalizeStmt(stmt) {
+  return stmt
+    .replace(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS/gi, "CREATE INDEX")
+    .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi, "ADD COLUMN")
+}
+
+function isSkippable(err) {
+  const code = err.code || ""
+  const msg = String(err.message || "")
+  return (
+    code === "ER_DUP_FIELDNAME" ||
+    code === "ER_TABLE_EXISTS_ERROR" ||
+    code === "ER_DUP_KEYNAME" ||
+    code === "ER_DUP_ENTRY" ||
+    /Duplicate column/i.test(msg) ||
+    /Duplicate key name/i.test(msg) ||
+    /already exists/i.test(msg)
+  )
+}
+
 async function execRaw(rawSql) {
   const statements = rawSql
     .split(/;[ \t]*(?:\r?\n|$)/)
     .map((s) => s.trim())
     .filter(Boolean)
-  for (const stmt of statements) {
+  for (const raw of statements) {
+    const stmt = normalizeStmt(raw)
     try {
       await pool.execute(stmt)
     } catch (err) {
-      if (
-        err.code === "ER_DUP_FIELDNAME" ||
-        err.code === "ER_TABLE_EXISTS_ERROR" ||
-        err.code === "ER_DUP_KEYNAME" ||
-        err.code === "ER_DUP_ENTRY"
-      ) {
+      if (isSkippable(err)) {
         console.warn(`  Skipping: ${err.message}`)
       } else {
         throw err

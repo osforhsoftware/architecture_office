@@ -23,16 +23,41 @@ function stripSqlComments(rawSql) {
     .join("\n")
 }
 
+function normalizeStmt(stmt) {
+  return stmt
+    .replace(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS/gi, "CREATE INDEX")
+    .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS/gi, "ADD COLUMN")
+}
+
+function isSkippable(err) {
+  const code = err.code || ""
+  const msg = String(err.message || "")
+  return (
+    code === "ER_DUP_FIELDNAME" ||
+    code === "ER_TABLE_EXISTS_ERROR" ||
+    code === "ER_DUP_KEYNAME" ||
+    code === "ER_DUP_ENTRY" ||
+    /Duplicate column/i.test(msg) ||
+    /Duplicate key name/i.test(msg) ||
+    /already exists/i.test(msg)
+  )
+}
+
 async function execRaw(rawSql) {
   const cleaned = stripSqlComments(rawSql)
   const statements = cleaned
     .split(/;[ \t]*(?:\r?\n|$)/)
     .map((s) => s.trim())
     .filter(Boolean)
-  for (const stmt of statements) {
+  for (const raw of statements) {
+    const stmt = normalizeStmt(raw)
     try {
       await pool.execute(stmt)
     } catch (err) {
+      if (isSkippable(err)) {
+        console.warn(`  Skipping: ${err.message}`)
+        continue
+      }
       console.error("Failed statement:\n", stmt.slice(0, 200), "...")
       throw err
     }

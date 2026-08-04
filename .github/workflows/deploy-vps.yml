@@ -82,15 +82,15 @@ jobs:
             fi
 
             echo "== migrations (this DB only via local .env) =="
-            npm run db:migrate-departments || true
-            npm run db:migrate-documents || true
-            npm run db:migrate-finance || true
-            npm run db:migrate-finance-v2 || true
-            npm run db:migrate-invoice-discounts || true
-            npm run db:migrate-drawing-number-unique || true
-            npm run db:migrate-refer-name || true
-            npm run db:migrate-edgebook-number || true
-            npm run db:migrate-staff-avatar || true
+            npm run db:migrate-departments
+            npm run db:migrate-documents
+            npm run db:migrate-finance
+            npm run db:migrate-finance-v2
+            npm run db:migrate-invoice-discounts
+            npm run db:migrate-drawing-number-unique
+            npm run db:migrate-refer-name
+            npm run db:migrate-edgebook-number
+            npm run db:migrate-staff-avatar
 
             echo "== build =="
             npm run build
@@ -105,8 +105,8 @@ jobs:
             if pm2 describe architecture_office >/dev/null 2>&1; then
               pm2 restart architecture_office --update-env
             else
-              # Start only this app; do not touch other pm2 apps
-              PORT=3000 pm2 start npm --name architecture_office -- start
+              # nginx upstream is 127.0.0.1:3001; port 3000 belongs to another site
+              PORT=3001 pm2 start npm --name architecture_office -- start
               pm2 save || true
             fi
             pm2 save || true
