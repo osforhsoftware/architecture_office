@@ -35,10 +35,11 @@ jobs:
             ls /etc/nginx/conf.d 2>/dev/null || true
 
             APP_DIR=""
-            if [ -d /root/architecture_office ]; then
-              APP_DIR=/root/architecture_office
-            elif [ -d /var/www/architecture_office ]; then
+            # Production path is /var/www/architecture_office (do not prefer empty /root clone)
+            if [ -d /var/www/architecture_office ]; then
               APP_DIR=/var/www/architecture_office
+            elif [ -d /root/architecture_office ]; then
+              APP_DIR=/root/architecture_office
             else
               CWD=$(pm2 jlist 2>/dev/null | node -e "let d='';try{const a=JSON.parse(require('fs').readFileSync(0,'utf8'));const p=a.find(x=>String(x.name||'').includes('architecture'));if(p&&p.pm2_env&&p.pm2_env.pm_cwd)d=p.pm2_env.pm_cwd}catch(e){}process.stdout.write(d)" || true)
               if [ -n "${CWD:-}" ] && [ -d "$CWD" ]; then
@@ -91,6 +92,8 @@ jobs:
             npm run db:migrate-refer-name
             npm run db:migrate-edgebook-number
             npm run db:migrate-staff-avatar
+            npm run db:migrate-attendance
+            npm run db:migrate-attendance-late
 
             echo "== build =="
             npm run build
