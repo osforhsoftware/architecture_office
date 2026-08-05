@@ -95,23 +95,26 @@ jobs:
             npm run db:migrate-attendance
             npm run db:migrate-attendance-late
 
-            echo "== build =="
-            npm run build
+            echo "== build (clean .next to avoid partial builds) =="
+            rm -rf .next
+            NODE_ENV=production npm run build
+            test -f .next/BUILD_ID
+            test -f .next/required-server-files.json
 
             echo "== restart pm2 app only =="
             # Production process is architecture_office (underscore). Remove any accidental hyphen duplicate.
+            # Never touch casebox-api / mesms-api / nextjs-app. Port 3000 belongs to another site.
             if pm2 describe architecture-office >/dev/null 2>&1; then
               echo "Removing duplicate PM2 process architecture-office"
               pm2 delete architecture-office || true
             fi
 
             if pm2 describe architecture_office >/dev/null 2>&1; then
-              pm2 restart architecture_office --update-env
-            else
-              # nginx upstream is 127.0.0.1:3001; port 3000 belongs to another site
-              PORT=3001 pm2 start npm --name architecture_office -- start
-              pm2 save || true
+              pm2 delete architecture_office || true
             fi
+            PORT=3001 HOSTNAME=127.0.0.1 pm2 start ./node_modules/next/dist/bin/next \
+              --name architecture_office \
+              -- start -p 3001 -H 127.0.0.1
             pm2 save || true
 
             sleep 4
