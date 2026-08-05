@@ -201,3 +201,37 @@ export async function recordWorkflowAssignment(
     VALUES (${projectId}, ${stepId}, ${userId}, ${assignedBy}, ${note})
   `
 }
+
+export type WorkflowReviewRow = {
+  id: number
+  project_id: number
+  workflow_step_id: number
+  decision: "approved" | "rejected" | string
+  note: string | null
+  reviewed_by: number | null
+  created_at: string
+  step_label: string
+  step_key: string
+  reviewer_name: string | null
+}
+
+export async function getWorkflowReviews(projectId: number): Promise<WorkflowReviewRow[]> {
+  return (await sql`
+    SELECT
+      wr.id,
+      wr.project_id,
+      wr.workflow_step_id,
+      wr.decision,
+      wr.note,
+      wr.reviewed_by,
+      wr.created_at,
+      ws.label AS step_label,
+      ws.step_key,
+      u.name AS reviewer_name
+    FROM workflow_reviews wr
+    JOIN workflow_steps ws ON ws.id = wr.workflow_step_id
+    LEFT JOIN app_users u ON u.id = wr.reviewed_by
+    WHERE wr.project_id = ${projectId}
+    ORDER BY wr.created_at DESC
+  `) as WorkflowReviewRow[]
+}

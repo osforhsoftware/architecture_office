@@ -30,6 +30,7 @@ import {
   Calculator,
   LineChart,
   Banknote,
+  ClipboardCheck,
 } from "lucide-react"
 import {
   isBillingStaff,
@@ -129,6 +130,7 @@ export const SUPER_ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin/services", label: "Services", icon: Wrench },
   { href: "/admin/documents", label: "Documents", icon: Files },
   { href: "/admin/staff", label: "Staff", icon: UserCog },
+  { href: "/admin/attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/admin/admins", label: "Admin Management", icon: Shield },
   { href: "/admin/billing", label: "Billing", icon: CreditCard },
   { href: "/admin/invoices", label: "Invoices", icon: FileText },

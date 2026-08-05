@@ -41,16 +41,6 @@ export type SalaryStatus = (typeof SALARY_STATUSES)[number]
 export const ACCOUNT_TYPES = ["cash", "petty", "bank", "upi"] as const
 export type AccountType = (typeof ACCOUNT_TYPES)[number]
 
-export const PROJECT_BUDGET_CATEGORIES = [
-  "Planning",
-  "Permit",
-  "3D",
-  "Construction",
-  "Printing",
-  "Travel",
-  "Miscellaneous",
-] as const
-
 export const PROJECT_INCOME_TYPES = [
   "Advance Payment",
   "Stage Payment",
@@ -91,6 +81,16 @@ export function isCashAccountType(type: string): boolean {
 
 export function isBankAccountType(type: string): boolean {
   return type === "bank" || type === "upi"
+}
+
+/** Seeded default accounts that must not be deleted. */
+export const PROTECTED_DEFAULT_ACCOUNT_NAMES = ["Cash", "Petty Cash"] as const
+
+export function isProtectedDefaultAccount(account: {
+  name?: string | null
+}): boolean {
+  const name = String(account.name ?? "").trim()
+  return (PROTECTED_DEFAULT_ACCOUNT_NAMES as readonly string[]).includes(name)
 }
 
 export function isBillingFinanceRouteAllowed(pathname: string): boolean {

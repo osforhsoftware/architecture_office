@@ -706,7 +706,10 @@ export async function getProjectBudget(projectId: number): Promise<ProjectBudget
         LEFT JOIN expense_categories ec ON ec.id = pe.category_id
         WHERE pe.project_id = pb.project_id AND pe.deleted_at IS NULL
           AND pe.status IN ('Approved', 'Paid')
-          AND (ec.name = pb.category OR pb.category = 'Miscellaneous')
+          AND (
+            ec.name = pb.category
+            OR (pb.category = 'Miscellaneous' AND pe.category_id IS NULL)
+          )
       ), 0) AS spent_amount
     FROM project_budget pb
     WHERE pb.project_id = ${projectId} AND pb.deleted_at IS NULL

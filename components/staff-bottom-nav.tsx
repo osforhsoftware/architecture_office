@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { FolderKanban, Home, Receipt, User } from "lucide-react"
+import { ClipboardCheck, FolderKanban, Home, Receipt, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV = [
   { href: "/staff", label: "Home", icon: Home, exact: true },
   { href: "/staff/projects", label: "Projects", icon: FolderKanban, exact: false },
+  { href: "/staff/attendance", label: "Attendance", icon: ClipboardCheck, exact: true },
   { href: "/staff/expenses", label: "Expenses", icon: Receipt, exact: true },
   { href: "/staff/profile", label: "Profile", icon: User, exact: true },
 ]

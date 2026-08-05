@@ -3,12 +3,13 @@ import { notFound } from "next/navigation"
 import { ArrowLeft, Mail, MapPin, Phone, User, Wallet } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { ApprovalHistory } from "@/components/approval-history"
 import { BillingStaffProjectView } from "@/components/billing-staff-project-view"
+import { ProjectBillingPanel } from "@/components/project-billing-panel"
 import { ProjectChecklist } from "@/components/project-checklist"
 import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
-import { ProjectPaymentsPanel } from "@/components/project-payments-panel"
 import { ProjectPrintButton } from "@/components/project-print-button"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { ProjectActivityFeed } from "@/components/project-activity-feed"
@@ -21,6 +22,7 @@ import {
   formatClientId,
   formatCurrency,
   isOfficeAdmin,
+  isSuperAdmin,
   projectProgressPercent,
   userIsBillingStaff,
 } from "@/lib/constants"
@@ -37,6 +39,7 @@ import {
   getReturnHistory,
   getStaffUsers,
   getStatusHistory,
+  getWorkflowReviews,
   getWorkflowSteps,
 } from "@/lib/queries"
 
@@ -56,7 +59,11 @@ export default async function AdminProjectDetailPage({
   const billingOnly = userIsBillingStaff(user) && user.role === "Billing Staff"
   if (billingOnly && project.section !== "Billing") notFound()
 
-  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap] =
+  const superAdmin = isSuperAdmin(user.role)
+  /** Closed projects are read-only except for Super Admin. Billing remains available. */
+  const detailsReadOnly = project.status === "Closed" && !superAdmin
+
+  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, reviews, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap] =
     await Promise.all([
       getClient(project.client_id),
       getStaffUsers(),
@@ -66,6 +73,7 @@ export default async function AdminProjectDetailPage({
       getInvoicesByProject(projectId),
       getStatusHistory(projectId),
       getReturnHistory(projectId),
+      getWorkflowReviews(projectId),
       getProjectKmapAreas(projectId),
       getWorkflowSteps(projectId),
       getCurrentWorkflowStep(projectId),
@@ -286,8 +294,9 @@ export default async function AdminProjectDetailPage({
               workflowSteps={workflowSteps}
               currentStep={currentStep}
               staff={staff}
-              isAdmin
+              isSuperAdmin={superAdmin}
               userRole={user.role}
+              readOnly={detailsReadOnly}
               departmentOptions={departmentOptions}
               sectionRoleMap={sectionRoleMap}
             />
@@ -297,11 +306,16 @@ export default async function AdminProjectDetailPage({
             <ProjectDrawingNumberPanel
               projectId={projectId}
               drawingNumber={project.drawing_number}
+              readOnly={detailsReadOnly}
             />
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <ProjectKmapPanel projectId={projectId} areas={kmapAreas} />
+            <ProjectKmapPanel
+              projectId={projectId}
+              areas={kmapAreas}
+              readOnly={detailsReadOnly}
+            />
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
@@ -312,13 +326,25 @@ export default async function AdminProjectDetailPage({
                 <TabsTrigger value="billing">Billing</TabsTrigger>
               </TabsList>
               <TabsContent value="checklist">
-                <ProjectChecklist items={checklist} projectId={projectId} />
+                <ProjectChecklist
+                  items={checklist}
+                  projectId={projectId}
+                  readOnly={detailsReadOnly}
+                />
               </TabsContent>
               <TabsContent value="files">
-                <ProjectFilesPanel files={files} projectId={projectId} />
+                <ProjectFilesPanel
+                  files={files}
+                  projectId={projectId}
+                  readOnly={detailsReadOnly}
+                />
               </TabsContent>
               <TabsContent value="billing">
-                <ProjectPaymentsPanel project={project} payments={payments} />
+                <ProjectBillingPanel
+                  project={project}
+                  payments={payments}
+                  invoices={invoices}
+                />
               </TabsContent>
             </Tabs>
           </div>
@@ -330,6 +356,10 @@ export default async function AdminProjectDetailPage({
               statusHistory={statusHistory}
               returnHistory={returnHistory}
             />
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
+            <ApprovalHistory reviews={reviews} />
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">

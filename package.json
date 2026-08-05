@@ -31,6 +31,8 @@
     "db:migrate-documents": "node scripts/migrate-document-templates.mjs",
     "db:migrate-finance": "node scripts/migrate-finance.mjs",
     "db:migrate-finance-v2": "node scripts/migrate-finance-v2.mjs",
+    "db:migrate-attendance": "node scripts/migrate-attendance.mjs",
+    "db:migrate-attendance-late": "node scripts/migrate-attendance-late.mjs",
     "db:migrate-pg": "node scripts/migrate-pg-to-mysql.mjs"
   },
   "dependencies": {

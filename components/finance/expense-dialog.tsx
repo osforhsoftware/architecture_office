@@ -195,6 +195,8 @@ export function ExpenseDialog({
                       value={categoryId}
                       onValueChange={setCategoryId}
                       placeholder="Select category"
+                      searchable
+                      searchPlaceholder="Search category..."
                     />
                   </FormField>
                   <FormField label="Account">

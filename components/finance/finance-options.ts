@@ -13,12 +13,16 @@ export function clientsToOptions(clients: { id: number; name: string }[]): Finan
 }
 
 export function projectsToOptions(
-  projects: { id: number; name: string; code?: string | null }[],
+  projects: { id: number; name: string; code?: string | null; client_name?: string | null }[],
 ): FinanceSelectOption[] {
-  return projects.map((p) => ({
-    value: String(p.id),
-    label: p.code ? `${p.code} — ${p.name}` : p.name,
-  }))
+  return projects.map((p) => {
+    const base = p.code ? `${p.code} — ${p.name}` : p.name
+    const label =
+      p.client_name && !p.name.toLowerCase().includes(p.client_name.toLowerCase())
+        ? `${base} - ${p.client_name}`
+        : base
+    return { value: String(p.id), label }
+  })
 }
 
 export function categoriesToOptions(categories: { id: number; name: string }[]): FinanceSelectOption[] {

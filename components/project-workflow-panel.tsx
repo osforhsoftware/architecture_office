@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormSelect } from "@/components/form-select"
-import { FormMultiSelect } from "@/components/form-multi-select"
 import {
   Select,
   SelectContent,
@@ -14,14 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { AssignmentPanel } from "@/components/assignment-panel"
+import { ReviewPanel } from "@/components/review-panel"
 import {
-  approveSectionReview,
-  assignProject,
   assignToDepartment,
   closeProject,
   markWorkComplete,
-  reassignReturnedProject,
-  rejectReview,
   returnProject,
   setProjectStatus,
   startWork,
@@ -37,7 +34,8 @@ export function ProjectWorkflowPanel({
   workflowSteps,
   currentStep,
   staff,
-  isAdmin,
+  isSuperAdmin = false,
+  canStaffAct = false,
   readOnly = false,
   departmentOptions,
   sectionRoleMap,
@@ -46,8 +44,11 @@ export function ProjectWorkflowPanel({
   workflowSteps: WorkflowStepRecord[]
   currentStep: WorkflowStepRecord | null
   staff: AppUser[]
-  isAdmin: boolean
-  userRole: string
+  /** Super Admin may assign, review, reassign, override, and close. */
+  isSuperAdmin?: boolean
+  /** Staff portal: show start / complete / submit / return actions. */
+  canStaffAct?: boolean
+  userRole?: string
   readOnly?: boolean
   /** Active department names for the move-to-department select */
   departmentOptions?: string[]
@@ -110,6 +111,8 @@ export function ProjectWorkflowPanel({
 
   const isBillingStep = currentStep?.step_type === "billing"
   const isReviewActive = project.status === "Pending Review"
+  const showSuperAdminControls = isSuperAdmin && !readOnly
+  const showStaffControls = canStaffAct && !readOnly && !isSuperAdmin
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,108 +123,63 @@ export function ProjectWorkflowPanel({
           {project.section} · {completedCount} of {workflowSteps.length} steps completed
         </p>
         {project.review_note ? (
-          <p className="mt-2 text-sm text-amber-800">Review note: {project.review_note}</p>
+          <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">
+            Review note: {project.review_note}
+          </p>
+        ) : null}
+        {project.status === "Closed" ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Project is closed{readOnly ? " and read-only" : ""}.
+          </p>
         ) : null}
       </div>
 
-      {isAdmin ? (
+      {showSuperAdminControls ? (
         <div className="flex flex-col gap-4">
-          {isReviewActive ? (
-            <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30">
-              <p className="mb-3 text-sm font-medium">Admin review required</p>
-              <form
-                action={(fd) => run(approveSectionReview, fd)}
-                className="flex flex-col gap-3"
-              >
-                <input type="hidden" name="project_id" value={project.id} />
-                <div className="flex flex-col gap-2">
-                  <Label>Assign next staff (optional)</Label>
-                  <FormMultiSelect
-                    name="assigned_to"
-                    placeholder="Search or select staff for next step..."
-                    searchPlaceholder="Search staff..."
-                    options={allStaffOptions}
-                  />
-                </div>
-                <Textarea name="note" placeholder="Approval notes" />
-                <Button type="submit" disabled={pending}>Approve & assign next</Button>
-              </form>
-              <form
-                action={(fd) => run(rejectReview, fd)}
-                className="mt-3 flex flex-col gap-2 border-t border-violet-200 pt-3"
-              >
-                <input type="hidden" name="project_id" value={project.id} />
-                <Textarea name="note" placeholder="Correction feedback (required)" required />
-                <Button type="submit" variant="destructive" disabled={pending}>
-                  Reject — correction required
-                </Button>
-              </form>
-            </div>
-          ) : null}
+          <ReviewPanel
+            project={project}
+            allStaffOptions={allStaffOptions}
+            pending={pending}
+            onRun={run}
+          />
 
-          {project.status === "Returned" ? (
-            <form action={(fd) => run(reassignReturnedProject, fd)} className="flex flex-col gap-2">
-              <input type="hidden" name="project_id" value={project.id} />
-              <Label>Reassign returned project</Label>
-              <FormMultiSelect
-                name="assigned_to"
-                required
-                placeholder="Search or select staff..."
-                searchPlaceholder="Search staff..."
-                options={sectionStaffOptions}
-              />
-              <Button type="submit" disabled={pending}>Reassign</Button>
-            </form>
-          ) : null}
-
-          {!isReviewActive ? (
-            <form action={(fd) => run(assignProject, fd)} className="flex flex-col gap-2">
-              <input type="hidden" name="project_id" value={project.id} />
-              <Label>{multiAssign ? "Assign team" : "Assign staff"}</Label>
-              {multiAssign ? (
-                <FormMultiSelect
-                  name="assigned_to"
-                  required
-                  placeholder="Search or select staff..."
-                  searchPlaceholder="Search staff..."
-                  options={sectionStaffOptions}
-                  defaultSelected={(project.site_assignee_ids ?? []).map(String)}
-                />
-              ) : (
-                <FormSelect
-                  name="assigned_to"
-                  required
-                  placeholder="Select staff"
-                  options={sectionStaffOptions}
-                />
-              )}
-              <Button type="submit" variant="outline" disabled={pending}>
-                {multiAssign ? "Assign team" : "Assign"}
-              </Button>
-            </form>
-          ) : null}
+          <AssignmentPanel
+            project={project}
+            multiAssign={multiAssign}
+            sectionStaffOptions={sectionStaffOptions}
+            pending={pending}
+            onRun={run}
+          />
 
           <form action={(fd) => run(assignToDepartment, fd)} className="flex flex-col gap-2">
             <input type="hidden" name="project_id" value={project.id} />
             <Label>Move to department (admin override)</Label>
             <FormSelect name="section" required placeholder="Department" options={sectionOptions} />
             <FormSelect name="assigned_to" placeholder="Optional staff" options={allStaffOptions} />
-            <Button type="submit" variant="outline" disabled={pending}>Move department</Button>
+            <Button type="submit" variant="outline" disabled={pending}>
+              Move department
+            </Button>
           </form>
 
           <form action={(fd) => run(setProjectStatus, fd)} className="flex flex-col gap-2">
             <input type="hidden" name="project_id" value={project.id} />
             <Label>Update status</Label>
             <Select name="status" value={status} onValueChange={(value) => value && setStatus(value)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {PROJECT_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Textarea name="note" placeholder="Status note" />
-            <Button type="submit" variant="outline" disabled={pending}>Update status</Button>
+            <Button type="submit" variant="outline" disabled={pending}>
+              Update status
+            </Button>
           </form>
 
           {isBillingStep ? (
@@ -233,7 +191,7 @@ export function ProjectWorkflowPanel({
             </form>
           ) : null}
         </div>
-      ) : readOnly ? null : (
+      ) : showStaffControls ? (
         <div className="flex flex-col gap-3">
           {["Assigned", "Correction Required"].includes(project.status) ? (
             <form action={(fd) => run(startWork, fd)}>
@@ -257,25 +215,42 @@ export function ProjectWorkflowPanel({
             <form action={(fd) => run(submitForReview, fd)} className="flex flex-col gap-2">
               <input type="hidden" name="project_id" value={project.id} />
               <Textarea name="note" placeholder="Notes for admin review" />
-              <Button type="submit" disabled={pending}>Submit for admin review</Button>
+              <Button type="submit" disabled={pending}>
+                Submit for admin review
+              </Button>
             </form>
           ) : null}
 
-          <form action={(fd) => run(returnProject, fd)} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+          <form
+            action={(fd) => run(returnProject, fd)}
+            className="flex flex-col gap-2 rounded-lg border border-border p-3"
+          >
             <input type="hidden" name="project_id" value={project.id} />
             <Label>Return to office</Label>
             <Select name="reason" required>
-              <SelectTrigger><SelectValue placeholder="Reason" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Reason" />
+              </SelectTrigger>
               <SelectContent>
                 {RETURN_REASONS.map((r) => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Textarea name="notes" placeholder="Additional notes" />
-            <Button type="submit" variant="destructive" disabled={pending}>Return project</Button>
+            <Button type="submit" variant="destructive" disabled={pending}>
+              Return project
+            </Button>
           </form>
         </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {isSuperAdmin
+            ? "Workflow controls are locked for this project."
+            : "Viewing workflow progress. Only Super Admin can assign, review, or close projects."}
+        </p>
       )}
     </div>
   )

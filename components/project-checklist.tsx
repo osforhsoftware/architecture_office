@@ -32,9 +32,11 @@ function groupChecklistItems(items: ChecklistItem[]) {
 export function ProjectChecklist({
   items,
   projectId,
+  readOnly = false,
 }: {
   items: ChecklistItem[]
   projectId: number
+  readOnly?: boolean
 }) {
   const [pending, startTransition] = useTransition()
   const filed = items.filter((i) => i.filed).length
@@ -42,6 +44,7 @@ export function ProjectChecklist({
   const missing = items.filter((i) => !i.filed)
 
   function onToggleFiled(itemId: number, filedValue: boolean) {
+    if (readOnly) return
     const fd = new FormData()
     fd.set("item_id", String(itemId))
     fd.set("project_id", String(projectId))
@@ -137,10 +140,16 @@ export function ProjectChecklist({
                     <Checkbox
                       id={filedId}
                       checked={filedItem}
-                      disabled={pending}
+                      disabled={pending || readOnly}
                       onCheckedChange={(v) => onToggleFiled(item.id, v === true)}
                     />
-                    <Label htmlFor={filedId} className="cursor-pointer text-[10px] text-muted-foreground">
+                    <Label
+                      htmlFor={filedId}
+                      className={cn(
+                        "text-[10px] text-muted-foreground",
+                        readOnly ? "cursor-default" : "cursor-pointer",
+                      )}
+                    >
                       Filed
                     </Label>
                   </div>

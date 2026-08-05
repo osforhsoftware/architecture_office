@@ -218,8 +218,8 @@ function addClientProjectBlock(
   return blockBottom + 5
 }
 
-function lineFinalRate(item: InvoiceLineItem): number {
-  const sanitized = sanitizeLineItemInput({
+function sanitizePdfLineItem(item: InvoiceLineItem) {
+  return sanitizeLineItemInput({
     description: item.description,
     quantity: Number(item.quantity) || 0,
     unit: item.unit ?? "Nos",
@@ -227,7 +227,6 @@ function lineFinalRate(item: InvoiceLineItem): number {
     discount_amount: Number(item.discount_amount) || 0,
     discount_percent: Number(item.discount_percent) || 0,
   })
-  return sanitized.final_rate
 }
 
 function addSummaryBlock(
@@ -413,21 +412,30 @@ export function buildInvoicePdfBuffer(
   let y = addHeader(doc, profile, invoice, MARGIN + 2)
   y = addClientProjectBlock(doc, invoice, y)
 
+  // Price = original rate; Discount = per-unit discount; Amount = (Price − Discount) × Qty
+  const colSl = 12
+  const colPrice = 28
+  const colDiscount = 26
+  const colQty = 24
+  const colAmount = 30
+  const colDesc = usableWidth - colSl - colPrice - colDiscount - colQty - colAmount
+
   const tableBody = invoice.line_items.map((item, index) => {
-    const unitRate = lineFinalRate(item)
+    const line = sanitizePdfLineItem(item)
     return [
       String(index + 1),
       pdfText(item.description),
-      formatPdfCurrency(unitRate),
-      formatPdfQuantity(item.quantity, item.unit),
-      formatPdfCurrency(item.amount),
+      formatPdfCurrency(line.unit_price),
+      formatPdfCurrency(line.discount_amount),
+      formatPdfQuantity(line.quantity, item.unit),
+      formatPdfCurrency(line.amount),
     ]
   })
 
   autoTable(doc, {
     startY: y,
-    head: [["Sl. No.", "Description", "Unit Rate", "Quantity", "Amount"]],
-    body: tableBody.length ? tableBody : [["-", "-", "-", "-", "-"]],
+    head: [["Sl. No.", "Description", "Price", "Discount", "Qty", "Amount"]],
+    body: tableBody.length ? tableBody : [["-", "-", "-", "-", "-", "-"]],
     theme: "grid",
     showHead: "everyPage",
     rowPageBreak: "avoid",
@@ -460,11 +468,12 @@ export function buildInvoicePdfBuffer(
       fillColor: [255, 255, 255],
     },
     columnStyles: {
-      0: { cellWidth: 14, halign: "center" },
-      1: { cellWidth: usableWidth - 14 - 32 - 28 - 32, halign: "left" },
-      2: { cellWidth: 32, halign: "right" },
-      3: { cellWidth: 28, halign: "right" },
-      4: { cellWidth: 32, halign: "right" },
+      0: { cellWidth: colSl, halign: "center" },
+      1: { cellWidth: colDesc, halign: "left" },
+      2: { cellWidth: colPrice, halign: "right" },
+      3: { cellWidth: colDiscount, halign: "right" },
+      4: { cellWidth: colQty, halign: "right" },
+      5: { cellWidth: colAmount, halign: "right" },
     },
     margin: { left: MARGIN, right: MARGIN, top: MARGIN + 4, bottom: 16 },
     didParseCell: (data) => {

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ProjectLedgerTable } from "@/components/finance/project-ledger-table"
 import { projectsToOptions } from "@/components/finance/finance-options"
+import { FormSelect } from "@/components/form-select"
 import { getProjectLedgerPaginated } from "@/lib/finance/server"
 import { getProjectsForInvoiceSelect } from "@/lib/queries"
 import { Button } from "@/components/ui/button"
@@ -26,14 +27,18 @@ export default async function ProjectLedgerPage({
           <p className="text-sm text-muted-foreground">Running balance of project income and expenses</p>
         </div>
         <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-card p-4 shadow-premium">
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 sm:min-w-[320px] sm:flex-1">
             <label htmlFor="projectId" className="text-xs font-medium text-muted-foreground">Project</label>
-            <select id="projectId" name="projectId" required className="h-9 min-w-[220px] rounded-lg border border-input px-2 text-sm">
-              <option value="">Select project</option>
-              {projectOptions.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
+            <FormSelect
+              id="projectId"
+              name="projectId"
+              options={projectOptions}
+              placeholder="Select project"
+              searchPlaceholder="Search by code, project, or client..."
+              searchable
+              required
+              className="h-9"
+            />
           </div>
           <Button type="submit" size="sm">View ledger</Button>
         </form>

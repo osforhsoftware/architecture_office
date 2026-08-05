@@ -245,6 +245,16 @@ scripts/
 
 > **Update this section with every change** — add a new dated entry at the top describing what was added, changed, or fixed.
 
+### 2026-08-05 — Staff Attendance module
+
+- **Added** GPS geofenced Check In / Check Out for staff (`/staff/attendance`) within 300 m of the office
+- **Added** Super Admin Attendance reports (`/admin/attendance`) with date/month/staff/department filters
+- **Added** CSV / Excel export and print report for attendance
+- **Added** `attendance` table + `attendance_settings` in `office_settings` (`npm run db:migrate-attendance`)
+- **Added** configurable office start time + buffer; Late Coming status and staff popup alert
+- **Added** Super Admin manual mark attendance (out-of-office / special cases)
+- **Security** Server-side Haversine validation, duplicate punch prevention, GPS/IP/device capture
+
 ### 2026-07-13 — Super Admin / Admin RBAC refactor
 
 - **Added** Super Admin role above Admin with full system control

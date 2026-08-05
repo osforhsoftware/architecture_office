@@ -5,6 +5,7 @@ import type { AppUser, Project } from "./types"
 import {
   isBillingStaff,
   isOfficeAdmin,
+  isSuperAdmin,
   rolesOf,
   userCanAccessBilling as canUserAccessBilling,
   userHasRole,
@@ -72,6 +73,9 @@ export function staffOwnsProject(user: AppUser, project: Project): boolean {
 
 export function staffCanEditProject(user: AppUser, project: Project): boolean {
   if (!staffOwnsProject(user, project)) return false
+  if (project.status === "Closed" || project.status === "Completed" || project.status === "Cancelled") {
+    return false
+  }
   return [
     "Assigned",
     "In Progress",
@@ -132,6 +136,17 @@ export async function requireStaffProjectAccess(
   if (isAdmin(user)) throw new Error("Unauthorized")
   if (!staffCanEditProject(user, project)) throw new Error("Unauthorized")
   return project
+}
+
+/** Closed projects are read-only except for Super Admin. */
+export function closedProjectMutationError(
+  user: AppUser,
+  project: Pick<Project, "status">,
+): string | null {
+  if (project.status === "Closed" && !isSuperAdmin(user.role)) {
+    return "Closed projects are read-only."
+  }
+  return null
 }
 
 export async function logAudit(

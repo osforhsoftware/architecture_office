@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
@@ -15,13 +15,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { FinanceSelectOption } from "@/components/finance/finance-options"
-import { PROJECT_BUDGET_CATEGORIES } from "@/lib/finance/constants"
 import { saveProjectBudget } from "@/lib/finance/actions"
 import type { ProjectBudget } from "@/lib/finance/types"
 
 type BudgetDialogProps = {
   projectId: number
   projects?: FinanceSelectOption[]
+  categories: FinanceSelectOption[]
   budget?: ProjectBudget
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -31,6 +31,7 @@ type BudgetDialogProps = {
 export function BudgetDialog({
   projectId,
   projects,
+  categories,
   budget,
   open: controlledOpen,
   onOpenChange,
@@ -44,9 +45,16 @@ export function BudgetDialog({
   const isEdit = Boolean(budget)
   const [category, setCategory] = useState(budget?.category ?? "")
 
+  useEffect(() => {
+    if (!open) return
+    setCategory(budget?.category ?? "")
+    setError(null)
+  }, [open, budget])
+
   function onSubmit(formData: FormData) {
     setError(null)
     formData.set("project_id", String(projectId))
+    if (category) formData.set("category", category)
     if (budget) formData.set("id", String(budget.id))
     startTransition(async () => {
       const res = await saveProjectBudget(formData)
@@ -58,8 +66,6 @@ export function BudgetDialog({
       setOpen(false)
     })
   }
-
-  const categoryOptions = PROJECT_BUDGET_CATEGORIES.map((c) => ({ value: c, label: c }))
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -76,7 +82,7 @@ export function BudgetDialog({
       )}
       <FormDialogShell
         title={isEdit ? "Edit Budget Line" : "Add Budget Line"}
-        description="Set estimated spending by category for this project."
+        description="Set estimated spending by expense category for this project."
       >
         {open ? (
           <form action={onSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -102,10 +108,13 @@ export function BudgetDialog({
                   <FormField label="Category">
                     <FormSelect
                       name="category"
-                      options={categoryOptions}
+                      options={categories}
                       value={category || null}
                       onValueChange={(v) => setCategory(v ?? "")}
                       placeholder="Select category"
+                      searchPlaceholder="Search category..."
+                      searchable
+                      required
                     />
                   </FormField>
                   <FormField label="Estimated amount" htmlFor="budget-amount">

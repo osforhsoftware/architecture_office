@@ -25,7 +25,7 @@ import {
   syncProjectFinance,
   checkLowCashBalance,
 } from "./ledger"
-import type { LedgerScope } from "./constants"
+import { isProtectedDefaultAccount, type LedgerScope } from "./constants"
 import type { FinanceIncome, FinanceExpense, FinanceAccount, StaffExpenseClaim } from "./types"
 
 const REVALIDATE_PATHS = [
@@ -1227,6 +1227,51 @@ export async function updateAccount(formData: FormData) {
     WHERE id = ${id} AND deleted_at IS NULL
   `
   await logAudit(user.id, "finance.account.update", "account", id, { name })
+  revalidateFinance()
+  return { success: true }
+}
+
+export async function deleteAccount(formData: FormData) {
+  const user = await requireFinanceManage()
+  const id = optId(formData.get("id"))
+  if (!id) return { error: "Invalid account" }
+
+  const rows = (await sql`
+    SELECT id, name, account_type, current_balance
+    FROM finance_accounts
+    WHERE id = ${id} AND deleted_at IS NULL
+    LIMIT 1
+  `) as Pick<FinanceAccount, "id" | "name" | "account_type" | "current_balance">[]
+  const account = rows[0]
+  if (!account) return { error: "Account not found" }
+
+  if (isProtectedDefaultAccount(account)) {
+    return { error: "Default Cash and Petty Cash accounts cannot be deleted" }
+  }
+
+  const confirmation = str(formData.get("confirmation"))
+  if (confirmation !== account.name) {
+    return { error: "Type the account name exactly to confirm hard delete" }
+  }
+
+  if (Number(account.current_balance) !== 0) {
+    return { error: "Transfer or clear the balance before deleting this account" }
+  }
+
+  const transfers = (await sql`
+    SELECT id FROM bank_transfers
+    WHERE from_account_id = ${id} OR to_account_id = ${id}
+    LIMIT 1
+  `) as { id: number }[]
+  if (transfers[0]) {
+    return { error: "Cannot delete account with existing bank transfers" }
+  }
+
+  await sql`DELETE FROM finance_accounts WHERE id = ${id}`
+  await logAudit(user.id, "finance.account.delete", "account", id, {
+    name: account.name,
+    hard: true,
+  })
   revalidateFinance()
   return { success: true }
 }

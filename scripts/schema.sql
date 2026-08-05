@@ -289,6 +289,44 @@ CREATE TABLE IF NOT EXISTS office_settings (
   updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS attendance (
+  id                    INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  staff_id              INT NOT NULL,
+  attendance_date       DATE NOT NULL,
+  check_in              DATETIME NULL,
+  check_out             DATETIME NULL,
+  working_hours         DECIMAL(6,2) NULL,
+  status                VARCHAR(50) NOT NULL DEFAULT 'Present',
+  latitude              DECIMAL(10,7) NULL,
+  longitude             DECIMAL(10,7) NULL,
+  distance_from_office  DECIMAL(10,2) NULL,
+  location_verified     TINYINT(1) NOT NULL DEFAULT 0,
+  is_manual             TINYINT(1) NOT NULL DEFAULT 0,
+  marked_by             INT NULL,
+  admin_note            VARCHAR(500) NULL,
+  device_info           VARCHAR(500) NULL,
+  ip_address            VARCHAR(100) NULL,
+  created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at            DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_attendance_staff_date (staff_id, attendance_date),
+  KEY idx_attendance_date (attendance_date),
+  KEY idx_attendance_staff (staff_id),
+  CONSTRAINT fk_attendance_staff FOREIGN KEY (staff_id) REFERENCES app_users(id),
+  CONSTRAINT fk_attendance_marked_by FOREIGN KEY (marked_by) REFERENCES app_users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO office_settings (`key`, value) VALUES (
+  'attendance_settings',
+  JSON_OBJECT(
+    'latitude', 10.8957539,
+    'longitude', 76.0743256,
+    'radius_meters', 300,
+    'maps_url', 'https://maps.app.goo.gl/nnHZSiLpAeA7vSNQ8',
+    'office_start_time', '09:30',
+    'buffer_minutes', 10
+  )
+);
+
 CREATE TABLE IF NOT EXISTS invoices (
   id               INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   project_id       INT,

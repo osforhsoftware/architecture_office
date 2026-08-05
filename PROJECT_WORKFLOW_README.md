@@ -78,13 +78,23 @@ There is no `/employee` portal — employees use **`/staff`**.
    - Assigned staff / team
    - Status + review note
 5. **Main column**
-   - **Department Progress** — `ProjectWorkflowPanel` (admin actions)
+   - **Department Progress** — `ProjectWorkflowPanel` (Super Admin actions; Admin view-only)
    - Drawing number panel
    - KMAP areas panel
-   - Tabs: Documents checklist · Files · Billing
-6. **Right column** — activity feed, comments, recent notifications
+   - Tabs: Documents checklist · Files · Billing (`ProjectBillingPanel`)
+6. **Right column** — activity feed, **approval history** (`ApprovalHistory` from `workflow_reviews`), comments, recent notifications
 
-### Admin workflow actions (`ProjectWorkflowPanel`)
+### Role split on project detail
+
+| Role | Workflow controls | Documents / Files / KMAP / Drawing | Billing |
+|------|-------------------|------------------------------------|---------|
+| **Super Admin** | Assign, approve, reject, reassign, move dept, status override, close | Editable (including when Closed) | Yes |
+| **Admin** | View only (current step + timeline) | Editable until Closed; then read-only | Yes |
+| **Staff** | Start / complete / submit / return when assigned | Editable only while assigned & editable status | No |
+
+### Super Admin workflow actions (`ProjectWorkflowPanel`)
+
+Uses `AssignmentPanel` (assign / reassign) and `ReviewPanel` (approve / reject).
 
 | Action | When | Result |
 |--------|------|--------|
@@ -95,6 +105,12 @@ There is no `/employee` portal — employees use **`/staff`**.
 | **Move department** | Anytime (override) | Moves section; optional assignee |
 | **Update status** | Anytime | Manual status + note in history |
 | **Close project** | Billing step + payment = `Paid` | Status → `Closed` |
+
+### Closed projects
+
+- Status `Closed` → read-only for Admin and Staff (checklist, files, KMAP, drawing, workflow mutations).
+- Super Admin may still edit details and run overrides.
+- Billing tab remains available for office admins (invoices + payments via `ProjectBillingPanel`).
 
 ---
 
@@ -235,12 +251,15 @@ Exact steps on a project depend on **selected services** at create time (full vs
 
 | Panel | Purpose | Component |
 |-------|---------|-----------|
-| Workflow | Assign, advance, review, return | `project-workflow-panel.tsx` |
+| Workflow | Orchestrates Super Admin + staff actions | `project-workflow-panel.tsx` |
+| Assignment | Assign / reassign staff | `assignment-panel.tsx` |
+| Review | Approve / reject pending work | `review-panel.tsx` |
 | Documents / Checklist | Service-based required docs | `project-checklist.tsx` |
 | Files | Project file references | `project-files-panel.tsx` |
 | Drawing number | Planning drawing no. | `project-drawing-number-panel.tsx` |
 | KMAP | Floor / area entries | `project-kmap-panel.tsx` |
-| Billing / Payments | Amounts & payments (admin) | `project-payments-panel.tsx` |
+| Billing | Invoices + payments (admin) | `project-billing-panel.tsx` |
+| Approval history | Approve / reject audit trail | `approval-history.tsx` |
 | Activity / History | Status & return timeline | `project-activity-feed.tsx` / `project-history-panel.tsx` |
 
 ---
@@ -256,10 +275,14 @@ app/staff/projects/page.tsx          # Employee project list
 app/staff/projects/[id]/page.tsx     # Employee project details
 components/project-dialog.tsx        # Create form
 components/register-client-project-dialog.tsx
-components/project-workflow-panel.tsx # Admin + staff actions
+components/project-workflow-panel.tsx # Super Admin + staff actions
+components/assignment-panel.tsx      # Assign / reassign
+components/review-panel.tsx          # Approve / reject
+components/approval-history.tsx      # Review audit trail
+components/project-billing-panel.tsx # Invoices + payments
 lib/actions.ts                       # createProject, assign, startWork, markWorkComplete, submitForReview, …
-lib/project-access.ts                # Who can view / edit
-lib/workflow.ts / lib/workflow-db.ts # Step building + seed/activate
+lib/project-access.ts                # Who can view / edit; closed read-only
+lib/workflow.ts / lib/workflow-db.ts # Step building + seed/activate + getWorkflowReviews
 lib/constants.ts                     # Statuses, sections, pipeline
 ```
 
@@ -275,4 +298,6 @@ lib/constants.ts                     # Statuses, sections, pipeline
 | Approve or reject review | Super Admin |
 | Return with missing info | Staff |
 | Reassign returned project | Super Admin |
-| Record payments & close | Billing / Super Admin |
+| Record payments | Admin / Billing / Super Admin |
+| Close project (Paid) | Super Admin |
+| Edit closed project details | Super Admin only |

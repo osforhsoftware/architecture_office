@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Trash2 } from "lucide-react"
+import { Check, Copy, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
 import {
@@ -23,10 +23,22 @@ export function InvoicePaymentDeleteDialog({ payment }: { payment: InvoicePaymen
   const [open, setOpen] = useState(false)
   const [confirmation, setConfirmation] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [pending, startTransition] = useTransition()
 
   const expectedPhrase = invoicePaymentDeleteConfirmationPhrase(payment.id)
   const canDelete = confirmation === expectedPhrase
+
+  async function handleCopyPhrase() {
+    try {
+      await navigator.clipboard.writeText(expectedPhrase)
+      setCopied(true)
+      toast.success("Confirmation text copied")
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error("Could not copy text")
+    }
+  }
 
   function handleDelete() {
     setError(null)
@@ -54,6 +66,7 @@ export function InvoicePaymentDeleteDialog({ payment }: { payment: InvoicePaymen
         if (!next) {
           setConfirmation("")
           setError(null)
+          setCopied(false)
         }
       }}
     >
@@ -104,13 +117,26 @@ export function InvoicePaymentDeleteDialog({ payment }: { payment: InvoicePaymen
 
             <FormField
               label={
-                <>
-                  Type{" "}
-                  <span className="font-mono text-xs font-semibold text-foreground">
-                    {expectedPhrase}
-                  </span>{" "}
-                  to confirm hard delete
-                </>
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <span>
+                    Type{" "}
+                    <span className="font-mono text-xs font-semibold text-foreground">
+                      {expectedPhrase}
+                    </span>{" "}
+                    to confirm hard delete
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={handleCopyPhrase}
+                    aria-label="Copy confirmation text"
+                    title="Copy confirmation text"
+                  >
+                    {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  </Button>
+                </span>
               }
               htmlFor={`invoice-payment-delete-confirm-${payment.id}`}
             >

@@ -127,7 +127,7 @@ export default async function StaffProjectDetailPage({
               workflowSteps={workflowSteps}
               currentStep={currentStep}
               staff={staff}
-              isAdmin={false}
+              canStaffAct
               userRole={user.role}
               readOnly={false}
               departmentOptions={departmentOptions}
@@ -146,7 +146,6 @@ export default async function StaffProjectDetailPage({
               workflowSteps={workflowSteps}
               currentStep={currentStep}
               staff={staff}
-              isAdmin={false}
               userRole={user.role}
               readOnly
               departmentOptions={departmentOptions}
@@ -215,14 +214,22 @@ export default async function StaffProjectDetailPage({
         <TabsContent value="checklist" className="mt-4">
           <Card className="shadow-none">
             <CardContent className="p-4 md:p-6">
-              <ProjectChecklist items={checklist} projectId={projectId} />
+              <ProjectChecklist
+                items={checklist}
+                projectId={projectId}
+                readOnly={!canEdit || project.status === "Closed"}
+              />
             </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="files" className="mt-4">
           <Card className="shadow-none">
             <CardContent className="p-4 md:p-6">
-              <ProjectFilesPanel files={files} projectId={projectId} />
+              <ProjectFilesPanel
+                files={files}
+                projectId={projectId}
+                readOnly={!canEdit || project.status === "Closed"}
+              />
             </CardContent>
           </Card>
         </TabsContent>

@@ -79,6 +79,7 @@ import {
 } from "./payment-utils"
 import { staffDeleteConfirmationPhrase } from "./staff-utils"
 import {
+  closedProjectMutationError,
   getProjectOrThrow,
   isAdmin,
   logAudit,
@@ -1933,9 +1934,11 @@ export async function toggleChecklistItem(formData: FormData) {
   const checked = String(formData.get("checked")) === "true"
   if (!id || !projectId) return { error: "Invalid item." }
 
-  if (!isAdmin(user)) {
-    await requireStaffProjectAccess(user, projectId)
-  }
+  const project = !isAdmin(user)
+    ? await requireStaffProjectAccess(user, projectId)
+    : await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   await sql`UPDATE checklist_items SET checked = ${checked} WHERE id = ${id}`
   revalidateProjectPaths(projectId)
@@ -1949,9 +1952,11 @@ export async function toggleChecklistFiled(formData: FormData) {
   const filed = String(formData.get("filed")) === "true"
   if (!id || !projectId) return { error: "Invalid item." }
 
-  if (!isAdmin(user)) {
-    await requireStaffProjectAccess(user, projectId)
-  }
+  const project = !isAdmin(user)
+    ? await requireStaffProjectAccess(user, projectId)
+    : await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   await sql`UPDATE checklist_items SET filed = ${filed}, checked = ${filed} WHERE id = ${id}`
   revalidateProjectPaths(projectId)
@@ -1963,9 +1968,11 @@ export async function updateProjectKmapAreas(formData: FormData) {
   const projectId = Number(formData.get("project_id"))
   if (!projectId) return { error: "Invalid project." }
 
-  if (!isAdmin(user)) {
-    await requireStaffProjectAccess(user, projectId)
-  }
+  const project = !isAdmin(user)
+    ? await requireStaffProjectAccess(user, projectId)
+    : await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   const raw = String(formData.get("areas") || "")
   let areas: {
@@ -2023,9 +2030,11 @@ export async function updateProjectDrawingNumber(formData: FormData) {
   if (!projectId) return { error: "Invalid project." }
 
   const project = await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   if (isAdmin(user)) {
-    // Admin can set drawing number at any stage
+    // Admin can set drawing number at any stage (Super Admin when closed)
   } else if (userHasRole(user, "Planning Staff") || user.role === "Planning Staff") {
     try {
       await requireStaffProjectAccess(user, projectId)
@@ -2076,9 +2085,11 @@ export async function addProjectFile(formData: FormData) {
   const category = String(formData.get("category") || "Other")
   if (!projectId || !name) return { error: "File name is required." }
 
-  if (!isAdmin(user)) {
-    await requireStaffProjectAccess(user, projectId)
-  }
+  const project = !isAdmin(user)
+    ? await requireStaffProjectAccess(user, projectId)
+    : await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   await sql`
     INSERT INTO project_files (project_id, name, file_type, category, uploaded_by)
@@ -2094,9 +2105,11 @@ export async function deleteProjectFile(formData: FormData) {
   const id = Number(formData.get("file_id"))
   const projectId = Number(formData.get("project_id"))
 
-  if (!isAdmin(user)) {
-    await requireStaffProjectAccess(user, projectId)
-  }
+  const project = !isAdmin(user)
+    ? await requireStaffProjectAccess(user, projectId)
+    : await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
 
   await sql`DELETE FROM project_files WHERE id = ${id}`
   await logAudit(user.id, "file.delete", "project", projectId, { fileId: id })

@@ -1,6 +1,11 @@
 import { formatCurrency } from "@/lib/constants"
-import { isCashAccountType, isBankAccountType } from "@/lib/finance/constants"
+import {
+  isCashAccountType,
+  isBankAccountType,
+  isProtectedDefaultAccount,
+} from "@/lib/finance/constants"
 import { AccountDialog } from "@/components/finance/account-dialog"
+import { AccountDeleteDialog } from "@/components/finance/account-delete-dialog"
 import { TransferDialog } from "@/components/finance/transfer-dialog"
 import { accountsToOptions } from "@/components/finance/finance-options"
 import { getFinanceAccounts } from "@/lib/finance/server"
@@ -57,8 +62,11 @@ export default async function OfficeAccountsPage() {
               </div>
               <p className="mt-4 text-2xl font-semibold tabular-nums">{formatCurrency(account.current_balance)}</p>
               {account.bank_name ? <p className="mt-1 text-xs text-muted-foreground">{account.bank_name}</p> : null}
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <AccountDialog account={account} />
+                {!isProtectedDefaultAccount(account) ? (
+                  <AccountDeleteDialog account={account} />
+                ) : null}
               </div>
             </div>
           ))}

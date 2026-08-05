@@ -65,6 +65,7 @@ export const SUPER_ADMIN_ONLY_ROUTE_PREFIXES = [
   "/admin/audit",
   "/admin/settings",
   "/admin/reports",
+  "/admin/attendance",
 ] as const
 
 export function roleToKey(role: string): RoleKey | null {
