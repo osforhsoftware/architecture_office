@@ -40,7 +40,12 @@ function logoPreviewSrc(logo: string | null | undefined): string | null {
   return publicAssetUrl(logo)
 }
 
-function compressImageFile(file: File, maxSize = 240): Promise<Blob> {
+function isNearBlack(r: number, g: number, b: number, threshold = 28) {
+  return r <= threshold && g <= threshold && b <= threshold
+}
+
+/** Flatten PNG/WebP transparency (and solid black backdrops) onto white for invoice/PDF use. */
+function compressImageFile(file: File, maxSize = 240): Promise<File> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -57,9 +62,45 @@ function compressImageFile(file: File, maxSize = 240): Promise<Blob> {
         reject(new Error("Canvas not supported"))
         return
       }
+      // JPEG has no alpha — fill white so transparent areas stay white
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(0, 0, width, height)
       ctx.drawImage(img, 0, 0, width, height)
+
+      const isPngLike = file.type === "image/png" || file.type === "image/webp"
+      if (isPngLike) {
+        const imageData = ctx.getImageData(0, 0, width, height)
+        const d = imageData.data
+        const cornerIdx = [
+          0,
+          (width - 1) * 4,
+          (height - 1) * width * 4,
+          ((height - 1) * width + (width - 1)) * 4,
+        ]
+        const blackCorners = cornerIdx.filter((i) =>
+          isNearBlack(d[i]!, d[i + 1]!, d[i + 2]!),
+        ).length
+        // Solid black backdrop (common on logo PNGs) → white
+        if (blackCorners >= 3) {
+          for (let i = 0; i < d.length; i += 4) {
+            if (isNearBlack(d[i]!, d[i + 1]!, d[i + 2]!)) {
+              d[i] = 255
+              d[i + 1] = 255
+              d[i + 2] = 255
+            }
+          }
+          ctx.putImageData(imageData, 0, 0)
+        }
+      }
+
       canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Compression failed"))),
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Compression failed"))
+            return
+          }
+          resolve(new File([blob], "image.jpg", { type: "image/jpeg" }))
+        },
         "image/jpeg",
         0.82,
       )
@@ -139,7 +180,7 @@ function ImageUploadField({
           <img
             src={preview}
             alt={label}
-            className="size-16 rounded-lg border border-border object-contain"
+            className="size-16 rounded-lg border border-border bg-white object-contain p-1"
           />
         ) : (
           <div className="flex size-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground">

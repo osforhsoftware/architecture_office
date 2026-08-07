@@ -10,9 +10,9 @@ import {
   type KeyboardEvent,
 } from "react"
 import { ChevronDown, Search, User, X } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 
 export type FormMultiSelectOption = {
@@ -20,6 +20,8 @@ export type FormMultiSelectOption = {
   label: React.ReactNode
   /** Secondary line, e.g. role or department */
   description?: string
+  /** Staff profile image path/URL when available */
+  avatarUrl?: string | null
 }
 
 type FormMultiSelectProps = {
@@ -36,15 +38,6 @@ type FormMultiSelectProps = {
 
 function optionLabelText(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("")
 }
 
 export function FormMultiSelect({
@@ -217,11 +210,12 @@ export function FormMultiSelect({
                   className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/15 bg-primary/10 py-1 pr-1 pl-1.5 text-xs font-medium text-primary transition-colors duration-200"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <Avatar size="sm" className="size-5 after:border-primary/20">
-                    <AvatarFallback className="bg-primary/15 text-[10px] font-semibold text-primary">
-                      {getInitials(nameText)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={nameText}
+                    avatarUrl={option.avatarUrl}
+                    className="size-5"
+                    textClassName="bg-primary/15 text-[10px] font-semibold text-primary"
+                  />
                   <span className="truncate">{nameText}</span>
                   <button
                     type="button"
@@ -305,16 +299,17 @@ export function FormMultiSelect({
                     aria-hidden
                     className="pointer-events-none"
                   />
-                  <Avatar size="sm" className="size-8 shrink-0">
-                    <AvatarFallback
-                      className={cn(
-                        "text-xs font-semibold",
-                        checked ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {getInitials(nameText)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={nameText}
+                    avatarUrl={option.avatarUrl}
+                    className="size-8"
+                    textClassName={cn(
+                      "text-xs font-semibold",
+                      checked
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{nameText}</p>
                     {option.description ? (

@@ -1,7 +1,8 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft, Mail, MapPin, Phone, User, Wallet } from "lucide-react"
+import { ArrowLeft, Mail, MapPin, Phone, Wallet } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
+import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 import { ApprovalHistory } from "@/components/approval-history"
 import { BillingStaffProjectView } from "@/components/billing-staff-project-view"
@@ -83,6 +84,23 @@ export default async function AdminProjectDetailPage({
 
   const progress = projectProgressPercent(project.current_stage, workflowSteps)
   const stageLabel = currentStep?.label ?? "—"
+  const assignee =
+    staff.find((s) => s.id === project.assigned_to) ??
+    staff.find((s) => project.site_assignee_ids?.includes(s.id))
+  const teamAssignees = (project.site_assignee_ids ?? [])
+    .map((id) => staff.find((s) => s.id === id))
+    .filter((s): s is NonNullable<typeof s> => Boolean(s))
+  const assignedAt = statusHistory.find((h) => h.status === "Assigned")?.created_at
+  const assignedAtLabel = assignedAt
+    ? new Date(assignedAt).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : null
 
   if (billingOnly) {
     return (
@@ -252,22 +270,42 @@ export default async function AdminProjectDetailPage({
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
             <h3 className="text-sm font-semibold">Assigned Staff</h3>
             <div className="mt-4 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <User className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">
+              <UserAvatar
+                name={assignee?.name ?? project.assignee_name ?? "Unassigned"}
+                avatarUrl={assignee?.avatar_url}
+                className="size-10"
+                textClassName="bg-primary/10 text-sm text-primary"
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
                   {project.assignee_name ?? "Unassigned"}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {project.assignee_name ? "Primary assignee" : "Awaiting assignment"}
                 </p>
+                {assignedAtLabel ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Assigned {assignedAtLabel}
+                  </p>
+                ) : null}
               </div>
             </div>
-            {project.site_assignee_names && project.site_assignee_names.length > 1 ? (
+            {teamAssignees.length > 1 ? (
               <div className="mt-4 rounded-lg bg-muted/50 p-3">
                 <p className="text-xs font-medium text-muted-foreground">Assigned team</p>
-                <p className="mt-1 text-sm">{project.site_assignee_names.join(", ")}</p>
+                <ul className="mt-2 space-y-2">
+                  {teamAssignees.map((member) => (
+                    <li key={member.id} className="flex items-center gap-2">
+                      <UserAvatar
+                        name={member.name}
+                        avatarUrl={member.avatar_url}
+                        className="size-7"
+                        textClassName="bg-background text-[10px] text-muted-foreground"
+                      />
+                      <span className="truncate text-sm">{member.name}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </div>
@@ -306,6 +344,7 @@ export default async function AdminProjectDetailPage({
             <ProjectDrawingNumberPanel
               projectId={projectId}
               drawingNumber={project.drawing_number}
+              edgebookNumber={project.edgebook_number}
               readOnly={detailsReadOnly}
             />
           </div>

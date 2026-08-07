@@ -1336,6 +1336,7 @@ export async function createProject(formData: FormData) {
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
   const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
   const referName = String(formData.get("refer_name") || "").trim() || null
   const projectPackage = (String(formData.get("project_package") || "full") as ProjectPackage)
   const residential = parseResidentialDetails(formData, type)
@@ -1364,13 +1365,13 @@ export async function createProject(formData: FormData) {
     INSERT INTO projects (
       code, name, client_id, location, type, priority, status, section, current_stage,
       due_date, project_amount, invoice_number, project_package,
-      building_number, building_permit_number, drawing_number, refer_name,
+      building_number, building_permit_number, drawing_number, edgebook_number, refer_name,
       req_architectural_plan, req_building_permit, req_regularization
     )
     VALUES (
       ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
       ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
-      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${referName},
+      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName},
       ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
     )
   `) as { id: number }[]
@@ -2057,6 +2058,40 @@ export async function updateProjectDrawingNumber(formData: FormData) {
   `
   await logAudit(user.id, "project.update_drawing_number", "project", projectId, {
     drawingNumber,
+  })
+  revalidateProjectPaths(projectId)
+  return { success: true }
+}
+
+export async function updateProjectEdgebookNumber(formData: FormData) {
+  const user = await requireUser()
+  const projectId = Number(formData.get("project_id"))
+  const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
+
+  if (!projectId) return { error: "Invalid project." }
+
+  const project = await getProjectOrThrow(projectId)
+  const closedError = closedProjectMutationError(user, project)
+  if (closedError) return { error: closedError }
+
+  if (isAdmin(user)) {
+    // Admin can set edgebook number at any stage (Super Admin when closed)
+  } else if (userHasRole(user, "Planning Staff") || user.role === "Planning Staff") {
+    try {
+      await requireStaffProjectAccess(user, projectId)
+    } catch {
+      return { error: "You do not have access to edit this project." }
+    }
+  } else {
+    return { error: "Only Admin or Planning Staff can update the edgebook number." }
+  }
+
+  await sql`
+    UPDATE projects SET edgebook_number = ${edgebookNumber}, updated_at = now()
+    WHERE id = ${projectId}
+  `
+  await logAudit(user.id, "project.update_edgebook_number", "project", projectId, {
+    edgebookNumber,
   })
   revalidateProjectPaths(projectId)
   return { success: true }

@@ -79,6 +79,7 @@ export function ProjectWorkflowPanel({
         value: String(s.id),
         label: s.name,
         description: formatRolesLabel(s),
+        avatarUrl: s.avatar_url,
       })),
     [sectionStaff],
   )
@@ -89,6 +90,7 @@ export function ProjectWorkflowPanel({
         value: String(s.id),
         label: s.name,
         description: formatRolesLabel(s),
+        avatarUrl: s.avatar_url,
       })),
     [staff],
   )

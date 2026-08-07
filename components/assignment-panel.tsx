@@ -11,6 +11,7 @@ type StaffOption = {
   value: string
   label: string
   description?: string
+  avatarUrl?: string | null
 }
 
 export function AssignmentPanel({

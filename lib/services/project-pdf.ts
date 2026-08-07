@@ -37,6 +37,21 @@ function drawHRule(doc: jsPDF, y: number, pageWidth: number) {
   doc.line(MARGIN, y, pageWidth - MARGIN, y)
 }
 
+function companyDetailLines(profile: OfficeProfile): string[] {
+  const lines: string[] = []
+  const address = pdfText(profile.address)
+  if (address) lines.push(address)
+
+  const contact = [pdfText(profile.phone), pdfText(profile.email)].filter(Boolean).join("  |  ")
+  if (contact) lines.push(contact)
+
+  const website = pdfText(profile.website)
+  if (website) lines.push(website)
+
+  if (profile.gstNumber) lines.push(`GSTIN: ${pdfText(profile.gstNumber)}`)
+  return lines
+}
+
 function parseAadhaar(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
@@ -61,35 +76,95 @@ function packageLabel(value: string | null | undefined): string {
   return pdfText(value)
 }
 
+/** Fit logo inside max box without stretching (avoids black wide bars). */
+function fitLogoSize(
+  doc: jsPDF,
+  dataUrl: string,
+  maxW: number,
+  maxH: number,
+): { w: number; h: number; format: "PNG" | "JPEG" } {
+  const format: "PNG" | "JPEG" = dataUrl.includes("image/png") ? "PNG" : "JPEG"
+  try {
+    const props = doc.getImageProperties(dataUrl)
+    const ratio = props.width / Math.max(props.height, 1)
+    let w = maxW
+    let h = w / ratio
+    if (h > maxH) {
+      h = maxH
+      w = h * ratio
+    }
+    return { w, h, format }
+  } catch {
+    return { w: maxW, h: maxH, format }
+  }
+}
+
 function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY: number): number {
   const pageWidth = doc.internal.pageSize.getWidth()
+  /** Branding sits left of project meta; leave room for the right column. */
+  const brandMaxX = pageWidth / 2 - 2
+  const LOGO_MAX_W = 28
+  const LOGO_MAX_H = 18
+  const LOGO_GAP = 5
+
+  let logoW = 0
+  let logoH = 0
   let hasLogo = false
 
   if (profile.logoDataUrl) {
     try {
-      const format = profile.logoDataUrl.includes("image/png") ? "PNG" : "JPEG"
-      doc.addImage(profile.logoDataUrl, format, MARGIN, startY, 42, 16)
+      const sized = fitLogoSize(doc, profile.logoDataUrl, LOGO_MAX_W, LOGO_MAX_H)
+      logoW = sized.w
+      logoH = sized.h
+      doc.addImage(profile.logoDataUrl, sized.format, MARGIN, startY, logoW, logoH)
       hasLogo = true
     } catch {
       // skip invalid logo
     }
   }
 
-  if (!hasLogo) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(13)
-    doc.setTextColor(...INK)
-    doc.text(pdfText(profile.companyName).toUpperCase() || "COMPANY", MARGIN, startY + 7)
+  // Single row, two columns: logo (left) | company name + contact (right of logo)
+  const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
+  const detailsMaxW = Math.max(40, brandMaxX - detailsX)
 
+  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
+  const detailLines = companyDetailLines(profile)
+  const showTagline = !hasLogo && Boolean(profile.tagline)
+  let contentH = 5 // company name line
+  if (showTagline) contentH += 4
+  for (const line of detailLines) {
+    contentH += doc.splitTextToSize(line, detailsMaxW).length * 3.6
+  }
+
+  const logoBottom = hasLogo ? startY + logoH : startY
+  let detailsY = hasLogo
+    ? startY + Math.max(3.5, (logoH - contentH) / 2 + 3.5)
+    : startY + 4
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(11)
+  doc.setTextColor(...INK)
+  doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
+  detailsY += 5
+
+  if (showTagline) {
     doc.setFont("helvetica", "normal")
     doc.setFontSize(7.5)
     doc.setTextColor(...MUTED)
-    doc.text(
-      pdfText(profile.tagline) || "Architecture | Interiors | Planning",
-      MARGIN,
-      startY + 13,
-    )
+    doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
+    detailsY += 4
   }
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  for (const line of detailLines) {
+    const wrapped = doc.splitTextToSize(line, detailsMaxW)
+    doc.text(wrapped, detailsX, detailsY)
+    detailsY += wrapped.length * 3.6
+  }
+
+  const brandBottom = Math.max(logoBottom, detailsY)
 
   const metaX = pageWidth - MARGIN
   const metaLabelX = metaX - 62
@@ -122,7 +197,7 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
   })
 
   const headerBottom = Math.max(
-    startY + (hasLogo ? 20 : 22),
+    brandBottom + 4,
     startY + 17 + metaRows.length * 5 + 4,
   )
   drawHRule(doc, headerBottom, pageWidth)
@@ -233,9 +308,7 @@ export function buildProjectPdfBuffer(
   if (project.drawing_number) {
     projectRows.push(["DRAWING NO.", pdfText(project.drawing_number)])
   }
-  if (project.edgebook_number) {
-    projectRows.push(["EDGEBOOK NO.", pdfText(project.edgebook_number)])
-  }
+  projectRows.push(["EDGEBOOK NO.", pdfText(project.edgebook_number) || "—"])
   if (project.refer_name) {
     projectRows.push(["REFER NAME", pdfText(project.refer_name)])
   }

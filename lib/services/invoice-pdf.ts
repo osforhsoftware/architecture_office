@@ -67,6 +67,29 @@ function companyDetailLines(profile: OfficeProfile): string[] {
   return lines
 }
 
+/** Fit logo inside max box without stretching (avoids black wide bars). */
+function fitLogoSize(
+  doc: jsPDF,
+  dataUrl: string,
+  maxW: number,
+  maxH: number,
+): { w: number; h: number; format: "PNG" | "JPEG" } {
+  const format: "PNG" | "JPEG" = dataUrl.includes("image/png") ? "PNG" : "JPEG"
+  try {
+    const props = doc.getImageProperties(dataUrl)
+    const ratio = props.width / Math.max(props.height, 1)
+    let w = maxW
+    let h = w / ratio
+    if (h > maxH) {
+      h = maxH
+      w = h * ratio
+    }
+    return { w, h, format }
+  } catch {
+    return { w: maxW, h: maxH, format }
+  }
+}
+
 function addHeader(
   doc: jsPDF,
   profile: OfficeProfile,
@@ -74,45 +97,70 @@ function addHeader(
   startY: number,
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth()
-  const leftMaxW = pageWidth / 2 - MARGIN - 4
-  let y = startY
-  let hasLogo = false
+  /** Branding sits left of invoice meta; leave room for the right column. */
+  const brandMaxX = pageWidth / 2 - 2
+  const LOGO_MAX_W = 28
+  const LOGO_MAX_H = 18
+  const LOGO_GAP = 5
 
+  let logoW = 0
+  let logoH = 0
+  let hasLogo = false
   if (profile.logoDataUrl) {
     try {
-      const format = profile.logoDataUrl.includes("image/png") ? "PNG" : "JPEG"
-      doc.addImage(profile.logoDataUrl, format, MARGIN, y, 36, 14)
+      const sized = fitLogoSize(doc, profile.logoDataUrl, LOGO_MAX_W, LOGO_MAX_H)
+      logoW = sized.w
+      logoH = sized.h
+      doc.addImage(profile.logoDataUrl, sized.format, MARGIN, startY, logoW, logoH)
       hasLogo = true
-      y += 16
     } catch {
       // skip invalid logo
     }
   }
 
-  // Company name + details directly under logo (or at top when no logo)
+  // Single row, two columns: logo (left) | company name + contact (right of logo)
+  const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
+  const detailsMaxW = Math.max(40, brandMaxX - detailsX)
+
+  // Measure contact block height first so we can vertically center beside the logo
+  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
+  const detailLines = companyDetailLines(profile)
+  const showTagline = !hasLogo && Boolean(profile.tagline)
+  let contentH = 5 // company name line
+  if (showTagline) contentH += 4
+  for (const line of detailLines) {
+    contentH += doc.splitTextToSize(line, detailsMaxW).length * 3.6
+  }
+
+  const logoBottom = hasLogo ? startY + logoH : startY
+  let detailsY = hasLogo
+    ? startY + Math.max(3.5, (logoH - contentH) / 2 + 3.5)
+    : startY + 4
+
   doc.setFont("helvetica", "bold")
   doc.setFontSize(11)
   doc.setTextColor(...INK)
-  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
-  doc.text(companyName, MARGIN, y + 4, { maxWidth: leftMaxW })
-  y += 9
+  doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
+  detailsY += 5
 
-  if (!hasLogo && profile.tagline) {
+  if (showTagline) {
     doc.setFont("helvetica", "normal")
     doc.setFontSize(7.5)
     doc.setTextColor(...MUTED)
-    doc.text(pdfText(profile.tagline), MARGIN, y, { maxWidth: leftMaxW })
-    y += 4.5
+    doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
+    detailsY += 4
   }
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  for (const line of companyDetailLines(profile)) {
-    const wrapped = doc.splitTextToSize(line, leftMaxW)
-    doc.text(wrapped, MARGIN, y)
-    y += wrapped.length * 3.6
+  for (const line of detailLines) {
+    const wrapped = doc.splitTextToSize(line, detailsMaxW)
+    doc.text(wrapped, detailsX, detailsY)
+    detailsY += wrapped.length * 3.6
   }
+
+  const brandBottom = Math.max(logoBottom, detailsY)
 
   // INVOICE title + meta (top-right)
   const metaX = pageWidth - MARGIN
@@ -141,7 +189,7 @@ function addHeader(
   })
 
   const metaBottom = startY + 16 + metaRows.length * 5 + 2
-  const headerBottom = Math.max(y + 2, metaBottom)
+  const headerBottom = Math.max(brandBottom + 2, metaBottom)
   drawHRule(doc, headerBottom, pageWidth, true)
   return headerBottom + 6
 }
@@ -257,13 +305,21 @@ function addSummaryBlock(
     { label: "Grand Total", value: formatPdfCurrency(total), emphasize: true },
   )
   if (paid > 0) {
-    rows.push({ label: "Amount Paid", value: formatPdfCurrency(paid) })
+    const balanceDue = Math.max(0, total - paid)
+    rows.push(
+      { label: "Amount Paid", value: `-${formatPdfCurrency(paid)}` },
+      { label: "Balance Due", value: formatPdfCurrency(balanceDue), emphasize: true },
+    )
   }
 
   const rowH = 6.5
   const padX = 3.5
   const padY = 3.5
-  const boxHeight = padY * 2 + rows.length * rowH
+  // Extra top space before Grand Total / Balance Due so the rule isn't flush to the label
+  const emphasizeTop = 2.5
+  const ruleGap = 5
+  const emphasizeCount = rows.filter((r) => r.emphasize).length
+  const boxHeight = padY * 2 + rows.length * rowH + emphasizeCount * emphasizeTop
 
   // Clean bordered box — no fill, no shadow
   doc.setDrawColor(...BORDER)
@@ -273,9 +329,10 @@ function addSummaryBlock(
   let y = startY + padY + 3.5
   rows.forEach((row) => {
     if (row.emphasize) {
+      y += emphasizeTop
       doc.setDrawColor(...RULE_STRONG)
       doc.setLineWidth(0.25)
-      doc.line(boxX + padX, y - 3.5, boxX + boxWidth - padX, y - 3.5)
+      doc.line(boxX + padX, y - ruleGap, boxX + boxWidth - padX, y - ruleGap)
       doc.setFont("helvetica", "bold")
       doc.setFontSize(9.5)
       doc.setTextColor(...INK)
@@ -378,12 +435,13 @@ function addPaymentAndNotes(
     y += shown.length * 3.4 + 2
   }
 
-  // QR aligned to the bottom-right of the footer block
+  // QR top-aligned with PAYMENT INFORMATION (right side)
   if (profile.qrCodeDataUrl) {
     try {
       const format = profile.qrCodeDataUrl.includes("image/png") ? "PNG" : "JPEG"
       const qrX = pageWidth - MARGIN - qrSize
-      const finalQrY = Math.max(blockTop, Math.min(y - qrSize, bottomSafe - qrSize))
+      // Offset slightly so QR top sits near the section title baseline
+      const finalQrY = Math.max(MARGIN, Math.min(blockTop - 2, bottomSafe - qrSize))
       doc.addImage(profile.qrCodeDataUrl, format, qrX, finalQrY, qrSize, qrSize)
       y = Math.max(y, finalQrY + qrSize + 2)
     } catch {

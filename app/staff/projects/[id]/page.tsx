@@ -189,6 +189,7 @@ export default async function StaffProjectDetailPage({
             <ProjectDrawingNumberPanel
               projectId={projectId}
               drawingNumber={project.drawing_number}
+              edgebookNumber={project.edgebook_number}
               readOnly={!canEditDrawingNumber}
             />
           </CardContent>

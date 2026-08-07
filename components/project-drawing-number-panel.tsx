@@ -8,25 +8,34 @@ import { Label } from "@/components/ui/label"
 import {
   generateDrawingNumber,
   updateProjectDrawingNumber,
+  updateProjectEdgebookNumber,
 } from "@/lib/actions"
 import { formControlClass } from "@/components/form-section"
 
 export function ProjectDrawingNumberPanel({
   projectId,
   drawingNumber,
+  edgebookNumber,
   readOnly = false,
 }: {
   projectId: number
   drawingNumber: string | null
+  edgebookNumber?: string | null
   readOnly?: boolean
 }) {
   const [value, setValue] = useState(drawingNumber ?? "")
+  const [edgebook, setEdgebook] = useState(edgebookNumber ?? "")
   const [pending, startTransition] = useTransition()
+  const [edgebookPending, startEdgebookTransition] = useTransition()
   const [generating, startGenerate] = useTransition()
 
   useEffect(() => {
     setValue(drawingNumber ?? "")
   }, [drawingNumber])
+
+  useEffect(() => {
+    setEdgebook(edgebookNumber ?? "")
+  }, [edgebookNumber])
 
   function onSave() {
     const fd = new FormData()
@@ -37,6 +46,18 @@ export function ProjectDrawingNumberPanel({
       const res = await updateProjectDrawingNumber(fd)
       if (res?.error) toast.error(res.error)
       else toast.success("Drawing number saved")
+    })
+  }
+
+  function onSaveEdgebook() {
+    const fd = new FormData()
+    fd.set("project_id", String(projectId))
+    fd.set("edgebook_number", edgebook)
+
+    startEdgebookTransition(async () => {
+      const res = await updateProjectEdgebookNumber(fd)
+      if (res?.error) toast.error(res.error)
+      else toast.success("Edgebook number saved")
     })
   }
 
@@ -54,53 +75,91 @@ export function ProjectDrawingNumberPanel({
     })
   }
 
-  const busy = pending || generating
+  const busy = pending || generating || edgebookPending
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">Drawing Number</h3>
-        <p className="text-xs text-muted-foreground">
-          Office drawing register number for this project.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Drawing Number</h3>
+          <p className="text-xs text-muted-foreground">
+            Office drawing register number for this project.
+          </p>
+        </div>
 
-      {readOnly ? (
-        <p className="text-sm font-medium">{drawingNumber?.trim() ? drawingNumber : "—"}</p>
-      ) : (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`drawing-number-${projectId}`} className="text-sm font-medium">
-              Drawing number
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id={`drawing-number-${projectId}`}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="e.g. DRW-2026-0001"
-                disabled={busy}
-                className={formControlClass}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={onGenerate}
-                className="shrink-0"
-              >
-                {generating ? "Generating..." : "Auto generate"}
+        {readOnly ? (
+          <p className="text-sm font-medium">{drawingNumber?.trim() ? drawingNumber : "—"}</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`drawing-number-${projectId}`} className="text-sm font-medium">
+                Drawing number
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id={`drawing-number-${projectId}`}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="e.g. DRW-2026-0001"
+                  disabled={busy}
+                  className={formControlClass}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={onGenerate}
+                  className="shrink-0"
+                >
+                  {generating ? "Generating..." : "Auto generate"}
+                </Button>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" size="sm" disabled={busy} onClick={onSave}>
+                {pending ? "Saving..." : "Save drawing number"}
               </Button>
             </div>
+          </>
+        )}
+      </div>
+
+      <div className="border-t border-border/60 pt-4">
+        <div className="flex flex-col gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Edgebook Number</h3>
+            <p className="text-xs text-muted-foreground">
+              Office edgebook register number for this project.
+            </p>
           </div>
-          <div className="flex justify-end">
-            <Button type="button" size="sm" disabled={busy} onClick={onSave}>
-              {pending ? "Saving..." : "Save drawing number"}
-            </Button>
-          </div>
-        </>
-      )}
+
+          {readOnly ? (
+            <p className="text-sm font-medium">{edgebookNumber?.trim() ? edgebookNumber : "—"}</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`edgebook-number-${projectId}`} className="text-sm font-medium">
+                  Edgebook number
+                </Label>
+                <Input
+                  id={`edgebook-number-${projectId}`}
+                  value={edgebook}
+                  onChange={(e) => setEdgebook(e.target.value)}
+                  placeholder="e.g. EB-2026-0001"
+                  disabled={busy}
+                  className={formControlClass}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" size="sm" disabled={busy} onClick={onSaveEdgebook}>
+                  {edgebookPending ? "Saving..." : "Save edgebook number"}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
