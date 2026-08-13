@@ -60,7 +60,7 @@ function ExpenseStatusActions({ expense, scope }: { expense: FinanceExpense; sco
     fd.set("status", status)
     startTransition(async () => {
       const res = await transitionExpenseStatus(fd)
-      if (res?.error) {
+      if (res && "error" in res) {
         toast.error(res.error)
         return
       }
@@ -112,7 +112,7 @@ function ExpenseRowActions({
     fd.set("ledger_scope", scope)
     startTransition(async () => {
       const res = await deleteExpense(fd)
-      if (res?.error) {
+      if (res && "error" in res) {
         toast.error(res.error)
         return
       }

@@ -34,7 +34,7 @@ export function AccountDeleteDialog({ account }: { account: FinanceAccount }) {
 
     startTransition(async () => {
       const res = await deleteAccount(fd)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

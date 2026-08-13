@@ -32,7 +32,7 @@ export function VendorDialog({ vendor }: { vendor?: Vendor }) {
     if (vendor) formData.set("id", String(vendor.id))
     startTransition(async () => {
       const res = isEdit ? await updateVendor(formData) : await createVendor(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

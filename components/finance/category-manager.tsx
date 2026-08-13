@@ -38,7 +38,7 @@ function CategoryForm({
     startTransition(async () => {
       const res =
         type === "income" ? await saveIncomeCategory(formData) : await saveExpenseCategory(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

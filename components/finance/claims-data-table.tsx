@@ -51,7 +51,7 @@ function ClaimRowActions({ claim }: { claim: StaffExpenseClaim }) {
     fd.set("status", status)
     startTransition(async () => {
       const res = await transitionStaffClaim(fd)
-      if (res?.error) {
+      if (res && "error" in res) {
         toast.error(res.error)
         return
       }

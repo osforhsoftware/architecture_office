@@ -61,7 +61,7 @@ export function SalaryDialog({
     if (salary) formData.set("id", String(salary.id))
     startTransition(async () => {
       const res = isEdit ? await updateSalary(formData) : await createSalary(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

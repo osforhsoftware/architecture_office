@@ -110,7 +110,7 @@ export function IncomeDialog({
     }
     startTransition(async () => {
       const res = isEdit ? await updateIncome(formData) : await createIncome(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

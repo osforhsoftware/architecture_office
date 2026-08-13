@@ -89,7 +89,7 @@ export function ExpenseDialog({
     }
     startTransition(async () => {
       const res = isEdit ? await updateExpense(formData) : await createExpense(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

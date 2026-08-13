@@ -41,7 +41,7 @@ export function ClaimDialog({ projects, staffId, triggerLabel = "Submit Claim" }
     if (staffId) formData.set("staff_id", String(staffId))
     startTransition(async () => {
       const res = await submitStaffClaim(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }
