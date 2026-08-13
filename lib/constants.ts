@@ -29,7 +29,11 @@ export const LEGACY_SUPER_ADMIN_ROLE = "Super Admin" as const
 export const ADMIN_ROLE = "Admin" as const
 export const BILLING_STAFF_ROLE = "Billing Staff" as const
 
-export const PRIVILEGED_ROLES: readonly Role[] = [SUPER_ADMIN_ROLE, ADMIN_ROLE]
+export const PRIVILEGED_ROLES: readonly Role[] = [
+  SUPER_ADMIN_ROLE,
+  LEGACY_SUPER_ADMIN_ROLE,
+  ADMIN_ROLE,
+]
 
 export const STAFF_ROLES: Role[] = [
   "Planning Staff",
@@ -145,7 +149,7 @@ export function isSuperAdmin(role: string): boolean {
 }
 
 export function isOfficeAdmin(role: string): boolean {
-  return role === SUPER_ADMIN_ROLE || role === ADMIN_ROLE
+  return isSuperAdmin(role) || role === ADMIN_ROLE
 }
 
 export function isPrivilegedRole(role: string): boolean {
