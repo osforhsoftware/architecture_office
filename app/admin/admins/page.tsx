@@ -21,7 +21,7 @@ export default async function AdminManagementPage() {
           </p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">Admin Management</h2>
           <p className="text-sm text-muted-foreground">
-            Create and manage office Admin accounts. Super Admin only.
+            Create and manage office Admin accounts. Acmmo Admin only.
           </p>
         </div>
         <AdminAccountDialog />

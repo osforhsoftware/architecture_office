@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
@@ -66,6 +66,11 @@ export function IncomeDialog({
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
 
+  const clientProjects = useMemo(() => {
+    if (!clientId) return []
+    return projects.filter((project) => project.clientId === clientId)
+  }, [projects, clientId])
+
   useEffect(() => {
     if (!open) return
     setPaymentMethod(income?.payment_method ?? "Cash")
@@ -77,12 +82,28 @@ export function IncomeDialog({
     setError(null)
   }, [open, income])
 
+  function handleClientChange(nextClientId: string | null) {
+    setClientId(nextClientId)
+    if (!nextClientId) {
+      setProjectId(null)
+      return
+    }
+    const nextProjects = projects.filter((project) => project.clientId === nextClientId)
+    const projectStillValid = Boolean(projectId && nextProjects.some((project) => project.value === projectId))
+    if (projectStillValid) return
+    setProjectId(nextProjects.length === 1 ? nextProjects[0].value : null)
+  }
+
   function onSubmit(formData: FormData) {
     setError(null)
     if (income) formData.set("id", String(income.id))
     formData.set("ledger_scope", scope)
     formData.set("payment_method", paymentMethod)
     formData.set("status", status)
+    if (requireProject && !formData.get("client_id")) {
+      setError("Client is required")
+      return
+    }
     if (requireProject && !formData.get("project_id")) {
       setError("Project is required")
       return
@@ -162,20 +183,39 @@ export function IncomeDialog({
                           name="client_id"
                           options={clients}
                           value={clientId}
-                          onValueChange={setClientId}
+                          onValueChange={handleClientChange}
                           placeholder="Select client"
                           searchable
+                          required={requireProject}
+                          searchPlaceholder="Search client..."
                         />
                       </FormField>
                       <FormField label="Project" htmlFor={`${fieldId}-project`}>
                         <FormSelect
                           name="project_id"
-                          options={projects}
+                          options={clientProjects}
                           value={projectId}
                           onValueChange={setProjectId}
-                          placeholder="Select project"
+                          placeholder={
+                            !clientId
+                              ? "Select client first"
+                              : clientProjects.length === 0
+                                ? "No projects for this client"
+                                : "Select project"
+                          }
                           searchable
+                          required={requireProject}
+                          disabled={!clientId || clientProjects.length === 0}
+                          emptyMessage="No projects for this client"
+                          searchPlaceholder="Search project..."
                         />
+                        <p className="text-xs text-muted-foreground">
+                          {!clientId
+                            ? "Choose a client to load their projects."
+                            : clientProjects.length === 0
+                              ? "This client has no projects yet."
+                              : `${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} for this client`}
+                        </p>
                       </FormField>
                     </>
                   ) : null}

@@ -3,8 +3,13 @@ import { apiOptionsResponse, withApiCors } from "@/lib/api-cors"
 import { getCurrentUser } from "@/lib/auth"
 import { logAudit } from "@/lib/project-access"
 import { canOperateFinance } from "@/lib/finance/permissions"
-import { getExpensesPaginated, getIncomePaginated } from "@/lib/finance/server"
+import {
+  getExpensesPaginated,
+  getIncomePaginated,
+  getProjectFinanceList,
+} from "@/lib/finance/server"
 import type { LedgerScope } from "@/lib/finance/constants"
+import type { ProjectFinanceSummary } from "@/lib/finance/types"
 import {
   buildFinanceExcelBuffer,
   getFinanceExportFileName,
@@ -14,6 +19,14 @@ export const dynamic = "force-dynamic"
 
 export function OPTIONS() {
   return apiOptionsResponse()
+}
+
+function reportTitle(scope: string | undefined, type: string) {
+  if (!scope) return type === "all" ? "Finance Report" : `Finance ${type} Report`
+  const scopeLabel = scope === "office" ? "Office" : "Project"
+  if (type === "income") return `${scopeLabel} Income Report`
+  if (type === "expense") return `${scopeLabel} Expenses Report`
+  return `${scopeLabel} Finance Report`
 }
 
 export async function GET(request: Request) {
@@ -40,17 +53,28 @@ export async function GET(request: Request) {
       projectId,
     }
 
+    const includeProjects = type !== "income" && type !== "expense" && scope !== "office"
+    const projectsPromise: Promise<ProjectFinanceSummary[]> = includeProjects
+      ? getProjectFinanceList({ pageSize: "all" }).then((result) => result.rows)
+      : Promise.resolve([])
+
     // For "all" without explicit scope, export both ledgers separately then merge
     if (!scopeParam && type !== "expense" && type !== "income") {
-      const [projInc, projExp, offInc, offExp] = await Promise.all([
+      const [projInc, projExp, offInc, offExp, projects] = await Promise.all([
         getIncomePaginated({ ...fetchParams, scope: "project" }),
         getExpensesPaginated({ ...fetchParams, scope: "project" }),
         getIncomePaginated({ ...fetchParams, scope: "office" }),
         getExpensesPaginated({ ...fetchParams, scope: "office" }),
+        projectsPromise,
       ])
       const income = [...projInc.rows, ...offInc.rows]
       const expenses = [...projExp.rows, ...offExp.rows]
-      const buffer = await buildFinanceExcelBuffer(income, expenses)
+      const buffer = await buildFinanceExcelBuffer(income, expenses, {
+        title: reportTitle(undefined, "all"),
+        from,
+        to,
+        projects,
+      })
       const fileName = getFinanceExportFileName("all")
       await logAudit(user.id, "finance.export", "finance", 0, {
         type: "all",
@@ -70,14 +94,20 @@ export async function GET(request: Request) {
       )
     }
 
-    const [incomeResult, expenseResult] = await Promise.all([
+    const [incomeResult, expenseResult, projects] = await Promise.all([
       type === "expense" ? Promise.resolve({ rows: [] as never[] }) : getIncomePaginated(fetchParams),
       type === "income"
         ? Promise.resolve({ rows: [] as never[] })
         : getExpensesPaginated(fetchParams),
+      projectsPromise,
     ])
 
-    const buffer = await buildFinanceExcelBuffer(incomeResult.rows, expenseResult.rows)
+    const buffer = await buildFinanceExcelBuffer(incomeResult.rows, expenseResult.rows, {
+      title: reportTitle(scope, type),
+      from,
+      to,
+      projects: includeProjects ? projects : undefined,
+    })
     const fileName = getFinanceExportFileName(`${scope}_${type}`)
 
     await logAudit(user.id, "finance.export", "finance", 0, {

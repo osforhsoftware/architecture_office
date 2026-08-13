@@ -30,6 +30,10 @@ const COLUMNS = [
   { header: "Working Hours", key: "working_hours" },
   { header: "Attendance Status", key: "attendance_status" },
   { header: "Location Verified", key: "location_verified" },
+  { header: "Manual", key: "is_manual" },
+  { header: "Distance", key: "distance" },
+  { header: "Marked By", key: "marked_by" },
+  { header: "Admin Note", key: "admin_note" },
 ] as const
 
 function rowValues(row: AttendanceReportRow) {
@@ -42,6 +46,11 @@ function rowValues(row: AttendanceReportRow) {
     working_hours: formatHours(row.working_hours),
     attendance_status: row.attendance_status,
     location_verified: row.location_verified ? "Yes" : "No",
+    is_manual: row.is_manual ? "Yes" : "No",
+    distance:
+      row.distance_from_office == null ? "" : `${Math.round(row.distance_from_office)}m`,
+    marked_by: row.marked_by_name ?? "",
+    admin_note: row.admin_note ?? "",
   }
 }
 

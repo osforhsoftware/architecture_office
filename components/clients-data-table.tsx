@@ -47,12 +47,17 @@ function ClientsTableInner({ result, search }: ClientsDataTableProps) {
       {
         accessorKey: "phone",
         header: "Phone",
-        cell: ({ getValue }) => (
-          <span className="inline-flex items-center gap-1.5 text-sm">
-            <Phone className="size-3.5 text-muted-foreground" />
-            {getValue() as string}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const phone = getValue() as string | null
+          return phone ? (
+            <span className="inline-flex items-center gap-1.5 text-sm">
+              <Phone className="size-3.5 text-muted-foreground" />
+              {phone}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )
+        },
       },
       {
         accessorKey: "email",

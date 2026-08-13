@@ -74,7 +74,7 @@ There is no `/employee` portal — employees use **`/staff`**.
 2. **Client Information** — name, phone, email, address
 3. **Workflow Timeline** — full pipeline (`WorkflowTimeline`)
 4. **Sidebar**
-   - Project info (type, location, department, stage, drawing/edgebook/refer)
+   - Project info (type, location, department, stage, drawing/MBook/refer)
    - Assigned staff / team
    - Status + review note
 5. **Main column**

@@ -48,6 +48,7 @@ export interface AttendanceReportRow {
   latitude: number | null
   longitude: number | null
   admin_note: string | null
+  marked_by_name: string | null
 }
 
 export interface AttendancePunchInput {

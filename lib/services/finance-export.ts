@@ -1,7 +1,18 @@
 import "server-only"
 
 import ExcelJS from "exceljs"
-import type { FinanceExpense, FinanceIncome } from "@/lib/finance/types"
+import type {
+  FinanceExpense,
+  FinanceIncome,
+  ProjectFinanceSummary,
+} from "@/lib/finance/types"
+
+type FinanceExportOptions = {
+  title?: string
+  from?: string
+  to?: string
+  projects?: ProjectFinanceSummary[]
+}
 
 export function getFinanceExportFileName(type: string, date = new Date()): string {
   const iso = date.toISOString().slice(0, 10)
@@ -42,10 +53,68 @@ function styleHeader(sheet: ExcelJS.Worksheet): void {
 export async function buildFinanceExcelBuffer(
   income: FinanceIncome[],
   expenses: FinanceExpense[],
+  options: FinanceExportOptions = {},
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = "Acmmo Architects"
   workbook.created = new Date()
+
+  const totalIncome = income.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  const totalExpense = expenses.reduce(
+    (sum, row) => sum + Number(row.amount || 0) + Number(row.gst_amount || 0),
+    0,
+  )
+  const summarySheet = workbook.addWorksheet("Summary")
+  summarySheet.columns = [
+    { header: "Metric", key: "metric", width: 24 },
+    { header: "Value", key: "value", width: 28 },
+  ]
+  styleHeader(summarySheet)
+  summarySheet.addRow({ metric: "Report", value: options.title ?? "Finance Report" })
+  summarySheet.addRow({
+    metric: "Generated",
+    value: new Date().toLocaleString("en-IN"),
+  })
+  if (options.from || options.to) {
+    summarySheet.addRow({
+      metric: "Period",
+      value: [options.from || "…", options.to || "…"].join(" to "),
+    })
+  }
+  summarySheet.addRow({ metric: "Income records", value: income.length })
+  summarySheet.addRow({ metric: "Expense records", value: expenses.length })
+  summarySheet.addRow({ metric: "Total Income", value: totalIncome })
+  summarySheet.addRow({ metric: "Total Expenses", value: totalExpense })
+  summarySheet.addRow({ metric: "Net", value: totalIncome - totalExpense })
+  autoSizeColumns(summarySheet)
+
+  if (options.projects?.length) {
+    const projectSheet = workbook.addWorksheet("Project Profit")
+    projectSheet.columns = [
+      { header: "Project", key: "project_name", width: 24 },
+      { header: "Code", key: "project_code", width: 14 },
+      { header: "Client", key: "client_name", width: 22 },
+      { header: "Value", key: "project_value", width: 14 },
+      { header: "Income", key: "total_income", width: 14 },
+      { header: "Expense", key: "total_expense", width: 14 },
+      { header: "Net Profit", key: "net_profit", width: 14 },
+      { header: "Margin %", key: "profit_percent", width: 12 },
+    ]
+    styleHeader(projectSheet)
+    for (const row of options.projects) {
+      projectSheet.addRow({
+        project_name: row.project_name,
+        project_code: row.project_code,
+        client_name: row.client_name,
+        project_value: Number(row.project_value),
+        total_income: Number(row.total_income),
+        total_expense: Number(row.total_expense),
+        net_profit: Number(row.net_profit),
+        profit_percent: Number(row.profit_percent),
+      })
+    }
+    autoSizeColumns(projectSheet)
+  }
 
   if (income.length) {
     const incomeSheet = workbook.addWorksheet("Income")
@@ -111,7 +180,7 @@ export async function buildFinanceExcelBuffer(
     autoSizeColumns(expenseSheet)
   }
 
-  if (!income.length && !expenses.length) {
+  if (!income.length && !expenses.length && !options.projects?.length) {
     const sheet = workbook.addWorksheet("Report")
     sheet.addRow(["No records found for the selected filters."])
   }

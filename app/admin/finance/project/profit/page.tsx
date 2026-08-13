@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { ProjectFinanceDataTable } from "@/components/finance/project-finance-data-table"
 import { getProjectFinanceList } from "@/lib/finance/server"
 
@@ -18,10 +19,13 @@ export default async function ProjectProfitPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Project Finance</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Profit Analysis</h2>
-        <p className="text-sm text-muted-foreground">Compare net profit and margins across projects</p>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary">Project Finance</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Profit Analysis</h2>
+          <p className="text-sm text-muted-foreground">Compare net profit and margins across projects</p>
+        </div>
+        <FinanceReportDownload scope="project" />
       </div>
 
       <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">

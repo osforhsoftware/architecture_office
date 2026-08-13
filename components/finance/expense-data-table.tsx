@@ -22,6 +22,7 @@ import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
 import { ExpenseDialog, type ExpenseDialogOptions } from "@/components/finance/expense-dialog"
+import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { FinanceStatusBadge } from "@/components/finance/finance-status-badge"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/constants"
@@ -257,7 +258,10 @@ function ExpenseTableInner({ result, search, status, scope = "project", dialogOp
             </SelectContent>
           </Select>
         </div>
-        <ExpenseDialog {...dialogOptions} scope={scope} requireProject={scope === "project"} />
+        <div className="flex flex-wrap gap-2">
+          <FinanceReportDownload scope={scope} type="expense" compact />
+          <ExpenseDialog {...dialogOptions} scope={scope} requireProject={scope === "project"} />
+        </div>
       </div>
 
       <TableLoadingOverlay>

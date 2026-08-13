@@ -21,29 +21,26 @@ function pdfText(value: string | null | undefined): string {
     .replace(/[^\x00-\x7F]/g, "")
 }
 
-function formatPdfCurrency(value: number | string): string {
-  const n = typeof value === "string" ? Number.parseFloat(value) : value
-  const amount = Number.isFinite(n) ? n : 0
-  const formatted = new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-  return `Rs. ${formatted}`
-}
-
 function drawHRule(doc: jsPDF, y: number, pageWidth: number) {
   doc.setDrawColor(...RULE)
-  doc.setLineWidth(0.25)
+  doc.setLineWidth(0.4)
   doc.line(MARGIN, y, pageWidth - MARGIN, y)
 }
 
 function companyDetailLines(profile: OfficeProfile): string[] {
   const lines: string[] = []
   const address = pdfText(profile.address)
-  if (address) lines.push(address)
+  if (address) {
+    for (const part of address.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      lines.push(part)
+    }
+  }
 
-  const contact = [pdfText(profile.phone), pdfText(profile.email)].filter(Boolean).join("  |  ")
-  if (contact) lines.push(contact)
+  const phone = pdfText(profile.phone)
+  if (phone) lines.push(phone.toLowerCase().startsWith("mob") ? phone : `Mob: ${phone}`)
+
+  const email = pdfText(profile.email)
+  if (email) lines.push(email)
 
   const website = pdfText(profile.website)
   if (website) lines.push(website)
@@ -103,9 +100,9 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
   const pageWidth = doc.internal.pageSize.getWidth()
   /** Branding sits left of project meta; leave room for the right column. */
   const brandMaxX = pageWidth / 2 - 2
-  const LOGO_MAX_W = 28
-  const LOGO_MAX_H = 18
-  const LOGO_GAP = 5
+  const LOGO_MAX_W = 18
+  const LOGO_MAX_H = 16
+  const LOGO_GAP = 2.5
 
   let logoW = 0
   let logoH = 0
@@ -123,45 +120,39 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
     }
   }
 
-  // Single row, two columns: logo (left) | company name + contact (right of logo)
+  // Compact row: [small logo] [company name + contact] — same as invoice print
   const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
   const detailsMaxW = Math.max(40, brandMaxX - detailsX)
 
   const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
   const detailLines = companyDetailLines(profile)
   const showTagline = !hasLogo && Boolean(profile.tagline)
-  let contentH = 5 // company name line
-  if (showTagline) contentH += 4
-  for (const line of detailLines) {
-    contentH += doc.splitTextToSize(line, detailsMaxW).length * 3.6
-  }
 
   const logoBottom = hasLogo ? startY + logoH : startY
-  let detailsY = hasLogo
-    ? startY + Math.max(3.5, (logoH - contentH) / 2 + 3.5)
-    : startY + 4
+  // Keep company name near the top of the compact logo; contact lines stay beside/below it.
+  let detailsY = hasLogo ? startY + Math.min(4.2, logoH * 0.38 + 2) : startY + 4
 
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
+  doc.setFontSize(12)
   doc.setTextColor(...INK)
   doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
-  detailsY += 5
+  detailsY += 4.8
 
   if (showTagline) {
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     doc.setTextColor(...MUTED)
     doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
     detailsY += 4
   }
 
   doc.setFont("helvetica", "normal")
-  doc.setFontSize(7.5)
+  doc.setFontSize(8)
   doc.setTextColor(...MUTED)
   for (const line of detailLines) {
     const wrapped = doc.splitTextToSize(line, detailsMaxW)
     doc.text(wrapped, detailsX, detailsY)
-    detailsY += wrapped.length * 3.6
+    detailsY += wrapped.length * 3.7
   }
 
   const brandBottom = Math.max(logoBottom, detailsY)
@@ -179,7 +170,7 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
 
   const metaRows: [string, string][] = [
     ["PROJECT ID", pdfText(project.code)],
-    ["DATE", formatInvoiceDate(project.created_at)],
+    ["START DATE", formatInvoiceDate(project.created_at)],
   ]
   if (project.invoice_number) {
     metaRows.push(["INVOICE NO", pdfText(project.invoice_number)])
@@ -301,16 +292,18 @@ export function buildProjectPdfBuffer(
     ["LOCATION", pdfText(project.location) || "—"],
     ["PACKAGE", packageLabel(project.project_package)],
     ["PRIORITY", pdfText(project.priority) || "—"],
-    ["AMOUNT", formatPdfCurrency(project.project_amount)],
     ["DUE DATE", formatInvoiceDate(project.due_date)],
   ]
 
   if (project.drawing_number) {
     projectRows.push(["DRAWING NO.", pdfText(project.drawing_number)])
   }
-  projectRows.push(["EDGEBOOK NO.", pdfText(project.edgebook_number) || "—"])
+  projectRows.push(["MBOOK NO.", pdfText(project.edgebook_number) || "—"])
   if (project.refer_name) {
     projectRows.push(["REFER NAME", pdfText(project.refer_name)])
+  }
+  if (project.notes) {
+    projectRows.push(["NOTES", pdfText(project.notes)])
   }
   if (project.building_number) {
     projectRows.push(["BUILDING NO.", pdfText(project.building_number)])

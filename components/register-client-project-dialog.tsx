@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { DrawingNumberField } from "@/components/project-drawing-number-panel"
+import { ProjectNotesField } from "@/components/project-notes-field"
+import { ProjectStartDateField } from "@/components/project-start-date-field"
 import { openProjectPrint } from "@/components/project-print-button"
 import { registerClientWithProject } from "@/lib/actions"
 import { KERALA_DISTRICTS, PRIORITIES, PROJECT_TYPES, showsResidentialDetails } from "@/lib/constants"
@@ -30,7 +32,11 @@ const DISTRICT_OPTIONS = KERALA_DISTRICTS.map((d) => ({ value: d, label: d }))
 const TYPE_OPTIONS = PROJECT_TYPES.map((t) => ({ value: t, label: t }))
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }))
 
-export function RegisterClientProjectDialog() {
+export function RegisterClientProjectDialog({
+  canSetStartDate = false,
+}: {
+  canSetStartDate?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -113,7 +119,6 @@ export function RegisterClientProjectDialog() {
                         <Input
                           id="reg-phone"
                           name="phone"
-                          required
                           className={formControlClass}
                         />
                       </FormField>
@@ -176,11 +181,11 @@ export function RegisterClientProjectDialog() {
                       />
                     </FormField>
 
-                    <FormField label="Edgebook number" htmlFor="reg-edgebook-number">
+                    <FormField label="MBook Number" htmlFor="reg-edgebook-number">
                       <Input
                         id="reg-edgebook-number"
                         name="edgebook_number"
-                        placeholder="e.g. EB-2024-001"
+                        placeholder="e.g. MB-2024-001"
                         className={formControlClass}
                       />
                     </FormField>
@@ -255,7 +260,13 @@ export function RegisterClientProjectDialog() {
                 </FormSection>
 
                 <FormSection title="Timeline & Budget">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div
+                    className={
+                      canSetStartDate
+                        ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                        : "grid grid-cols-1 gap-3 sm:grid-cols-3"
+                    }
+                  >
                     <FormField label="Priority" htmlFor="reg-priority">
                       <FormSelect
                         id="reg-priority"
@@ -265,6 +276,9 @@ export function RegisterClientProjectDialog() {
                         className={formControlClass}
                       />
                     </FormField>
+                    {canSetStartDate ? (
+                      <ProjectStartDateField id="reg-start" />
+                    ) : null}
                     <FormField label="Due date" htmlFor="reg-due">
                       <Input
                         id="reg-due"
@@ -286,6 +300,8 @@ export function RegisterClientProjectDialog() {
                     </FormField>
                   </div>
                 </FormSection>
+
+                <ProjectNotesField id="reg-notes" />
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
               </div>

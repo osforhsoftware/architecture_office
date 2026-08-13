@@ -16,8 +16,18 @@ export const ATTENDANCE_STATUSES = ["Present", "Late Coming", "Absent"] as const
 
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number]
 
-export const OUTSIDE_OFFICE_MESSAGE =
-  "You are outside the office attendance area (300 meters)."
+export function outsideOfficeMessage(radiusMeters: number): string {
+  const radius =
+    Number.isFinite(radiusMeters) && radiusMeters > 0
+      ? Math.trunc(radiusMeters)
+      : DEFAULT_ATTENDANCE_SETTINGS.radius_meters
+  return `You are outside the office attendance area (${radius} meters).`
+}
+
+/** Fallback copy using the default radius. Prefer outsideOfficeMessage(settings.radius_meters). */
+export const OUTSIDE_OFFICE_MESSAGE = outsideOfficeMessage(
+  DEFAULT_ATTENDANCE_SETTINGS.radius_meters,
+)
 
 export const LATE_COMING_ALERT_MESSAGE =
   "You are late. Office start time has passed the allowed buffer. Please check in — your attendance will be marked as Late Coming."

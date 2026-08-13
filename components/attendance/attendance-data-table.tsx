@@ -29,6 +29,7 @@ import type { PaginatedResult } from "@/lib/pagination"
 import type { AttendanceReportRow } from "@/lib/attendance/types"
 import { todayInOfficeTzClient } from "@/lib/attendance/client-utils"
 import { formatOfficeDate, formatOfficeTime } from "@/lib/attendance/datetime"
+import { formatDistanceLabel } from "@/lib/attendance/geo"
 
 function Filters({
   staffOptions,
@@ -314,6 +315,26 @@ function AttendanceTable({ result }: { result: PaginatedResult<AttendanceReportR
         header: "Location Verified",
         cell: ({ row }) => (row.original.location_verified ? "Yes" : "No"),
       },
+      {
+        accessorKey: "is_manual",
+        header: "Manual",
+        cell: ({ row }) => (row.original.is_manual ? "Yes" : "No"),
+      },
+      {
+        accessorKey: "distance_from_office",
+        header: "Distance",
+        cell: ({ row }) => formatDistanceLabel(row.original.distance_from_office),
+      },
+      {
+        accessorKey: "marked_by_name",
+        header: "Marked By",
+        cell: ({ row }) => row.original.marked_by_name || "—",
+      },
+      {
+        accessorKey: "admin_note",
+        header: "Admin Note",
+        cell: ({ row }) => row.original.admin_note || "—",
+      },
     ],
     [],
   )
@@ -327,7 +348,7 @@ function AttendanceTable({ result }: { result: PaginatedResult<AttendanceReportR
   return (
     <TableLoadingOverlay>
       <HorizontalScrollArea>
-        <table className="w-full min-w-[900px] text-left text-sm" id="attendance-print-table">
+        <table className="w-full min-w-[1200px] text-left text-sm" id="attendance-print-table">
           <thead className="border-b border-border/60 text-xs uppercase tracking-wide text-muted-foreground">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>

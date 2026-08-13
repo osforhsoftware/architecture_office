@@ -20,6 +20,7 @@
     "db:migrate-drawing-number": "node scripts/migrate-project-drawing-number.mjs",
     "db:migrate-drawing-number-unique": "node scripts/migrate-drawing-number-unique.mjs",
     "db:migrate-refer-name": "node scripts/migrate-project-refer-name.mjs",
+    "db:migrate-project-notes": "node scripts/migrate-project-notes.mjs",
     "db:migrate-edgebook-number": "node scripts/migrate-project-edgebook-number.mjs",
     "db:migrate-invoices": "node scripts/migrate-invoices.mjs",
     "db:migrate-invoice-discounts": "node scripts/migrate-invoice-line-discounts.mjs",

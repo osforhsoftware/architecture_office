@@ -1,4 +1,4 @@
-export type FinanceSelectOption = { value: string; label: string }
+export type FinanceSelectOption = { value: string; label: string; clientId?: string }
 
 export type FinanceDialogOptions = {
   clients: FinanceSelectOption[]
@@ -13,7 +13,13 @@ export function clientsToOptions(clients: { id: number; name: string }[]): Finan
 }
 
 export function projectsToOptions(
-  projects: { id: number; name: string; code?: string | null; client_name?: string | null }[],
+  projects: {
+    id: number
+    name: string
+    code?: string | null
+    client_name?: string | null
+    client_id?: number | null
+  }[],
 ): FinanceSelectOption[] {
   return projects.map((p) => {
     const base = p.code ? `${p.code} — ${p.name}` : p.name
@@ -21,7 +27,11 @@ export function projectsToOptions(
       p.client_name && !p.name.toLowerCase().includes(p.client_name.toLowerCase())
         ? `${base} - ${p.client_name}`
         : base
-    return { value: String(p.id), label }
+    return {
+      value: String(p.id),
+      label,
+      ...(p.client_id != null ? { clientId: String(p.client_id) } : {}),
+    }
   })
 }
 

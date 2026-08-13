@@ -227,6 +227,32 @@
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
+    color: #1a1a1a !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    font-weight: 400 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  h1,
+  .invoice-title {
+    font-weight: 800 !important;
+  }
+
+  h2,
+  h3,
+  thead th,
+  .font-semibold,
+  .font-bold,
+  dt {
+    font-weight: 700 !important;
+  }
+
+  p,
+  td,
+  dd,
+  li {
+    font-weight: 500 !important;
   }
 
   .min-h-screen,

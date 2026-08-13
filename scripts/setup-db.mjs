@@ -14,7 +14,7 @@ function requireEnv(name) {
   const value = process.env[name]?.trim()
   if (!value) {
     throw new Error(
-      `Missing ${name}. Set Super Admin / Admin credentials in .env before running db:setup.`,
+      `Missing ${name}. Set Acmmo Admin / Admin credentials in .env before running db:setup.`,
     )
   }
   return value
@@ -42,8 +42,8 @@ const PRIVILEGED_USERS = [
   {
     username: SUPER_ADMIN_USERNAME,
     password: SUPER_ADMIN_PASSWORD,
-    role: "Super Admin",
-    name: "Super Admin",
+    role: "Acmmo Admin",
+    name: "Acmmo Admin",
   },
   {
     username: ADMIN_USERNAME,
@@ -121,7 +121,7 @@ try {
   for (const user of users) {
     console.log(`  - ${user.username} (${user.role})`)
   }
-  console.log(`\nLogin as Super Admin: ${SUPER_ADMIN_USERNAME} (password from SUPER_ADMIN_PASSWORD)`)
+  console.log(`\nLogin as Acmmo Admin: ${SUPER_ADMIN_USERNAME} (password from SUPER_ADMIN_PASSWORD)`)
   console.log(`Login as Admin: ${ADMIN_USERNAME} (password from ADMIN_PASSWORD)`)
   console.log("Run npm run db:seed to add sample clients and projects.")
 } catch (error) {

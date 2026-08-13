@@ -38,9 +38,11 @@ export default async function ClientDetailPage({
               <h2 className="text-xl font-semibold">{client.name}</h2>
               <p className="text-xs text-muted-foreground">{formatClientId(client.id)}</p>
               <div className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:gap-4">
-                <span className="flex items-center gap-1.5">
-                  <Phone className="size-3.5" /> {client.phone}
-                </span>
+                {client.phone ? (
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="size-3.5" /> {client.phone}
+                  </span>
+                ) : null}
                 {client.email ? (
                   <span className="flex items-center gap-1.5">
                     <Mail className="size-3.5" /> {client.email}

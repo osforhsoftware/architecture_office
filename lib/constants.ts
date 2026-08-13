@@ -1,4 +1,5 @@
 export type Role =
+  | "Acmmo Admin"
   | "Super Admin"
   | "Admin"
   | "Planning Staff"
@@ -22,7 +23,9 @@ export const ROLE_KEYS = {
 
 export type RoleKey = (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS] | (string & {})
 
-export const SUPER_ADMIN_ROLE = "Super Admin" as const
+export const SUPER_ADMIN_ROLE = "Acmmo Admin" as const
+/** Previous label kept so existing DB rows still authorize. */
+export const LEGACY_SUPER_ADMIN_ROLE = "Super Admin" as const
 export const ADMIN_ROLE = "Admin" as const
 export const BILLING_STAFF_ROLE = "Billing Staff" as const
 
@@ -38,8 +41,8 @@ export const STAFF_ROLES: Role[] = [
 
 export const ALL_ROLES: Role[] = [SUPER_ADMIN_ROLE, ADMIN_ROLE, ...STAFF_ROLES]
 
-/** SQL-safe list for excluding Super Admin + Admin from staff directories */
-export const PRIVILEGED_ROLE_SQL = `'Super Admin', 'Admin'`
+/** SQL-safe list for excluding Acmmo Admin + Admin from staff directories */
+export const PRIVILEGED_ROLE_SQL = `'Acmmo Admin', 'Super Admin', 'Admin'`
 
 /** Routes office Admin may access under /admin (clients + projects + finance) */
 export const ADMIN_ROUTE_PREFIXES = [
@@ -57,7 +60,7 @@ export const BILLING_STAFF_ROUTE_PREFIXES = [
   "/admin/finance",
 ] as const
 
-/** Routes only Super Admin may access under /admin */
+/** Routes only Acmmo Admin may access under /admin */
 export const SUPER_ADMIN_ONLY_ROUTE_PREFIXES = [
   "/admin/admins",
   "/admin/users",
@@ -71,6 +74,7 @@ export const SUPER_ADMIN_ONLY_ROUTE_PREFIXES = [
 export function roleToKey(role: string): RoleKey | null {
   switch (role) {
     case SUPER_ADMIN_ROLE:
+    case LEGACY_SUPER_ADMIN_ROLE:
       return ROLE_KEYS.SUPER_ADMIN
     case ADMIN_ROLE:
       return ROLE_KEYS.ADMIN
@@ -137,7 +141,7 @@ export function formatRolesLabel(user: { role: string; roles?: readonly string[]
 }
 
 export function isSuperAdmin(role: string): boolean {
-  return role === SUPER_ADMIN_ROLE
+  return role === SUPER_ADMIN_ROLE || role === LEGACY_SUPER_ADMIN_ROLE
 }
 
 export function isOfficeAdmin(role: string): boolean {

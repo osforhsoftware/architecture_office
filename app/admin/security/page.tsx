@@ -54,7 +54,7 @@ export default async function SecuritySettingsPage() {
             <li>Staff passwords: minimum 6 characters</li>
             <li>Admin passwords: minimum 8 characters</li>
             <li>Stored with bcrypt hashing</li>
-            <li>Default Super Admin / Admin credentials come from environment variables only</li>
+            <li>Default Acmmo Admin / Admin credentials come from environment variables only</li>
           </ul>
         </section>
 

@@ -15,6 +15,8 @@ import { FormSelect } from "@/components/form-select"
 import { FormField, FormSection, formControlClass } from "@/components/form-section"
 import { ResidentialPropertyFields } from "@/components/residential-details-section"
 import { DrawingNumberField } from "@/components/project-drawing-number-panel"
+import { ProjectNotesField } from "@/components/project-notes-field"
+import { ProjectStartDateField } from "@/components/project-start-date-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { openProjectPrint } from "@/components/project-print-button"
@@ -61,10 +63,12 @@ export function ProjectDialog({
   clients,
   services,
   documentTemplates = [],
+  canSetStartDate = false,
 }: {
   clients: Client[]
   services: ProjectServiceDef[]
   documentTemplates?: DocumentTemplateOption[]
+  canSetStartDate?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -89,7 +93,7 @@ export function ProjectDialog({
     () =>
       clients.map((c) => ({
         value: String(c.id),
-        label: `${c.name} — ${c.phone}`,
+        label: c.phone ? `${c.name} — ${c.phone}` : c.name,
       })),
     [clients],
   )
@@ -199,11 +203,11 @@ export function ProjectDialog({
                       />
                     </FormField>
 
-                    <FormField label="Edgebook number" htmlFor="project-edgebook-number">
+                    <FormField label="MBook Number" htmlFor="project-edgebook-number">
                       <Input
                         id="project-edgebook-number"
                         name="edgebook_number"
-                        placeholder="e.g. EB-2024-001"
+                        placeholder="e.g. MB-2024-001"
                         className={formControlClass}
                       />
                     </FormField>
@@ -363,7 +367,13 @@ export function ProjectDialog({
                 ) : null}
 
                 <FormSection title="Timeline & Budget">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div
+                    className={
+                      canSetStartDate
+                        ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                        : "grid grid-cols-1 gap-3 sm:grid-cols-3"
+                    }
+                  >
                     <FormField label="Priority" htmlFor="project-priority">
                       <FormSelect
                         id="project-priority"
@@ -373,6 +383,9 @@ export function ProjectDialog({
                         className={formControlClass}
                       />
                     </FormField>
+                    {canSetStartDate ? (
+                      <ProjectStartDateField id="project-start" />
+                    ) : null}
                     <FormField label="Due date" htmlFor="project-due">
                       <Input
                         id="project-due"
@@ -394,6 +407,8 @@ export function ProjectDialog({
                     </FormField>
                   </div>
                 </FormSection>
+
+                <ProjectNotesField id="project-notes" />
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
               </div>

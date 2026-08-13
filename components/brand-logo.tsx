@@ -2,10 +2,12 @@ import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
-const LOGO_ICON = "/assets/fav_acmmo.png"
-const BRAND_NAME = "Acmmo Architects"
-/** Matches the cyan in the Acmmo brand assets */
-const BRAND_ACCENT = "#2ec4d6"
+const LOGO_FULL = "/assets/acmmo_logo_full.png"
+const LOGO_ICON = "/assets/acmmo_logo_icon.png"
+const LOGO_FULL_WIDTH = 1024
+const LOGO_FULL_HEIGHT = 258
+const LOGO_ICON_WIDTH = 300
+const LOGO_ICON_HEIGHT = 258
 
 type BrandLogoProps = {
   /** Tighter sizing for collapsed sidebar — shows icon only */
@@ -18,68 +20,6 @@ type BrandLogoProps = {
   variant?: "dark" | "light"
 }
 
-function BrandMark({
-  compact,
-  variant,
-  className,
-  priority,
-}: Pick<BrandLogoProps, "compact" | "variant" | "className" | "priority">) {
-  const onLight = variant === "light"
-
-  return (
-    <div
-      className={cn(
-        "relative shrink-0 overflow-hidden",
-        compact ? "size-9" : "size-11",
-        onLight ? "rounded-lg bg-black p-1" : "rounded-md",
-        className,
-      )}
-    >
-      <Image
-        src={LOGO_ICON}
-        alt=""
-        aria-hidden
-        width={192}
-        height={192}
-        className={cn(
-          "size-full object-contain",
-          !onLight && "mix-blend-lighten",
-        )}
-        priority={priority}
-      />
-    </div>
-  )
-}
-
-function BrandWordmark({
-  variant = "dark",
-  className,
-}: {
-  variant?: "dark" | "light"
-  className?: string
-}) {
-  const onLight = variant === "light"
-
-  return (
-    <div className={cn("min-w-0 leading-none", className)}>
-      <span
-        className="block text-[0.95rem] font-bold tracking-[0.22em]"
-        style={{ color: BRAND_ACCENT }}
-      >
-        ACMMO
-      </span>
-      <span
-        className={cn(
-          "mt-1 block text-[0.62rem] font-semibold tracking-[0.32em]",
-          onLight ? "text-muted-foreground" : "text-sidebar-foreground/80",
-        )}
-      >
-        ARCHITECTS
-      </span>
-    </div>
-  )
-}
-
 export function BrandLogo({
   compact = false,
   className,
@@ -87,18 +27,38 @@ export function BrandLogo({
   align = "center",
   variant = "dark",
 }: BrandLogoProps) {
+  const onLight = variant === "light"
+
+  if (compact) {
+    return (
+      <Image
+        src={LOGO_ICON}
+        alt="ACMMO Architects"
+        width={LOGO_ICON_WIDTH}
+        height={LOGO_ICON_HEIGHT}
+        className={cn("h-9 w-auto max-w-full object-contain", className)}
+        style={{ aspectRatio: `${LOGO_ICON_WIDTH} / ${LOGO_ICON_HEIGHT}` }}
+        priority={priority}
+      />
+    )
+  }
+
   return (
-    <div
+    <Image
+      src={LOGO_FULL}
+      alt="ACMMO Architects"
+      width={LOGO_FULL_WIDTH}
+      height={LOGO_FULL_HEIGHT}
       className={cn(
-        "flex items-center gap-2.5",
-        align === "center" && "justify-center",
-        align === "left" && "justify-start",
+        "h-9 w-auto max-w-full object-contain sm:h-10 md:h-11",
+        !onLight && "invert hue-rotate-180",
+        align === "center" && "mx-auto",
+        align === "left" && "object-left",
         className,
       )}
-    >
-      <BrandMark compact={compact} variant={variant} priority={priority} />
-      {!compact && <BrandWordmark variant={variant} />}
-    </div>
+      style={{ aspectRatio: `${LOGO_FULL_WIDTH} / ${LOGO_FULL_HEIGHT}` }}
+      priority={priority}
+    />
   )
 }
 
@@ -131,16 +91,16 @@ export function BrandLogoHeader({
       {href ? (
         <Link
           href={href}
-          className={cn("w-fit shrink-0", compact && "mx-auto")}
+          className={cn("min-w-0", compact ? "mx-auto w-fit shrink-0" : "w-fit max-w-full shrink")}
         >
           {logo}
         </Link>
       ) : (
-        <div className={cn("w-fit shrink-0", compact && "mx-auto")}>{logo}</div>
+        <div className={cn("min-w-0", compact ? "mx-auto w-fit shrink-0" : "w-fit max-w-full shrink")}>
+          {logo}
+        </div>
       )}
       {children ? <div className="ml-auto shrink-0">{children}</div> : null}
     </div>
   )
 }
-
-export { BRAND_NAME, LOGO_ICON }

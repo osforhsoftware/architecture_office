@@ -5,13 +5,14 @@ import autoTable from "jspdf-autotable"
 import { formatCurrency } from "@/lib/constants"
 import { formatInvoiceDate, sanitizeLineItemInput } from "@/lib/invoice-utils"
 import type { InvoiceLineItem, InvoiceWithDetails, OfficeProfile } from "@/lib/types"
+import { getUpiPaymentApp, UPI_PAYMENT_APPS, upiPaymentNumberLabel } from "@/lib/upi-apps"
 
-/** Professional monochrome palette for print / PDF */
-const INK: [number, number, number] = [33, 33, 33]
-const MUTED: [number, number, number] = [90, 90, 90]
-const RULE: [number, number, number] = [180, 180, 180]
-const RULE_STRONG: [number, number, number] = [100, 100, 100]
-const BORDER: [number, number, number] = [160, 160, 160]
+/** Professional monochrome palette for print / PDF — dark enough to stay crisp on paper */
+const INK: [number, number, number] = [22, 22, 22]
+const MUTED: [number, number, number] = [48, 48, 48]
+const RULE: [number, number, number] = [170, 170, 170]
+const RULE_STRONG: [number, number, number] = [90, 90, 90]
+const BORDER: [number, number, number] = [150, 150, 150]
 /** ~12 mm — within the 10–15 mm print-safe range for A4 */
 const MARGIN = 12
 
@@ -48,17 +49,25 @@ function formatPdfQuantity(value: number | string, unit?: string | null): string
 
 function drawHRule(doc: jsPDF, y: number, pageWidth: number, strong = false) {
   doc.setDrawColor(...(strong ? RULE_STRONG : RULE))
-  doc.setLineWidth(strong ? 0.35 : 0.2)
+  // Heavier strokes so rules stay visible on print / photocopy
+  doc.setLineWidth(strong ? 0.55 : 0.4)
   doc.line(MARGIN, y, pageWidth - MARGIN, y)
 }
 
 function companyDetailLines(profile: OfficeProfile): string[] {
   const lines: string[] = []
   const address = pdfText(profile.address)
-  if (address) lines.push(address)
+  if (address) {
+    for (const part of address.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      lines.push(part)
+    }
+  }
 
-  const contact = [pdfText(profile.phone), pdfText(profile.email)].filter(Boolean).join("  |  ")
-  if (contact) lines.push(contact)
+  const phone = pdfText(profile.phone)
+  if (phone) lines.push(phone.toLowerCase().startsWith("mob") ? phone : `Mob: ${phone}`)
+
+  const email = pdfText(profile.email)
+  if (email) lines.push(email)
 
   const website = pdfText(profile.website)
   if (website) lines.push(website)
@@ -99,9 +108,9 @@ function addHeader(
   const pageWidth = doc.internal.pageSize.getWidth()
   /** Branding sits left of invoice meta; leave room for the right column. */
   const brandMaxX = pageWidth / 2 - 2
-  const LOGO_MAX_W = 28
-  const LOGO_MAX_H = 18
-  const LOGO_GAP = 5
+  const LOGO_MAX_W = 18
+  const LOGO_MAX_H = 16
+  const LOGO_GAP = 2.5
 
   let logoW = 0
   let logoH = 0
@@ -118,46 +127,39 @@ function addHeader(
     }
   }
 
-  // Single row, two columns: logo (left) | company name + contact (right of logo)
+  // Compact row: [small logo] [company name + contact]
   const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
   const detailsMaxW = Math.max(40, brandMaxX - detailsX)
 
-  // Measure contact block height first so we can vertically center beside the logo
   const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
   const detailLines = companyDetailLines(profile)
   const showTagline = !hasLogo && Boolean(profile.tagline)
-  let contentH = 5 // company name line
-  if (showTagline) contentH += 4
-  for (const line of detailLines) {
-    contentH += doc.splitTextToSize(line, detailsMaxW).length * 3.6
-  }
 
   const logoBottom = hasLogo ? startY + logoH : startY
-  let detailsY = hasLogo
-    ? startY + Math.max(3.5, (logoH - contentH) / 2 + 3.5)
-    : startY + 4
+  // Keep company name near the top of the compact logo; contact lines stay beside/below it.
+  let detailsY = hasLogo ? startY + Math.min(4.2, logoH * 0.38 + 2) : startY + 4
 
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
+  doc.setFontSize(12)
   doc.setTextColor(...INK)
   doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
-  detailsY += 5
+  detailsY += 4.8
 
   if (showTagline) {
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     doc.setTextColor(...MUTED)
     doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
     detailsY += 4
   }
 
   doc.setFont("helvetica", "normal")
-  doc.setFontSize(7.5)
+  doc.setFontSize(8)
   doc.setTextColor(...MUTED)
   for (const line of detailLines) {
     const wrapped = doc.splitTextToSize(line, detailsMaxW)
     doc.text(wrapped, detailsX, detailsY)
-    detailsY += wrapped.length * 3.6
+    detailsY += wrapped.length * 3.7
   }
 
   const brandBottom = Math.max(logoBottom, detailsY)
@@ -166,9 +168,9 @@ function addHeader(
   const metaX = pageWidth - MARGIN
   const metaLabelX = metaX - 52
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(22)
+  doc.setFontSize(20)
   doc.setTextColor(...INK)
-  doc.text("INVOICE", metaX, startY + 9, { align: "right" })
+  doc.text("INVOICE", metaX, startY + 8, { align: "right" })
 
   const metaRows: [string, string][] = [
     ["Invoice No", pdfText(invoice.invoice_number)],
@@ -178,9 +180,9 @@ function addHeader(
   if (invoice.project_code) metaRows.push(["Project Code", pdfText(invoice.project_code)])
 
   metaRows.forEach(([label, value], i) => {
-    const rowY = startY + 16 + i * 5
+    const rowY = startY + 15 + i * 5.2
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     doc.setTextColor(...INK)
     doc.text(label, metaLabelX, rowY)
     doc.setFont("helvetica", "normal")
@@ -188,7 +190,7 @@ function addHeader(
     doc.text(value, metaX, rowY, { align: "right" })
   })
 
-  const metaBottom = startY + 16 + metaRows.length * 5 + 2
+  const metaBottom = startY + 15 + metaRows.length * 5.2 + 2
   const headerBottom = Math.max(brandBottom + 2, metaBottom)
   drawHRule(doc, headerBottom, pageWidth, true)
   return headerBottom + 6
@@ -204,19 +206,19 @@ function addClientProjectBlock(
   let y = startY
 
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(7.5)
-  doc.setTextColor(...MUTED)
+  doc.setFontSize(8.5)
+  doc.setTextColor(...INK)
   doc.text("BILL TO", MARGIN, y)
   doc.text("PROJECT DETAILS", midX + 4, y)
 
   y += 5
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(10)
+  doc.setFontSize(10.5)
   doc.setTextColor(...INK)
   doc.text(pdfText(invoice.client_name), MARGIN, y)
 
   doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
+  doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
 
   const billLines = [
@@ -245,11 +247,11 @@ function addClientProjectBlock(
   projectRows.forEach(([label, value], i) => {
     const rowY = y + i * projectRowH
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     doc.setTextColor(...INK)
     doc.text(label, projectLabelX, rowY)
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(8)
+    doc.setFontSize(8.5)
     doc.setTextColor(...MUTED)
     doc.text(value, projectValueX, rowY, { maxWidth: projectValueMaxW })
   })
@@ -258,7 +260,7 @@ function addClientProjectBlock(
   const billBlockH = billLines.length * 4.2 + 5
 
   doc.setDrawColor(...RULE)
-  doc.setLineWidth(0.15)
+  doc.setLineWidth(0.35)
   doc.line(midX, startY - 1, midX, y + Math.max(billBlockH, projectBlockH) + 1)
 
   const blockBottom = y + Math.max(billBlockH, projectBlockH) + 3
@@ -323,7 +325,7 @@ function addSummaryBlock(
 
   // Clean bordered box — no fill, no shadow
   doc.setDrawColor(...BORDER)
-  doc.setLineWidth(0.3)
+  doc.setLineWidth(0.45)
   doc.rect(boxX, startY, boxWidth, boxHeight)
 
   let y = startY + padY + 3.5
@@ -331,14 +333,14 @@ function addSummaryBlock(
     if (row.emphasize) {
       y += emphasizeTop
       doc.setDrawColor(...RULE_STRONG)
-      doc.setLineWidth(0.25)
+      doc.setLineWidth(0.4)
       doc.line(boxX + padX, y - ruleGap, boxX + boxWidth - padX, y - ruleGap)
       doc.setFont("helvetica", "bold")
-      doc.setFontSize(9.5)
+      doc.setFontSize(10)
       doc.setTextColor(...INK)
     } else {
       doc.setFont("helvetica", "normal")
-      doc.setFontSize(8)
+      doc.setFontSize(8.5)
       doc.setTextColor(...INK)
     }
     doc.text(row.label, boxX + padX, y)
@@ -364,22 +366,27 @@ function addPaymentAndNotes(
     ["Account Number", profile.accountNumber],
     ["IFSC", profile.ifsc],
     ["UPI", profile.upiId],
+    [upiPaymentNumberLabel(profile.upiPaymentApp), profile.upiPaymentNumber],
   ].filter(([, v]) => Boolean(v)) as [string, string][]
 
   const terms = invoice.terms || profile.termsAndConditions
   const noteText = pdfText(invoice.notes) || pdfText(terms)
-  const hasPayment = paymentRows.length > 0 || Boolean(profile.qrCodeDataUrl)
+  const hasUpi = Boolean(profile.upiId || profile.upiPaymentNumber)
+  const upiApp = getUpiPaymentApp(profile.upiPaymentApp)
+  const hasPayment = paymentRows.length > 0 || Boolean(profile.qrCodeDataUrl) || hasUpi
   const hasNotes = Boolean(noteText)
 
   if (!hasPayment && !hasNotes) return startY
 
-  const qrSize = 24
+  const qrSize = 32
   const qrReserve = profile.qrCodeDataUrl ? qrSize + 6 : 0
   const contentRight = pageWidth - MARGIN - qrReserve
   const contentWidth = contentRight - MARGIN
 
   // Estimate footer height and push to new page if needed
-  const paymentH = hasPayment ? 6 + paymentRows.length * 4.2 + 4 : 0
+  const showUpiApps = Boolean(upiApp || hasUpi || profile.qrCodeDataUrl || profile.upiAppLogos)
+  const appsLineH = showUpiApps ? 10 : 0
+  const paymentH = hasPayment ? 6 + paymentRows.length * 4.4 + appsLineH + 4 : 0
   const noteLinesPreview = noteText
     ? doc.splitTextToSize(noteText, contentWidth)
     : []
@@ -401,33 +408,66 @@ function addPaymentAndNotes(
 
   if (hasPayment) {
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(8)
+    doc.setFontSize(8.5)
     doc.setTextColor(...INK)
     doc.text("PAYMENT INFORMATION", MARGIN, y)
     y += 5.5
 
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     paymentRows.forEach(([label, value]) => {
       doc.setFont("helvetica", "bold")
       doc.setTextColor(...INK)
       doc.text(`${label}:`, MARGIN, y)
       doc.setFont("helvetica", "normal")
       doc.setTextColor(...MUTED)
-      doc.text(pdfText(value), MARGIN + 30, y, { maxWidth: contentWidth - 30 })
-      y += 4.2
+      doc.text(pdfText(value), MARGIN + 38, y, { maxWidth: contentWidth - 38 })
+      y += 4.4
     })
-    y += 3
+
+    if (showUpiApps) {
+      y += 3.2
+      const rowH = 3.5
+      const logoMaxW = 20
+      const gap = 3.4
+      const rowTop = y
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(8)
+      doc.setTextColor(...INK)
+      doc.text("Pay via:", MARGIN, rowTop + rowH * 0.72)
+      let x = MARGIN + doc.getTextWidth("Pay via:") + 2.6
+
+      const appsToShow = upiApp ? [upiApp] : UPI_PAYMENT_APPS
+      for (const app of appsToShow) {
+        const dataUrl =
+          profile.upiAppLogos?.[app.id] ??
+          (upiApp?.id === app.id ? profile.upiAppLogoDataUrl : null)
+        if (!dataUrl) continue
+        try {
+          const sized = fitLogoSize(doc, dataUrl, logoMaxW, rowH)
+          if (x + sized.w > contentRight) break
+          const logoY = rowTop + (rowH - sized.h) / 2
+          doc.addImage(dataUrl, sized.format, x, logoY, sized.w, sized.h)
+          x += sized.w + gap
+        } catch {
+          // Skip a missing/invalid asset rather than drawing a generic fallback.
+        }
+      }
+      y = rowTop + rowH + 5
+    } else {
+      y += 3
+    }
   }
 
   if (hasNotes) {
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(8)
+    doc.setFontSize(8.5)
     doc.setTextColor(...INK)
     doc.text("NOTES & PAYMENT TERMS", MARGIN, y)
     y += 5
 
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(7.5)
+    doc.setFontSize(8)
     doc.setTextColor(...MUTED)
     const noteLines = doc.splitTextToSize(noteText, contentWidth)
     const shown = noteLines.slice(0, 8)
@@ -499,11 +539,12 @@ export function buildInvoicePdfBuffer(
     rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
-      fontSize: 8,
+      fontSize: 8.5,
+      fontStyle: "normal",
       cellPadding: { top: 2.8, right: 2.2, bottom: 2.8, left: 2.2 },
       textColor: INK,
-      lineColor: RULE,
-      lineWidth: 0.2,
+      lineColor: RULE_STRONG,
+      lineWidth: 0.35,
       overflow: "linebreak",
       valign: "middle",
       fillColor: [255, 255, 255],
@@ -513,11 +554,11 @@ export function buildInvoicePdfBuffer(
       fillColor: [245, 245, 245],
       textColor: INK,
       fontStyle: "bold",
-      fontSize: 7.5,
-      cellPadding: { top: 3, right: 2.2, bottom: 3, left: 2.2 },
+      fontSize: 8.5,
+      cellPadding: { top: 3.2, right: 2.2, bottom: 3.2, left: 2.2 },
       valign: "middle",
       lineColor: RULE_STRONG,
-      lineWidth: 0.25,
+      lineWidth: 0.45,
     },
     bodyStyles: {
       fillColor: [255, 255, 255],
@@ -562,7 +603,7 @@ export function buildInvoicePdfBuffer(
     doc.setPage(i)
     drawHRule(doc, pageHeight - 10, pageWidth)
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(6.5)
+    doc.setFontSize(7.5)
     doc.setTextColor(...MUTED)
     doc.text("Thank you for your business.", MARGIN, pageHeight - 6)
     if (pages > 1) {

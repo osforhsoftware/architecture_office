@@ -2,6 +2,7 @@
 
 import { publicAssetUrl } from "@/lib/app-urls"
 import type { OfficeProfile } from "@/lib/types"
+import { getUpiPaymentApp, UPI_PAYMENT_APPS, upiPaymentNumberLabel } from "@/lib/upi-apps"
 
 function assetSrc(path: string | null | undefined): string | null {
   if (!path) return null
@@ -15,8 +16,10 @@ export function InvoicePaymentDetails({ profile }: { profile: OfficeProfile }) {
     profile.accountName ||
     profile.accountNumber ||
     profile.ifsc ||
-    profile.upiId
+    profile.upiId ||
+    profile.upiPaymentNumber
   const qr = assetSrc(profile.qrCodeDataUrl)
+  const upiApp = getUpiPaymentApp(profile.upiPaymentApp)
 
   if (!hasBank && !qr) return null
 
@@ -26,6 +29,7 @@ export function InvoicePaymentDetails({ profile }: { profile: OfficeProfile }) {
     ["Account Number", profile.accountNumber],
     ["IFSC", profile.ifsc],
     ["UPI", profile.upiId],
+    [upiPaymentNumberLabel(profile.upiPaymentApp), profile.upiPaymentNumber],
   ].filter(([, v]) => Boolean(v)) as [string, string][]
 
   return (
@@ -34,16 +38,36 @@ export function InvoicePaymentDetails({ profile }: { profile: OfficeProfile }) {
         Payment Information
       </h3>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <dl className="grid flex-1 gap-2 sm:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
-                {label}
-              </dt>
-              <dd className="mt-0.5 text-sm text-neutral-900">{value}</dd>
+        <div className="flex-1">
+          <dl className="grid gap-2 sm:grid-cols-2">
+            {rows.map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                  {label}
+                </dt>
+                <dd className="mt-0.5 text-sm font-medium text-neutral-900">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {upiApp || profile.upiId || qr ? (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-[11px] font-semibold text-neutral-900">Pay via:</span>
+              {(upiApp ? [upiApp] : UPI_PAYMENT_APPS).map((app) => {
+                const src = assetSrc(app.logoSrc)
+                if (!src) return null
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={app.id}
+                    src={src}
+                    alt={app.label}
+                    className="h-3.5 w-auto max-w-[72px] bg-white object-contain object-left"
+                  />
+                )
+              })}
             </div>
-          ))}
-        </dl>
+          ) : null}
+        </div>
         {qr ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -110,9 +134,10 @@ export function InvoiceTermsSection({
 }
 
 export function InvoiceFooterPreview({ profile }: { profile: OfficeProfile }) {
+  const phone = profile.phone?.trim()
   const parts = [
     profile.address,
-    profile.phone,
+    phone ? (phone.toLowerCase().startsWith("mob") ? phone : `Mob: ${phone}`) : "",
     profile.email,
     profile.website,
     profile.gstNumber ? `GSTIN ${profile.gstNumber}` : "",

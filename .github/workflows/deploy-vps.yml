@@ -90,6 +90,7 @@ jobs:
             npm run db:migrate-invoice-discounts
             npm run db:migrate-drawing-number-unique
             npm run db:migrate-refer-name
+            npm run db:migrate-project-notes
             npm run db:migrate-edgebook-number
             npm run db:migrate-staff-avatar
             npm run db:migrate-attendance

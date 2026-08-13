@@ -171,7 +171,7 @@ export async function notifyFinanceManagers(params: {
 }): Promise<void> {
   const managers = (await sql`
     SELECT id FROM app_users
-    WHERE active = 1 AND role IN ('Super Admin', 'Admin', 'Billing Staff')
+    WHERE active = 1 AND role IN ('Acmmo Admin', 'Super Admin', 'Admin', 'Billing Staff')
   `) as { id: number }[]
   for (const row of managers) {
     await createFinanceNotification({

@@ -1,4 +1,5 @@
 import type { Role } from "./constants"
+import type { UpiPaymentAppId } from "./upi-apps"
 
 export interface AppUser {
   id: number
@@ -19,7 +20,7 @@ export interface AppUser {
 export interface Client {
   id: number
   name: string
-  phone: string
+  phone: string | null
   email: string | null
   address: string | null
   street: string | null
@@ -48,6 +49,7 @@ export interface Project {
   invoice_number: string | null
   payment_status: string
   review_note: string | null
+  notes: string | null
   building_number: string | null
   building_permit_number: string | null
   drawing_number: string | null
@@ -182,7 +184,14 @@ export interface OfficeProfile {
   accountNumber?: string
   ifsc?: string
   upiId?: string
+  /** Google Pay / PhonePe / Paytm registered mobile number shown on invoices. */
+  upiPaymentNumber?: string
+  /** Selected UPI app shown on invoices (Google Pay / PhonePe / Paytm). */
+  upiPaymentApp?: UpiPaymentAppId | ""
   qrCodeDataUrl?: string | null
+  /** Resolved at PDF generation time only — not persisted. */
+  upiAppLogoDataUrl?: string | null
+  upiAppLogos?: Partial<Record<UpiPaymentAppId, string | null>>
   /** Authorization / signature block */
   architectName?: string
   architectDesignation?: string

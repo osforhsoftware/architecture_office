@@ -38,7 +38,7 @@ export default async function AuditLogsPage({
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">Security</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Audit Logs</h2>
         <p className="text-sm text-muted-foreground">
-          Important actions by Super Admin and Admin accounts.
+          Important actions by Acmmo Admin and Admin accounts.
         </p>
       </div>
 

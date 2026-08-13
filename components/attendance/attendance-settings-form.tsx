@@ -24,12 +24,13 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
 
   return (
     <form action={onSave} className="rounded-xl border border-border/60 bg-card p-5 shadow-premium print:hidden">
-      <h3 className="text-sm font-semibold">Office Timing</h3>
+      <h3 className="text-sm font-semibold">Office timing & geofence</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Staff check-in after start time + buffer is marked as Late Coming.
+        Staff check-in after start time + buffer is marked as Late Coming. Check In and Check Out
+        both use this radius.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <FormField label="Office start time" htmlFor="office_start_time">
           <Input
             id="office_start_time"
@@ -66,15 +67,34 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
             className={formControlClass}
           />
         </FormField>
-        <div className="flex items-end">
+        <FormField label="Office latitude" htmlFor="latitude">
+          <Input
+            id="latitude"
+            name="latitude"
+            type="number"
+            step="0.0000001"
+            required
+            defaultValue={String(settings.latitude)}
+            className={formControlClass}
+          />
+        </FormField>
+        <FormField label="Office longitude" htmlFor="longitude">
+          <Input
+            id="longitude"
+            name="longitude"
+            type="number"
+            step="0.0000001"
+            required
+            defaultValue={String(settings.longitude)}
+            className={formControlClass}
+          />
+        </FormField>
+        <div className="flex items-end sm:col-span-2 lg:col-span-1">
           <Button type="submit" disabled={pending} className="w-full sm:w-auto">
             Save timing
           </Button>
         </div>
       </div>
-
-      <input type="hidden" name="latitude" value={String(settings.latitude)} />
-      <input type="hidden" name="longitude" value={String(settings.longitude)} />
 
       <p className="mt-3 text-xs text-muted-foreground">
         Example: start 09:30 + buffer 10 min → check-in after 09:40 = Late Coming.

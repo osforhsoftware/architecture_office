@@ -44,9 +44,9 @@ async function upsertUser({ username, password, role, name }) {
   const hash = await bcrypt.hash(password, 10)
 
   if (existing.length) {
-    if (role === "Admin" && existing[0].role === "Super Admin") {
+    if (role === "Admin" && (existing[0].role === "Acmmo Admin" || existing[0].role === "Super Admin")) {
       console.warn(
-        `  Skipping Admin upsert for "${username}" — that account is Super Admin. Use a different ADMIN_USERNAME.`,
+        `  Skipping Admin upsert for "${username}" — that account is Acmmo Admin. Use a different ADMIN_USERNAME.`,
       )
       return
     }
@@ -87,8 +87,8 @@ try {
     await upsertUser({
       username: superUsername,
       password: superPassword,
-      role: "Super Admin",
-      name: "Super Admin",
+      role: "Acmmo Admin",
+      name: "Acmmo Admin",
     })
     await upsertUser({
       username: adminUsername,

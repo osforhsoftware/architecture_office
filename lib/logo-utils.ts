@@ -4,6 +4,7 @@ import { readFile } from "fs/promises"
 import path from "path"
 import { getBackendUrl } from "@/lib/app-urls"
 import type { OfficeProfile } from "@/lib/types"
+import { getUpiPaymentApp, UPI_PAYMENT_APPS, type UpiPaymentAppId } from "@/lib/upi-apps"
 
 async function readLogoBuffer(logo: string): Promise<Buffer | null> {
   if (logo.startsWith("/")) {
@@ -39,7 +40,12 @@ export async function resolveLogoDataUrl(
   if (logo.startsWith("/")) {
     const buf = await readLogoBuffer(logo)
     if (!buf) return null
-    const mime = logo.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg"
+    const lower = logo.toLowerCase()
+    const mime = lower.endsWith(".png")
+      ? "image/png"
+      : lower.endsWith(".svg")
+        ? "image/svg+xml"
+        : "image/jpeg"
     return `data:${mime};base64,${buf.toString("base64")}`
   }
 
@@ -49,10 +55,22 @@ export async function resolveLogoDataUrl(
 export async function resolveOfficeLogoForPdf(
   profile: OfficeProfile,
 ): Promise<OfficeProfile> {
-  const [logoDataUrl, qrCodeDataUrl, signatureDataUrl] = await Promise.all([
+  const upiApp = getUpiPaymentApp(profile.upiPaymentApp)
+  const [logoDataUrl, qrCodeDataUrl, signatureDataUrl, ...resolvedAppLogos] = await Promise.all([
     resolveLogoDataUrl(profile.logoDataUrl),
     resolveLogoDataUrl(profile.qrCodeDataUrl),
     resolveLogoDataUrl(profile.signatureDataUrl),
+    ...UPI_PAYMENT_APPS.map((app) => resolveLogoDataUrl(app.logoPngSrc)),
   ])
-  return { ...profile, logoDataUrl, qrCodeDataUrl, signatureDataUrl }
+  const upiAppLogos = Object.fromEntries(
+    UPI_PAYMENT_APPS.map((app, index) => [app.id, resolvedAppLogos[index] ?? null]),
+  ) as Record<UpiPaymentAppId, string | null>
+  return {
+    ...profile,
+    logoDataUrl,
+    qrCodeDataUrl,
+    signatureDataUrl,
+    upiAppLogoDataUrl: upiApp ? upiAppLogos[upiApp.id] : null,
+    upiAppLogos,
+  }
 }

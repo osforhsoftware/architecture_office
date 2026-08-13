@@ -1,5 +1,7 @@
 import { Suspense } from "react"
 import { getClientsPaginated } from "@/lib/queries"
+import { getCurrentUser } from "@/lib/auth"
+import { isSuperAdmin } from "@/lib/constants"
 import { ClientDialog } from "@/components/client-dialog"
 import { RegisterClientProjectDialog } from "@/components/register-client-project-dialog"
 import { ClientsDataTable } from "@/components/clients-data-table"
@@ -9,6 +11,8 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ search?: string; page?: string; pageSize?: string }>
 }) {
+  const user = await getCurrentUser()
+  const canSetStartDate = user ? isSuperAdmin(user.role) : false
   const params = await searchParams
   const search = params.search ?? ""
 
@@ -28,7 +32,7 @@ export default async function ClientsPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <RegisterClientProjectDialog />
+          <RegisterClientProjectDialog canSetStartDate={canSetStartDate} />
           <ClientDialog />
         </div>
       </div>

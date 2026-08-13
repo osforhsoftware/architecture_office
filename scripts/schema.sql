@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS projects (
   invoice_number   VARCHAR(100),
   payment_status   VARCHAR(50)  DEFAULT 'Unpaid',
   review_note      TEXT,
+  notes            TEXT,
   building_number  VARCHAR(100),
   building_permit_number VARCHAR(100),
   drawing_number   VARCHAR(100),

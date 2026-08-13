@@ -57,7 +57,7 @@ export function ProjectDrawingNumberPanel({
     startEdgebookTransition(async () => {
       const res = await updateProjectEdgebookNumber(fd)
       if (res?.error) toast.error(res.error)
-      else toast.success("Edgebook number saved")
+      else toast.success("MBook Number saved")
     })
   }
 
@@ -128,9 +128,9 @@ export function ProjectDrawingNumberPanel({
       <div className="border-t border-border/60 pt-4">
         <div className="flex flex-col gap-3">
           <div>
-            <h3 className="text-sm font-semibold">Edgebook Number</h3>
+            <h3 className="text-sm font-semibold">MBook Number</h3>
             <p className="text-xs text-muted-foreground">
-              Office edgebook register number for this project.
+              Office MBook register number for this project.
             </p>
           </div>
 
@@ -140,20 +140,20 @@ export function ProjectDrawingNumberPanel({
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor={`edgebook-number-${projectId}`} className="text-sm font-medium">
-                  Edgebook number
+                  MBook Number
                 </Label>
                 <Input
                   id={`edgebook-number-${projectId}`}
                   value={edgebook}
                   onChange={(e) => setEdgebook(e.target.value)}
-                  placeholder="e.g. EB-2026-0001"
+                  placeholder="e.g. MB-2026-0001"
                   disabled={busy}
                   className={formControlClass}
                 />
               </div>
               <div className="flex justify-end">
                 <Button type="button" size="sm" disabled={busy} onClick={onSaveEdgebook}>
-                  {edgebookPending ? "Saving..." : "Save edgebook number"}
+                  {edgebookPending ? "Saving..." : "Save MBook Number"}
                 </Button>
               </div>
             </>

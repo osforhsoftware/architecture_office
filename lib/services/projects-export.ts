@@ -31,8 +31,9 @@ const PROJECT_EXPORT_COLUMNS: ProjectExportColumn[] = [
   { header: "Advance Received", key: "advance_received", getValue: (p) => p.advance_received },
   { header: "Invoice Number", key: "invoice_number", getValue: (p) => p.invoice_number },
   { header: "Payment Status", key: "payment_status", getValue: (p) => p.payment_status },
+  { header: "Notes", key: "notes", getValue: (p) => p.notes },
   { header: "Review Note", key: "review_note", getValue: (p) => p.review_note },
-  { header: "Created At", key: "created_at", getValue: (p) => formatDateTime(p.created_at) },
+  { header: "Started", key: "created_at", getValue: (p) => formatDateTime(p.created_at) },
   { header: "Updated At", key: "updated_at", getValue: (p) => formatDateTime(p.updated_at) },
 ]
 

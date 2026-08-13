@@ -31,6 +31,7 @@ import type {
   StatusHistory,
 } from "./types"
 import { DEFAULT_INVOICE_TERMS, roleToKey } from "./constants"
+import { parseUpiPaymentApp } from "./upi-apps"
 import { getRoleSectionMap, listDepartments } from "./departments"
 import { listProjectServices, listProjectServiceDefs } from "./project-services"
 import { listDocumentTemplates } from "./document-templates"
@@ -101,7 +102,7 @@ export async function getStaffUsers(role?: string): Promise<AppUser[]> {
       FROM app_users u
       LEFT JOIN staff_roles sr ON sr.user_id = u.id
       WHERE u.active = true
-        AND u.role NOT IN ('Super Admin', 'Admin')
+        AND u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
         AND (
           u.role = ${role}
           OR (${roleKey} IS NOT NULL AND sr.role_key = ${roleKey})
@@ -113,7 +114,7 @@ export async function getStaffUsers(role?: string): Promise<AppUser[]> {
   const rows = (await sql`
     SELECT id, username, role, name, email, phone, avatar_url, active, created_at
     FROM app_users
-    WHERE role NOT IN ('Super Admin', 'Admin') AND active = true
+    WHERE role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin') AND active = true
     ORDER BY name
   `) as AppUser[]
   return attachUserRolesMany(rows)
@@ -129,7 +130,7 @@ export async function getStaffPaginated(
   const countRows = (await sql`
     SELECT COUNT(*) AS count
     FROM app_users u
-    WHERE u.role NOT IN ('Super Admin', 'Admin')
+    WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
       AND (${search} IS NULL OR
         u.name LIKE ${search} OR
         u.username LIKE ${search} OR
@@ -150,7 +151,7 @@ export async function getStaffPaginated(
       ? ((await sql`
           SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
-          WHERE u.role NOT IN ('Super Admin', 'Admin')
+          WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${search} IS NULL OR
               u.name LIKE ${search} OR
               u.username LIKE ${search} OR
@@ -166,7 +167,7 @@ export async function getStaffPaginated(
       : ((await sql`
           SELECT id, username, role, name, email, phone, avatar_url, active, created_at
           FROM app_users u
-          WHERE u.role NOT IN ('Super Admin', 'Admin')
+          WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${search} IS NULL OR
               u.name LIKE ${search} OR
               u.username LIKE ${search} OR
@@ -227,6 +228,7 @@ export async function getAllUsersPaginated(
             u.role LIKE ${search})
           ORDER BY
             CASE u.role
+              WHEN 'Acmmo Admin' THEN 0
               WHEN 'Super Admin' THEN 0
               WHEN 'Admin' THEN 1
               ELSE 2
@@ -244,6 +246,7 @@ export async function getAllUsersPaginated(
             u.role LIKE ${search})
           ORDER BY
             CASE u.role
+              WHEN 'Acmmo Admin' THEN 0
               WHEN 'Super Admin' THEN 0
               WHEN 'Admin' THEN 1
               ELSE 2
@@ -332,7 +335,7 @@ export async function getClients(search?: string): Promise<Client[]> {
 
 export async function getClient(id: number): Promise<Client | null> {
   const rows = (await sql`SELECT * FROM clients WHERE id = ${id} LIMIT 1`) as Client[]
-  return rows[0] ?? null
+  return rows[0] ? normalizeClient(rows[0]) : null
 }
 
 export async function getClientCount(): Promise<number> {
@@ -416,6 +419,7 @@ export async function getProjectsForInvoiceSelect(): Promise<InvoiceProjectOptio
       p.name,
       p.location,
       p.project_amount,
+      p.client_id,
       c.name AS client_name,
       c.phone AS client_phone,
       c.email AS client_email,
@@ -432,6 +436,7 @@ export type InvoiceProjectOption = {
   name: string
   location: string | null
   project_amount: string
+  client_id: number
   client_name: string
   client_phone: string
   client_email: string | null
@@ -969,7 +974,7 @@ export async function getStaffPerformance(): Promise<
       SUM(CASE WHEN p.status IN ('Closed','Completed') THEN 1 ELSE 0 END) AS completed
     FROM app_users u
     LEFT JOIN projects p ON p.assigned_to = u.id
-    WHERE u.role NOT IN ('Super Admin', 'Admin')
+    WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
     GROUP BY u.id, u.name, u.role
     ORDER BY assigned DESC
   `) as { name: string; role: string; assigned: number; completed: number }[]
@@ -1208,7 +1213,7 @@ export async function getDepartmentStats(): Promise<DepartmentRow[]> {
       FROM app_users u
       LEFT JOIN staff_roles sr ON sr.user_id = u.id
       WHERE u.active = 1
-        AND u.role NOT IN ('Super Admin', 'Admin')
+        AND u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
         AND (
           u.role = ${dept.role_label}
           OR sr.role_key = ${dept.role_key}
@@ -1398,6 +1403,8 @@ const DEFAULT_OFFICE_PROFILE: OfficeProfile = {
   accountNumber: "",
   ifsc: "",
   upiId: "",
+  upiPaymentNumber: "",
+  upiPaymentApp: "",
   qrCodeDataUrl: null,
   architectName: "",
   architectDesignation: "Principal Architect",
@@ -1448,6 +1455,8 @@ function normalizeStoredOfficeProfile(value: unknown): Partial<OfficeProfile> {
     accountNumber: pickString(row.accountNumber ?? row.account_number),
     ifsc: pickString(row.ifsc),
     upiId: pickString(row.upiId ?? row.upi_id),
+    upiPaymentNumber: pickString(row.upiPaymentNumber ?? row.upi_payment_number),
+    upiPaymentApp: parseUpiPaymentApp(row.upiPaymentApp ?? row.upi_payment_app),
     qrCodeDataUrl: pickNullableString(qr),
     architectName: pickString(row.architectName ?? row.architect_name),
     architectDesignation: pickString(row.architectDesignation ?? row.architect_designation),
@@ -1465,9 +1474,10 @@ export async function getOfficeProfile(): Promise<OfficeProfile> {
 }
 
 export async function persistOfficeProfile(profile: OfficeProfile): Promise<void> {
+  const { upiAppLogoDataUrl: _transientLogo, upiAppLogos: _transientLogos, ...toStore } = profile
   await sql`
     INSERT INTO office_settings (\`key\`, value, updated_at)
-    VALUES ('office_profile', ${sql.json(profile as unknown as Record<string, unknown>)}, now())
+    VALUES ('office_profile', ${sql.json(toStore as unknown as Record<string, unknown>)}, now())
     ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = now()
   `
 }

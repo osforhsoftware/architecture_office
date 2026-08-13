@@ -1,4 +1,5 @@
 import { FinanceCharts } from "@/components/finance/finance-charts"
+import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { formatCurrency } from "@/lib/constants"
 import { getProjectChartData, getProjectFinanceList } from "@/lib/finance/server"
 
@@ -10,10 +11,13 @@ export default async function ProjectReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Project Finance</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Project Reports</h2>
-        <p className="text-sm text-muted-foreground">Income, expenses, and profit trends from project ledgers only</p>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary">Project Finance</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Project Reports</h2>
+          <p className="text-sm text-muted-foreground">Income, expenses, and profit trends from project ledgers only</p>
+        </div>
+        <FinanceReportDownload scope="project" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -78,6 +78,21 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+async function ensureProjectMatchesClient(
+  projectId: number,
+  clientId: number | null,
+): Promise<{ error: string } | null> {
+  if (!clientId) return { error: "Client is required for project income" }
+  const rows = (await sql`
+    SELECT client_id FROM projects WHERE id = ${projectId} LIMIT 1
+  `) as { client_id: number }[]
+  if (!rows[0]) return { error: "Project not found" }
+  if (Number(rows[0].client_id) !== clientId) {
+    return { error: "Selected project does not belong to this client" }
+  }
+  return null
+}
+
 function resolveScope(formData: FormData, projectId: number | null): LedgerScope {
   const explicit = str(formData.get("ledger_scope") || formData.get("scope"))
   if (explicit === "project" || explicit === "office") return explicit
@@ -123,6 +138,8 @@ export async function createProjectIncome(formData: FormData) {
   const incomeDate = str(formData.get("income_date")) || today()
   const paymentMethod = str(formData.get("payment_method")) || "Cash"
   const clientId = optId(formData.get("client_id"))
+  const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
+  if (clientMatch?.error) return clientMatch
   const invoiceId = optId(formData.get("invoice_id"))
   const categoryId = optId(formData.get("category_id"))
   const accountId = optId(formData.get("account_id"))
@@ -286,6 +303,8 @@ async function updateProjectIncome(formData: FormData) {
   const incomeDate = str(formData.get("income_date")) || today()
   const paymentMethod = str(formData.get("payment_method")) || "Cash"
   const clientId = optId(formData.get("client_id"))
+  const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
+  if (clientMatch?.error) return clientMatch
   const invoiceId = optId(formData.get("invoice_id"))
   const categoryId = optId(formData.get("category_id"))
   const accountId = optId(formData.get("account_id"))

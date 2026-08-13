@@ -97,13 +97,13 @@ async function ensureProject({
 try {
   const admin = await query(`
     SELECT id FROM app_users
-    WHERE role IN ('Super Admin', 'Admin')
-    ORDER BY CASE role WHEN 'Super Admin' THEN 0 ELSE 1 END, id ASC
+    WHERE role IN ('Acmmo Admin', 'Super Admin', 'Admin')
+    ORDER BY CASE role WHEN 'Acmmo Admin' THEN 0 WHEN 'Super Admin' THEN 0 ELSE 1 END, id ASC
     LIMIT 1
   `)
   if (admin.length === 0) {
     throw new Error(
-      "No Super Admin / Admin user found. Run npm run db:setup (or db:migrate-rbac) first.",
+      "No Acmmo Admin / Admin user found. Run npm run db:setup (or db:migrate-rbac) first.",
     )
   }
 
@@ -453,7 +453,7 @@ try {
   `)
 
   const [staffCount] = await pool.execute(
-    "SELECT COUNT(*) AS count FROM app_users WHERE role NOT IN ('Super Admin', 'Admin')",
+    "SELECT COUNT(*) AS count FROM app_users WHERE role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')",
   )
 
   console.log("Seed complete.")

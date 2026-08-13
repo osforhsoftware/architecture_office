@@ -9,6 +9,8 @@ import { BillingStaffProjectView } from "@/components/billing-staff-project-view
 import { ProjectBillingPanel } from "@/components/project-billing-panel"
 import { ProjectChecklist } from "@/components/project-checklist"
 import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
+import { ProjectStartDatePanel } from "@/components/project-start-date-field"
+import { ProjectNotesPanel } from "@/components/project-notes-field"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
 import { ProjectPrintButton } from "@/components/project-print-button"
@@ -138,7 +140,7 @@ export default async function AdminProjectDetailPage({
               </Link>
               <ProjectPrintButton projectId={project.id} />
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
               <div>
                 <p className="text-xs text-muted-foreground">Amount</p>
                 <p className="font-semibold">{formatCurrency(project.project_amount)}</p>
@@ -146,6 +148,14 @@ export default async function AdminProjectDetailPage({
               <div>
                 <p className="text-xs text-muted-foreground">Progress</p>
                 <p className="font-semibold">{progress}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Started</p>
+                <p className="font-semibold">
+                  {project.created_at
+                    ? new Date(project.created_at).toLocaleDateString("en-IN")
+                    : "—"}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Due Date</p>
@@ -255,7 +265,7 @@ export default async function AdminProjectDetailPage({
                 <dd className="font-medium">{project.drawing_number ?? "—"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted-foreground">Edgebook No.</dt>
+                <dt className="text-muted-foreground">MBook No.</dt>
                 <dd className="font-medium">{project.edgebook_number ?? "—"}</dd>
               </div>
               <div className="flex justify-between gap-3">
@@ -264,7 +274,24 @@ export default async function AdminProjectDetailPage({
                   {project.refer_name ?? "—"}
                 </dd>
               </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Started</dt>
+                <dd className="font-medium">
+                  {project.created_at
+                    ? new Date(project.created_at).toLocaleDateString("en-IN")
+                    : "—"}
+                </dd>
+              </div>
             </dl>
+            {superAdmin ? (
+              <div className="mt-4 border-t border-border/60 pt-4">
+                <ProjectStartDatePanel
+                  projectId={projectId}
+                  createdAt={project.created_at}
+                  readOnly={detailsReadOnly}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
@@ -402,12 +429,12 @@ export default async function AdminProjectDetailPage({
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
-            <h3 className="text-sm font-semibold">Comments</h3>
-            <p className="mt-3 text-sm text-muted-foreground">
-              {project.review_note
-                ? project.review_note
-                : "No comments yet. Review notes will appear here."}
-            </p>
+            <ProjectNotesPanel
+              projectId={projectId}
+              notes={project.notes}
+              reviewNote={project.review_note}
+              readOnly={detailsReadOnly}
+            />
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">

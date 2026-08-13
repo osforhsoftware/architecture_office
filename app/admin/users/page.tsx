@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
-import { canManageUsers, SUPER_ADMIN_ROLE } from "@/lib/constants"
+import { canManageUsers, isSuperAdmin } from "@/lib/constants"
 import { getAllUsersPaginated } from "@/lib/queries"
 import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
@@ -31,7 +31,7 @@ export default async function UserManagementPage({
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">Access Control</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">User Management</h2>
         <p className="text-sm text-muted-foreground">
-          View all accounts and activate or deactivate users. Super Admin only.
+          View all accounts and activate or deactivate users. Acmmo Admin only.
         </p>
       </div>
 
@@ -66,7 +66,7 @@ export default async function UserManagementPage({
                           {row.username}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={row.role === SUPER_ADMIN_ROLE ? "default" : "secondary"}>
+                          <Badge variant={isSuperAdmin(row.role) ? "default" : "secondary"}>
                             {row.role}
                           </Badge>
                         </td>
@@ -76,7 +76,7 @@ export default async function UserManagementPage({
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {row.role === SUPER_ADMIN_ROLE ? (
+                          {isSuperAdmin(row.role) ? (
                             <span className="text-xs text-muted-foreground">Protected</span>
                           ) : (
                             <UserActiveToggle user={row} />

@@ -86,7 +86,8 @@ export function AdminMarkAttendanceDialog({
         <DialogHeader>
           <DialogTitle>Mark Attendance (Manual)</DialogTitle>
           <DialogDescription>
-            Use when staff are out of office or cannot use GPS check-in. Location is not required.
+            Use when staff cannot check in or check out inside the office geofence (site visit,
+            client meeting, emergency). This is an auditable override: location is not verified.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,12 +155,15 @@ export function AdminMarkAttendanceDialog({
           ) : null}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="admin_note">Note (optional)</Label>
+            <Label htmlFor="admin_note">
+              Admin note{status === "Absent" ? " (optional)" : " (required)"}
+            </Label>
             <Textarea
               id="admin_note"
               name="admin_note"
               rows={2}
-              placeholder="e.g. Site visit / work from client location"
+              required={status !== "Absent"}
+              placeholder="e.g. Client site work / official external visit"
             />
           </div>
 

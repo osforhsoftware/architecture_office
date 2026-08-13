@@ -122,7 +122,6 @@ export function ClientDialog({ client }: { client?: Client }) {
                           name="phone"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          required
                           className={formControlClass}
                         />
                       </FormField>

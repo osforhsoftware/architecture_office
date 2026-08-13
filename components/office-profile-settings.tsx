@@ -9,10 +9,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormField, formControlClass, formTextareaClass } from "@/components/form-section"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { saveOfficeProfile } from "@/lib/actions"
 import { apiFetch, publicAssetUrl } from "@/lib/app-urls"
 import { DEFAULT_INVOICE_TERMS } from "@/lib/constants"
 import type { OfficeProfile } from "@/lib/types"
+import { getUpiPaymentApp, UPI_PAYMENT_APPS, type UpiPaymentAppId } from "@/lib/upi-apps"
 
 function buildInitialForm(profile: OfficeProfile) {
   return {
@@ -29,6 +37,8 @@ function buildInitialForm(profile: OfficeProfile) {
     accountNumber: profile.accountNumber ?? "",
     ifsc: profile.ifsc ?? "",
     upiId: profile.upiId ?? "",
+    upiPaymentNumber: profile.upiPaymentNumber ?? "",
+    upiPaymentApp: profile.upiPaymentApp ?? "",
     architectName: profile.architectName ?? "",
     architectDesignation: profile.architectDesignation ?? "Principal Architect",
   }
@@ -136,6 +146,8 @@ function buildSaveFormData(
   fd.set("account_number", form.accountNumber)
   fd.set("ifsc", form.ifsc)
   fd.set("upi_id", form.upiId)
+  fd.set("upi_payment_number", form.upiPaymentNumber ?? "")
+  fd.set("upi_payment_app", form.upiPaymentApp || "none")
   fd.set("architect_name", form.architectName)
   fd.set("architect_designation", form.architectDesignation)
 
@@ -333,6 +345,8 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
     })
   }
 
+  const selectedUpiApp = getUpiPaymentApp(form.upiPaymentApp)
+
   return (
     <div className="rounded-xl border border-border/60 bg-card p-6 shadow-premium">
       <div className="flex items-start gap-4">
@@ -456,7 +470,7 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
                 className={formControlClass}
               />
             </FormField>
-            <FormField label="UPI ID" htmlFor="upi_id" className="lg:col-span-2">
+            <FormField label="UPI ID" htmlFor="upi_id">
               <Input
                 id="upi_id"
                 value={form.upiId}
@@ -464,6 +478,62 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
                 placeholder="studio@upi"
                 className={formControlClass}
               />
+            </FormField>
+            <FormField label="UPI Payment Number" htmlFor="upi_payment_number">
+              <Input
+                id="upi_payment_number"
+                value={form.upiPaymentNumber ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, upiPaymentNumber: e.target.value }))}
+                inputMode="tel"
+                className={formControlClass}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Google Pay / PhonePe / Paytm registered mobile number shown on invoices.
+              </p>
+            </FormField>
+            <FormField label="UPI Payment App" htmlFor="upi_payment_app">
+              <Select
+                value={form.upiPaymentApp || "none"}
+                onValueChange={(value) => {
+                  if (!value) return
+                  setForm((f) => ({
+                    ...f,
+                    upiPaymentApp: value === "none" ? "" : (value as UpiPaymentAppId),
+                  }))
+                }}
+              >
+                <SelectTrigger id="upi_payment_app" className={formControlClass}>
+                  <SelectValue placeholder="Select UPI app" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {UPI_PAYMENT_APPS.map((app) => (
+                    <SelectItem key={app.id} value={app.id}>
+                      {app.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                {UPI_PAYMENT_APPS.map((app) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={app.id}
+                    src={publicAssetUrl(app.logoSrc) ?? app.logoSrc}
+                    alt={app.label}
+                    className="h-[18px] w-auto max-w-[96px] bg-white object-contain object-left"
+                  />
+                ))}
+              </div>
+              {selectedUpiApp ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Invoice will show only {selectedUpiApp.label}.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  All three official logos appear on invoices. Select one to show only that app.
+                </p>
+              )}
             </FormField>
             <ImageUploadField
               label="Payment QR Code (optional)"

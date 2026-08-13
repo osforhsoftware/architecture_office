@@ -251,6 +251,7 @@ function toReportRow(row: Record<string, unknown>): AttendanceReportRow {
     longitude:
       row.longitude === null || row.longitude === undefined ? null : toSafeNumber(row.longitude),
     admin_note: (row.admin_note as string | null) ?? null,
+    marked_by_name: (row.marked_by_name as string | null) ?? null,
   }
 }
 
@@ -270,7 +271,7 @@ async function getDayRoster(
     SELECT COUNT(*) AS count
     FROM app_users u
     WHERE u.active = true
-      AND u.role NOT IN ('Super Admin', 'Admin')
+      AND u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
       AND (${staffId} IS NULL OR u.id = ${staffId})
       AND (${department} IS NULL OR u.role = ${department})
       AND (${search} IS NULL OR
@@ -300,12 +301,14 @@ async function getDayRoster(
             a.admin_note,
             a.distance_from_office,
             a.latitude,
-            a.longitude
+            a.longitude,
+            mb.name AS marked_by_name
           FROM app_users u
           LEFT JOIN attendance a
             ON a.staff_id = u.id AND a.attendance_date = ${day}
+          LEFT JOIN app_users mb ON mb.id = a.marked_by
           WHERE u.active = true
-            AND u.role NOT IN ('Super Admin', 'Admin')
+            AND u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${staffId} IS NULL OR u.id = ${staffId})
             AND (${department} IS NULL OR u.role = ${department})
             AND (${search} IS NULL OR
@@ -329,12 +332,14 @@ async function getDayRoster(
             a.admin_note,
             a.distance_from_office,
             a.latitude,
-            a.longitude
+            a.longitude,
+            mb.name AS marked_by_name
           FROM app_users u
           LEFT JOIN attendance a
             ON a.staff_id = u.id AND a.attendance_date = ${day}
+          LEFT JOIN app_users mb ON mb.id = a.marked_by
           WHERE u.active = true
-            AND u.role NOT IN ('Super Admin', 'Admin')
+            AND u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${staffId} IS NULL OR u.id = ${staffId})
             AND (${department} IS NULL OR u.role = ${department})
             AND (${search} IS NULL OR
@@ -365,7 +370,7 @@ async function getAttendanceRecords(
     SELECT COUNT(*) AS count
     FROM attendance a
     INNER JOIN app_users u ON u.id = a.staff_id
-    WHERE u.role NOT IN ('Super Admin', 'Admin')
+    WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
       AND (${from} IS NULL OR a.attendance_date >= ${from})
       AND (${to} IS NULL OR a.attendance_date <= ${to})
       AND (${staffId} IS NULL OR a.staff_id = ${staffId})
@@ -397,10 +402,12 @@ async function getAttendanceRecords(
             a.admin_note,
             a.distance_from_office,
             a.latitude,
-            a.longitude
+            a.longitude,
+            mb.name AS marked_by_name
           FROM attendance a
           INNER JOIN app_users u ON u.id = a.staff_id
-          WHERE u.role NOT IN ('Super Admin', 'Admin')
+          LEFT JOIN app_users mb ON mb.id = a.marked_by
+          WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${from} IS NULL OR a.attendance_date >= ${from})
             AND (${to} IS NULL OR a.attendance_date <= ${to})
             AND (${staffId} IS NULL OR a.staff_id = ${staffId})
@@ -426,10 +433,12 @@ async function getAttendanceRecords(
             a.admin_note,
             a.distance_from_office,
             a.latitude,
-            a.longitude
+            a.longitude,
+            mb.name AS marked_by_name
           FROM attendance a
           INNER JOIN app_users u ON u.id = a.staff_id
-          WHERE u.role NOT IN ('Super Admin', 'Admin')
+          LEFT JOIN app_users mb ON mb.id = a.marked_by
+          WHERE u.role NOT IN ('Acmmo Admin', 'Super Admin', 'Admin')
             AND (${from} IS NULL OR a.attendance_date >= ${from})
             AND (${to} IS NULL OR a.attendance_date <= ${to})
             AND (${staffId} IS NULL OR a.staff_id = ${staffId})

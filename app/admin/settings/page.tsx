@@ -17,7 +17,7 @@ export default async function AdminSettingsPage() {
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">Configuration</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground">
-          Company profile and system configuration. Super Admin only.
+          Company profile and system configuration. Acmmo Admin only.
         </p>
       </div>
 

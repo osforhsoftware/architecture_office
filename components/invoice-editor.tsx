@@ -445,12 +445,19 @@ export function InvoiceEditor({
           <section className="border border-neutral-900/15 bg-white p-5">
             <div className="flex flex-col gap-4 border-b border-neutral-900/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-900">
                   {profile.companyName || "Architecture Studio"}
                 </p>
-                <p className="mt-1 text-xs text-neutral-400">
+                <p className="mt-1 text-xs text-neutral-500">
                   {profile.tagline || "Architecture • Interiors • Planning"}
                 </p>
+                {profile.phone?.trim() ? (
+                  <p className="mt-1 text-xs font-medium text-neutral-700">
+                    {profile.phone.trim().toLowerCase().startsWith("mob")
+                      ? profile.phone.trim()
+                      : `Mob: ${profile.phone.trim()}`}
+                  </p>
+                ) : null}
               </div>
               <div className="sm:text-right">
                 <p className="text-2xl font-semibold tracking-[0.08em] text-neutral-900">INVOICE</p>

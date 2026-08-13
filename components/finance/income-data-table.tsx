@@ -21,6 +21,7 @@ import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
 import { IncomeDialog, type IncomeDialogOptions } from "@/components/finance/income-dialog"
+import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { FinanceStatusBadge } from "@/components/finance/finance-status-badge"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/constants"
@@ -209,7 +210,10 @@ function IncomeTableInner({ result, search, status, scope = "project", dialogOpt
             </SelectContent>
           </Select>
         </div>
-        <IncomeDialog {...dialogOptions} scope={scope} requireProject={scope === "project"} />
+        <div className="flex flex-wrap gap-2">
+          <FinanceReportDownload scope={scope} type="income" compact />
+          <IncomeDialog {...dialogOptions} scope={scope} requireProject={scope === "project"} />
+        </div>
       </div>
 
       <TableLoadingOverlay>

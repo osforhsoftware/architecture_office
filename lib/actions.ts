@@ -29,11 +29,11 @@ import {
   PAYMENT_METHODS,
   RETURN_REASONS,
   ADMIN_ROLE,
-  SUPER_ADMIN_ROLE,
   firstStageInSection,
   homePathForRole,
   isOfficeAdmin,
   isPrivilegedRole,
+  isSuperAdmin,
   roleToKey,
   showsResidentialDetails,
   userHasRole,
@@ -71,6 +71,7 @@ import {
   validateInvoiceLineItems,
 } from "./invoice-utils"
 import { getOfficeProfile, persistOfficeProfile } from "./queries"
+import { parseUpiPaymentApp } from "./upi-apps"
 import { parseStaffRoles, syncStaffRoles } from "./staff-roles"
 import { resolveStaffAvatarFromForm } from "./staff-avatar"
 import {
@@ -93,6 +94,10 @@ import {
   requireUser,
 } from "./permissions"
 import type { AppUser, InvoiceStatus, OfficeProfile } from "./types"
+import {
+  isLocalToday,
+  projectStartAtFromDate,
+} from "./project-dates"
 import { headers } from "next/headers"
 
 // ---------- Auth ----------
@@ -111,7 +116,7 @@ async function clientIpAddress(): Promise<string | null> {
 async function notifyOfficeAdmins(type: string, title: string, message: string) {
   const admins = (await sql`
     SELECT id FROM app_users
-    WHERE role IN ('Super Admin', 'Admin') AND active = true
+    WHERE role IN ('Acmmo Admin', 'Super Admin', 'Admin') AND active = true
   `) as { id: number }[]
   for (const a of admins) {
     await notify(a.id, type, title, message)
@@ -187,7 +192,15 @@ async function appendStatus(
   status: string,
   note: string | null,
   createdBy: string,
+  createdAt?: string | null,
 ) {
+  if (createdAt) {
+    await sql`
+      INSERT INTO status_history (project_id, status, note, created_by, created_at)
+      VALUES (${projectId}, ${status}, ${note}, ${createdBy}, ${createdAt})
+    `
+    return
+  }
   await sql`
     INSERT INTO status_history (project_id, status, note, created_by)
     VALUES (${projectId}, ${status}, ${note}, ${createdBy})
@@ -278,12 +291,14 @@ export async function createClient(formData: FormData) {
   const address = String(formData.get("address") || "").trim() || null
   const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
-  if (!name || !phone) return { error: "Name and phone are required." }
+  if (!name) return { error: "Name is required." }
 
-  const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
-    id: number
-  }[]
-  if (existing.length) return { error: "A client with this phone already exists." }
+  if (phone) {
+    const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
+      id: number
+    }[]
+    if (existing.length) return { error: "A client with this phone already exists." }
+  }
 
   // RETURNING removed — wrapper returns [{ id: lastInsertId }] automatically
   const rows = (await sql`
@@ -308,7 +323,14 @@ export async function updateClient(formData: FormData) {
   const address = String(formData.get("address") || "").trim() || null
   const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
-  if (!id || !name || !phone) return { error: "Name and phone are required." }
+  if (!id || !name) return { error: "Name is required." }
+
+  if (phone) {
+    const existing = (await sql`
+      SELECT id FROM clients WHERE phone = ${phone} AND id != ${id} LIMIT 1
+    `) as { id: number }[]
+    if (existing.length) return { error: "A client with this phone already exists." }
+  }
 
   await sql`
     UPDATE clients SET
@@ -336,13 +358,15 @@ export async function registerClientWithProject(formData: FormData) {
   const address = String(formData.get("address") || "").trim() || null
   const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
-  if (!clientName || !phone) return { error: "Client name and phone are required." }
+  if (!clientName) return { error: "Client name is required." }
   if (!projectName) return { error: "Project name is required." }
 
-  const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
-    id: number
-  }[]
-  if (existing.length) return { error: "A client with this phone already exists." }
+  if (phone) {
+    const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
+      id: number
+    }[]
+    if (existing.length) return { error: "A client with this phone already exists." }
+  }
 
   const clientRows = (await sql`
     INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
@@ -796,7 +820,7 @@ export async function createProjectService(formData: FormData) {
     console.error("[project-services] create failed:", error)
     const message = error instanceof Error ? error.message : ""
     if (message === "Forbidden" || message === "Unauthorized") {
-      return { error: "Only Super Admin can manage services." }
+      return { error: "Only Acmmo Admin can manage services." }
     }
     return {
       error: "Could not create service. Run db:migrate-workflow if the services table is missing.",
@@ -874,7 +898,7 @@ export async function updateProjectService(formData: FormData) {
     console.error("[project-services] update failed:", error)
     const message = error instanceof Error ? error.message : ""
     if (message === "Forbidden" || message === "Unauthorized") {
-      return { error: "Only Super Admin can manage services." }
+      return { error: "Only Acmmo Admin can manage services." }
     }
     return { error: "Could not update service." }
   }
@@ -960,7 +984,7 @@ export async function createDocumentTemplate(formData: FormData) {
     console.error("[document-templates] create failed:", error)
     const message = error instanceof Error ? error.message : ""
     if (message === "Forbidden" || message === "Unauthorized") {
-      return { error: "Only Super Admin can manage documents." }
+      return { error: "Only Acmmo Admin can manage documents." }
     }
     return {
       error:
@@ -1020,7 +1044,7 @@ export async function updateDocumentTemplate(formData: FormData) {
     console.error("[document-templates] update failed:", error)
     const message = error instanceof Error ? error.message : ""
     if (message === "Forbidden" || message === "Unauthorized") {
-      return { error: "Only Super Admin can manage documents." }
+      return { error: "Only Acmmo Admin can manage documents." }
     }
     return { error: "Could not update document." }
   }
@@ -1058,7 +1082,7 @@ export async function deleteDocumentTemplate(formData: FormData) {
   }
 }
 
-// ---------- Admin account management (Super Admin only) ----------
+// ---------- Admin account management (Acmmo Admin only) ----------
 
 export async function createAdminAccount(formData: FormData) {
   const actor = await requireSuperAdmin()
@@ -1206,8 +1230,8 @@ export async function setUserActive(formData: FormData) {
     SELECT id, username, role, name FROM app_users WHERE id = ${id} LIMIT 1
   `) as { id: number; username: string; role: string; name: string }[]
   if (!current.length) return { error: "User not found." }
-  if (current[0].role === SUPER_ADMIN_ROLE && !active) {
-    return { error: "Super Admin accounts cannot be deactivated here." }
+  if (isSuperAdmin(current[0].role) && !active) {
+    return { error: "Acmmo Admin accounts cannot be deactivated here." }
   }
 
   await sql`UPDATE app_users SET active = ${active} WHERE id = ${id}`
@@ -1327,7 +1351,7 @@ function parseResidentialDetails(formData: FormData, type: string | null) {
 }
 
 export async function createProject(formData: FormData) {
-  await requireAdminOrSuperAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const name = String(formData.get("name") || "").trim()
   const clientId = Number(formData.get("client_id"))
   const location = String(formData.get("location") || "").trim() || null
@@ -1338,14 +1362,23 @@ export async function createProject(formData: FormData) {
   const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
   const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
   const referName = String(formData.get("refer_name") || "").trim() || null
+  const notes = String(formData.get("notes") || "").trim() || null
   const projectPackage = (String(formData.get("project_package") || "full") as ProjectPackage)
   const residential = parseResidentialDetails(formData, type)
   const serviceCatalog = await listProjectServiceDefs({ activeOnly: true })
   const selectedServices = parseSelectedServices(formData, projectPackage, serviceCatalog)
   const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
   const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
+  const startDateInput = String(formData.get("start_date") || "").trim()
+  const customStartAt =
+    isSuperAdmin(admin.role) && startDateInput && !isLocalToday(startDateInput)
+      ? projectStartAtFromDate(startDateInput)
+      : null
 
   if (!name || !clientId) return { error: "Project name and client are required." }
+  if (isSuperAdmin(admin.role) && startDateInput && !projectStartAtFromDate(startDateInput)) {
+    return { error: "Enter a valid project start date." }
+  }
   if (
     !selectedServices.length &&
     !residential.reqArchitecturalPlan &&
@@ -1361,20 +1394,36 @@ export async function createProject(formData: FormData) {
   const code = await nextProjectCode()
   const invoice = await nextInvoiceNumber()
 
-  const rows = (await sql`
-    INSERT INTO projects (
-      code, name, client_id, location, type, priority, status, section, current_stage,
-      due_date, project_amount, invoice_number, project_package,
-      building_number, building_permit_number, drawing_number, edgebook_number, refer_name,
-      req_architectural_plan, req_building_permit, req_regularization
-    )
-    VALUES (
-      ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
-      ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
-      ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName},
-      ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
-    )
-  `) as { id: number }[]
+  const rows = customStartAt
+    ? ((await sql`
+        INSERT INTO projects (
+          code, name, client_id, location, type, priority, status, section, current_stage,
+          due_date, project_amount, invoice_number, project_package,
+          building_number, building_permit_number, drawing_number, edgebook_number, refer_name, notes,
+          req_architectural_plan, req_building_permit, req_regularization, created_at
+        )
+        VALUES (
+          ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
+          ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
+          ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName}, ${notes},
+          ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization},
+          ${customStartAt}
+        )
+      `) as { id: number }[])
+    : ((await sql`
+        INSERT INTO projects (
+          code, name, client_id, location, type, priority, status, section, current_stage,
+          due_date, project_amount, invoice_number, project_package,
+          building_number, building_permit_number, drawing_number, edgebook_number, refer_name, notes,
+          req_architectural_plan, req_building_permit, req_regularization
+        )
+        VALUES (
+          ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
+          ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
+          ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName}, ${notes},
+          ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
+        )
+      `) as { id: number }[])
 
   const projectId = rows[0].id
   await seedProjectWorkflow(projectId, selectedServices, selectedDocuments)
@@ -1385,8 +1434,22 @@ export async function createProject(formData: FormData) {
       VALUES (${projectId}, ${floor.key})
     `
   }
-  await appendStatus(projectId, "New", "Project created", "Office Admin")
-  await appendStatus(projectId, "Awaiting Assignment", "Workflow generated from selected services", "Office Admin")
+  await appendStatus(projectId, "New", "Project created", "Office Admin", customStartAt)
+  await appendStatus(
+    projectId,
+    "Awaiting Assignment",
+    "Workflow generated from selected services",
+    "Office Admin",
+    customStartAt,
+  )
+  if (customStartAt) {
+    await sql`
+      UPDATE workflow_steps SET created_at = ${customStartAt} WHERE project_id = ${projectId}
+    `
+    await sql`
+      UPDATE project_services SET created_at = ${customStartAt} WHERE project_id = ${projectId}
+    `
+  }
   revalidateProjectPaths(projectId)
   return { success: true, projectId }
 }
@@ -1403,6 +1466,7 @@ export async function updateProjectDetails(formData: FormData) {
   const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
   const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
   const referName = String(formData.get("refer_name") || "").trim() || null
+  const notes = String(formData.get("notes") || "").trim() || null
   const residential = parseResidentialDetails(formData, type)
 
   if (!id || !name) return { error: "Project name is required." }
@@ -1419,12 +1483,67 @@ export async function updateProjectDetails(formData: FormData) {
         drawing_number = ${drawingNumber},
         edgebook_number = ${edgebookNumber},
         refer_name = ${referName},
+        notes = ${notes},
         req_architectural_plan = ${residential.reqArchitecturalPlan},
         req_building_permit = ${residential.reqBuildingPermit},
         req_regularization = ${residential.reqRegularization},
         updated_at = now()
     WHERE id = ${id}
   `
+  revalidateProjectPaths(id)
+  return { success: true }
+}
+
+export async function updateProjectStartDate(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("project_id") || formData.get("id"))
+  const startDateInput = String(formData.get("start_date") || "").trim()
+  if (!id) return { error: "Invalid project." }
+
+  const startAt = projectStartAtFromDate(startDateInput)
+  if (!startAt) return { error: "Enter a valid project start date." }
+
+  const project = await getProjectOrThrow(id)
+  const nextStartAt = projectStartAtFromDate(startDateInput, project.created_at) ?? startAt
+
+  await sql`
+    UPDATE projects
+    SET created_at = ${nextStartAt}, updated_at = now()
+    WHERE id = ${id}
+  `
+  await sql`
+    UPDATE status_history
+    SET created_at = ${nextStartAt}
+    WHERE project_id = ${id}
+      AND status IN ('New', 'Awaiting Assignment')
+      AND (
+        note = 'Project created'
+        OR note = 'Workflow generated from selected services'
+      )
+  `
+  await logAudit(admin.id, "project.update_start_date", "project", id, {
+    start_date: nextStartAt,
+  })
+  revalidateProjectPaths(id)
+  return { success: true }
+}
+
+export async function updateProjectNotes(formData: FormData) {
+  const admin = await requireAdminOrSuperAdmin()
+  const id = Number(formData.get("project_id") || formData.get("id"))
+  const notes = String(formData.get("notes") || "").trim() || null
+  if (!id) return { error: "Invalid project." }
+
+  const project = await getProjectOrThrow(id)
+  const closedError = closedProjectMutationError(admin, project)
+  if (closedError) return { error: closedError }
+
+  await sql`
+    UPDATE projects
+    SET notes = ${notes}, updated_at = now()
+    WHERE id = ${id}
+  `
+  await logAudit(admin.id, "project.update_notes", "project", id)
   revalidateProjectPaths(id)
   return { success: true }
 }
@@ -2075,7 +2194,7 @@ export async function updateProjectEdgebookNumber(formData: FormData) {
   if (closedError) return { error: closedError }
 
   if (isAdmin(user)) {
-    // Admin can set edgebook number at any stage (Super Admin when closed)
+    // Admin can set MBook Number at any stage (Super Admin when closed)
   } else if (userHasRole(user, "Planning Staff") || user.role === "Planning Staff") {
     try {
       await requireStaffProjectAccess(user, projectId)
@@ -2083,7 +2202,7 @@ export async function updateProjectEdgebookNumber(formData: FormData) {
       return { error: "You do not have access to edit this project." }
     }
   } else {
-    return { error: "Only Admin or Planning Staff can update the edgebook number." }
+    return { error: "Only Admin or Planning Staff can update the MBook Number." }
   }
 
   await sql`
@@ -2723,6 +2842,8 @@ export async function saveOfficeProfile(formData: FormData) {
     accountNumber: String(formData.get("account_number") || "").trim(),
     ifsc: String(formData.get("ifsc") || "").trim(),
     upiId: String(formData.get("upi_id") || "").trim(),
+    upiPaymentNumber: String(formData.get("upi_payment_number") || "").trim(),
+    upiPaymentApp: parseUpiPaymentApp(formData.get("upi_payment_app")),
     architectName: String(formData.get("architect_name") || "").trim(),
     architectDesignation: String(formData.get("architect_designation") || "").trim(),
   }

@@ -68,7 +68,7 @@ export default async function AdminProjectsPage({
               ? "Projects in the billing stage — generate invoices and record payments"
               : isFullAdmin
                 ? "Manage project pipeline and assignments"
-                : "Add new projects. Full project management requires Super Admin."}
+                : "Add new projects. Full project management requires Acmmo Admin."}
           </p>
         </div>
         {!billingOnly ? (
@@ -78,6 +78,7 @@ export default async function AdminProjectsPage({
               clients={clients}
               services={services}
               documentTemplates={documentTemplates}
+              canSetStartDate={isFullAdmin}
             />
           </div>
         ) : null}

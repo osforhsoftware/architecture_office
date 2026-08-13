@@ -251,7 +251,7 @@ export function ProjectWorkflowPanel({
         <p className="text-sm text-muted-foreground">
           {isSuperAdmin
             ? "Workflow controls are locked for this project."
-            : "Viewing workflow progress. Only Super Admin can assign, review, or close projects."}
+            : "Viewing workflow progress. Only Acmmo Admin can assign, review, or close projects."}
         </p>
       )}
     </div>

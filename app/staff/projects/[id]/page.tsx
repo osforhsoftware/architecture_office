@@ -106,6 +106,12 @@ export default async function StaffProjectDetailPage({
             </div>
             <Progress value={progress} className="h-2" />
           </div>
+          {project.notes?.trim() ? (
+            <div className="mt-4 rounded-lg border border-border/60 bg-muted/40 p-3">
+              <p className="text-xs font-medium text-muted-foreground">Project note</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{project.notes}</p>
+            </div>
+          ) : null}
           {!canEdit ? (
             <p className="mt-4 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
               {project.status === "Returned"

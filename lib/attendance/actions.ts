@@ -5,8 +5,8 @@ import { headers } from "next/headers"
 import { sql } from "@/lib/db"
 import { logAudit } from "@/lib/project-access"
 import { requireStaffAccess, requireSuperAdmin } from "@/lib/permissions"
-import { OUTSIDE_OFFICE_MESSAGE, type AttendanceStatus } from "./constants"
-import { haversineDistanceMeters, isValidCoordinate } from "./geo"
+import { outsideOfficeMessage, type AttendanceStatus } from "./constants"
+import { haversineDistanceMeters, isGpsAccuracyTooPoor, isValidCoordinate } from "./geo"
 import {
   formatMysqlDateTimeIst,
   normalizeTimeHm,
@@ -43,8 +43,28 @@ function parseCoords(formData: FormData): { latitude: number; longitude: number 
   return { latitude, longitude }
 }
 
-async function validateGeofence(latitude: number, longitude: number) {
+function parseAccuracy(formData: FormData): number | null {
+  const raw = formData.get("accuracy")
+  if (raw == null || String(raw).trim() === "") return null
+  const accuracy = Number(raw)
+  if (!Number.isFinite(accuracy) || accuracy <= 0) return null
+  return accuracy
+}
+
+async function validateGeofence(
+  latitude: number,
+  longitude: number,
+  accuracy: number | null,
+) {
   const settings = await ensureAttendanceSettings()
+  if (isGpsAccuracyTooPoor(accuracy, settings.radius_meters)) {
+    return {
+      ok: false as const,
+      distance: null,
+      error:
+        "Your location accuracy is too low. Please enable high-accuracy Location Services and try again.",
+    }
+  }
   const distance = haversineDistanceMeters(
     latitude,
     longitude,
@@ -53,7 +73,11 @@ async function validateGeofence(latitude: number, longitude: number) {
   )
   const rounded = Math.round(distance * 100) / 100
   if (rounded > settings.radius_meters) {
-    return { ok: false as const, distance: rounded, error: OUTSIDE_OFFICE_MESSAGE }
+    return {
+      ok: false as const,
+      distance: rounded,
+      error: outsideOfficeMessage(settings.radius_meters),
+    }
   }
   return { ok: true as const, distance: rounded, settings }
 }
@@ -69,8 +93,9 @@ export async function checkInAction(formData: FormData) {
     const user = await requireStaffAccess()
     const coords = parseCoords(formData)
     if ("error" in coords) return { error: coords.error }
+    const accuracy = parseAccuracy(formData)
 
-    const geo = await validateGeofence(coords.latitude, coords.longitude)
+    const geo = await validateGeofence(coords.latitude, coords.longitude, accuracy)
     if (!geo.ok) return { error: geo.error, distance: geo.distance }
 
     const today = todayInOfficeTz()
@@ -120,6 +145,9 @@ export async function checkInAction(formData: FormData) {
       distance: geo.distance,
       latitude: coords.latitude,
       longitude: coords.longitude,
+      accuracy,
+      location_verified: true,
+      is_manual: false,
     }, { ipAddress: ip })
 
     revalidateAttendance()
@@ -135,8 +163,9 @@ export async function checkOutAction(formData: FormData) {
     const user = await requireStaffAccess()
     const coords = parseCoords(formData)
     if ("error" in coords) return { error: coords.error }
+    const accuracy = parseAccuracy(formData)
 
-    const geo = await validateGeofence(coords.latitude, coords.longitude)
+    const geo = await validateGeofence(coords.latitude, coords.longitude, accuracy)
     if (!geo.ok) return { error: geo.error, distance: geo.distance }
 
     const today = todayInOfficeTz()
@@ -174,6 +203,9 @@ export async function checkOutAction(formData: FormData) {
       working_hours: hours,
       latitude: coords.latitude,
       longitude: coords.longitude,
+      accuracy,
+      location_verified: true,
+      is_manual: false,
     }, { ipAddress: ip })
 
     revalidateAttendance()
@@ -219,6 +251,8 @@ export async function saveAttendanceSettingsAction(formData: FormData) {
       office_start_time: next.office_start_time,
       buffer_minutes: next.buffer_minutes,
       radius_meters: next.radius_meters,
+      latitude: next.latitude,
+      longitude: next.longitude,
     })
 
     revalidateAttendance()
@@ -251,6 +285,9 @@ export async function adminMarkAttendanceAction(formData: FormData) {
     const checkOutRaw = String(formData.get("check_out") || "").trim()
     const statusRaw = String(formData.get("status") || "Present").trim()
     const note = String(formData.get("admin_note") || "").trim().slice(0, 500) || null
+    if (statusRaw !== "Absent" && !note) {
+      return { error: "Admin note is required for a manual attendance override." }
+    }
 
     const allowedStatus: AttendanceStatus[] = ["Present", "Late Coming", "Absent"]
     if (!allowedStatus.includes(statusRaw as AttendanceStatus)) {
@@ -323,7 +360,7 @@ export async function adminMarkAttendanceAction(formData: FormData) {
         ) VALUES (
           ${staffId}, ${attendanceDate}, ${checkIn}, ${checkOut}, ${workingHours}, ${computed},
           0, 1, ${admin.id}, ${note},
-          NULL, NULL, NULL, ${ip}, ${"Manual mark by Super Admin"}
+          NULL, NULL, NULL, ${ip}, ${"Manual mark by Acmmo Admin"}
         )
       `
     }
@@ -334,6 +371,11 @@ export async function adminMarkAttendanceAction(formData: FormData) {
       check_in: checkIn,
       check_out: checkOut,
       note,
+      override: true,
+      manual_checkout: Boolean(checkOut),
+      location_verified: false,
+      is_manual: true,
+      marked_by: admin.id,
     }, { ipAddress: ip })
 
     revalidateAttendance()
