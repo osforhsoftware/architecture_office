@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { sql } from "./db"
+import { mysqlErrorCode, mysqlErrorMessage, sql } from "./db"
 import { clearSession, getCurrentUser, setSession } from "./auth"
 import {
   allowsMultiAssignee,
@@ -88,6 +88,7 @@ import {
   requireStaffProjectAccess,
 } from "./project-access"
 import {
+  ForbiddenError,
   requireAdminOrSuperAdmin,
   requireBillingAccess,
   requireSuperAdmin,
@@ -283,111 +284,272 @@ function parseClientAddressFields(formData: FormData) {
   }
 }
 
-export async function createClient(formData: FormData) {
-  const admin = await requireAdminOrSuperAdmin()
-  const name = String(formData.get("name") || "").trim()
-  const phone = String(formData.get("phone") || "").trim()
-  const email = String(formData.get("email") || "").trim() || null
-  const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
-
-  if (!name) return { error: "Name is required." }
-
-  if (phone) {
-    const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
-      id: number
-    }[]
-    if (existing.length) return { error: "A client with this phone already exists." }
+function clientActionFailure(error: unknown, fallback: string): { error: string } {
+  console.error("[clients]", fallback, error)
+  const code = mysqlErrorCode(error)
+  if (code === "ER_DUP_ENTRY") return { error: "A client with this phone already exists." }
+  const message = mysqlErrorMessage(error)
+  if (code === "ER_BAD_FIELD_ERROR" || /unknown column/i.test(message)) {
+    return { error: "Client fields are missing on this database. Please try again." }
   }
+  return { error: message || fallback }
+}
 
-  // RETURNING removed — wrapper returns [{ id: lastInsertId }] automatically
-  const rows = (await sql`
-    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
-    VALUES (
-      ${name}, ${phone}, ${email}, ${address}, ${street}, ${district},
-      ${sql.json(aadhaarNumbers)}, ${sql.json(linkedNumbers)}
-    )
-  `) as { id: number }[]
+let clientExtraColumnsReady = false
 
-  await logAudit(admin.id, "client.create", "client", rows[0].id, { name, phone })
-  revalidateClientPaths(rows[0].id)
-  return { success: true, clientId: rows[0].id }
+async function addClientColumn(sqlTypeJson: () => Promise<unknown>, sqlTypeText: () => Promise<unknown>) {
+  try {
+    await sqlTypeJson()
+  } catch (error) {
+    if (mysqlErrorCode(error) === "ER_DUP_FIELDNAME") return
+    try {
+      await sqlTypeText()
+    } catch (fallbackError) {
+      if (mysqlErrorCode(fallbackError) !== "ER_DUP_FIELDNAME") {
+        console.warn("[clients] could not add extra column:", fallbackError)
+      }
+    }
+  }
+}
+
+/** Live DBs may predate street / Aadhaar columns — add them on first write. */
+async function ensureClientExtraColumns() {
+  if (clientExtraColumnsReady) return
+  await addClientColumn(
+    () => sql`ALTER TABLE clients ADD COLUMN street VARCHAR(500)`,
+    () => sql`ALTER TABLE clients ADD COLUMN street TEXT`,
+  )
+  await addClientColumn(
+    () => sql`ALTER TABLE clients ADD COLUMN district VARCHAR(100)`,
+    () => sql`ALTER TABLE clients ADD COLUMN district VARCHAR(255)`,
+  )
+  await addClientColumn(
+    () => sql`ALTER TABLE clients ADD COLUMN aadhaar_numbers JSON`,
+    () => sql`ALTER TABLE clients ADD COLUMN aadhaar_numbers TEXT`,
+  )
+  await addClientColumn(
+    () => sql`ALTER TABLE clients ADD COLUMN linked_numbers JSON`,
+    () => sql`ALTER TABLE clients ADD COLUMN linked_numbers TEXT`,
+  )
+  clientExtraColumnsReady = true
+}
+
+async function insertClientRow(input: {
+  name: string
+  phone: string
+  email: string | null
+  address: string | null
+  street: string | null
+  district: string | null
+  aadhaarNumbers: string[]
+  linkedNumbers: string[]
+}): Promise<{ id: number }[]> {
+  try {
+    return (await sql`
+      INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+      VALUES (
+        ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
+        ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}
+      )
+    `) as { id: number }[]
+  } catch (error) {
+    if (mysqlErrorCode(error) !== "ER_BAD_FIELD_ERROR" && !/unknown column/i.test(mysqlErrorMessage(error))) {
+      throw error
+    }
+    await ensureClientExtraColumns()
+    try {
+      return (await sql`
+        INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+        VALUES (
+          ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
+          ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}
+        )
+      `) as { id: number }[]
+    } catch (retryError) {
+      if (
+        mysqlErrorCode(retryError) !== "ER_BAD_FIELD_ERROR" &&
+        !/unknown column/i.test(mysqlErrorMessage(retryError))
+      ) {
+        throw retryError
+      }
+      return (await sql`
+        INSERT INTO clients (name, phone, email, address)
+        VALUES (${input.name}, ${input.phone}, ${input.email}, ${input.address})
+      `) as { id: number }[]
+    }
+  }
+}
+
+export async function createClient(formData: FormData) {
+  try {
+    const admin = await requireAdminOrSuperAdmin()
+    const name = String(formData.get("name") || "").trim()
+    const phone = String(formData.get("phone") || "").trim()
+    const email = String(formData.get("email") || "").trim() || null
+    const address = String(formData.get("address") || "").trim() || null
+    const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
+
+    if (!name) return { error: "Name is required." }
+
+    if (phone) {
+      const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
+        id: number
+      }[]
+      if (existing.length) return { error: "A client with this phone already exists." }
+    }
+
+    const rows = await insertClientRow({
+      name,
+      phone,
+      email,
+      address,
+      street,
+      district,
+      aadhaarNumbers,
+      linkedNumbers,
+    })
+    const clientId = rows[0]?.id
+    if (!clientId) return { error: "Client was not created." }
+
+    await logAudit(admin.id, "client.create", "client", clientId, { name, phone })
+    revalidateClientPaths(clientId)
+    return { success: true, clientId }
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return { error: "You do not have permission to add clients." }
+    }
+    return clientActionFailure(error, "Could not add client.")
+  }
 }
 
 export async function updateClient(formData: FormData) {
-  const admin = await requireAdminOrSuperAdmin()
-  const id = Number(formData.get("id"))
-  const name = String(formData.get("name") || "").trim()
-  const phone = String(formData.get("phone") || "").trim()
-  const email = String(formData.get("email") || "").trim() || null
-  const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
+  try {
+    const admin = await requireAdminOrSuperAdmin()
+    const id = Number(formData.get("id"))
+    const name = String(formData.get("name") || "").trim()
+    const phone = String(formData.get("phone") || "").trim()
+    const email = String(formData.get("email") || "").trim() || null
+    const address = String(formData.get("address") || "").trim() || null
+    const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
-  if (!id || !name) return { error: "Name is required." }
+    if (!id || !name) return { error: "Name is required." }
 
-  if (phone) {
-    const existing = (await sql`
-      SELECT id FROM clients WHERE phone = ${phone} AND id != ${id} LIMIT 1
-    `) as { id: number }[]
-    if (existing.length) return { error: "A client with this phone already exists." }
+    if (phone) {
+      const existing = (await sql`
+        SELECT id FROM clients WHERE phone = ${phone} AND id != ${id} LIMIT 1
+      `) as { id: number }[]
+      if (existing.length) return { error: "A client with this phone already exists." }
+    }
+
+    try {
+      await sql`
+        UPDATE clients SET
+          name = ${name},
+          phone = ${phone},
+          email = ${email},
+          address = ${address},
+          street = ${street},
+          district = ${district},
+          aadhaar_numbers = ${sql.json(aadhaarNumbers)},
+          linked_numbers = ${sql.json(linkedNumbers)}
+        WHERE id = ${id}
+      `
+    } catch (error) {
+      if (mysqlErrorCode(error) !== "ER_BAD_FIELD_ERROR" && !/unknown column/i.test(mysqlErrorMessage(error))) {
+        throw error
+      }
+      await ensureClientExtraColumns()
+      try {
+        await sql`
+          UPDATE clients SET
+            name = ${name},
+            phone = ${phone},
+            email = ${email},
+            address = ${address},
+            street = ${street},
+            district = ${district},
+            aadhaar_numbers = ${sql.json(aadhaarNumbers)},
+            linked_numbers = ${sql.json(linkedNumbers)}
+          WHERE id = ${id}
+        `
+      } catch (retryError) {
+        if (
+          mysqlErrorCode(retryError) !== "ER_BAD_FIELD_ERROR" &&
+          !/unknown column/i.test(mysqlErrorMessage(retryError))
+        ) {
+          throw retryError
+        }
+        await sql`
+          UPDATE clients SET
+            name = ${name},
+            phone = ${phone},
+            email = ${email},
+            address = ${address}
+          WHERE id = ${id}
+        `
+      }
+    }
+    await logAudit(admin.id, "client.update", "client", id, { name })
+    revalidateClientPaths(id)
+    return { success: true }
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return { error: "You do not have permission to update clients." }
+    }
+    return clientActionFailure(error, "Could not update client.")
   }
-
-  await sql`
-    UPDATE clients SET
-      name = ${name},
-      phone = ${phone},
-      email = ${email},
-      address = ${address},
-      street = ${street},
-      district = ${district},
-      aadhaar_numbers = ${sql.json(aadhaarNumbers)},
-      linked_numbers = ${sql.json(linkedNumbers)}
-    WHERE id = ${id}
-  `
-  await logAudit(admin.id, "client.update", "client", id, { name })
-  revalidateClientPaths(id)
-  return { success: true }
 }
 
 export async function registerClientWithProject(formData: FormData) {
-  const admin = await requireAdminOrSuperAdmin()
-  const clientName = String(formData.get("client_name") || "").trim()
-  const projectName = String(formData.get("project_name") || "").trim()
-  const phone = String(formData.get("phone") || "").trim()
-  const email = String(formData.get("email") || "").trim() || null
-  const address = String(formData.get("address") || "").trim() || null
-  const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
+  try {
+    const admin = await requireAdminOrSuperAdmin()
+    const clientName = String(formData.get("client_name") || "").trim()
+    const projectName = String(formData.get("project_name") || "").trim()
+    const phone = String(formData.get("phone") || "").trim()
+    const email = String(formData.get("email") || "").trim() || null
+    const address = String(formData.get("address") || "").trim() || null
+    const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
 
-  if (!clientName) return { error: "Client name is required." }
-  if (!projectName) return { error: "Project name is required." }
+    if (!clientName) return { error: "Client name is required." }
+    if (!projectName) return { error: "Project name is required." }
 
-  if (phone) {
-    const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
-      id: number
-    }[]
-    if (existing.length) return { error: "A client with this phone already exists." }
+    if (phone) {
+      const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
+        id: number
+      }[]
+      if (existing.length) return { error: "A client with this phone already exists." }
+    }
+
+    const clientRows = await insertClientRow({
+      name: clientName,
+      phone,
+      email,
+      address,
+      street,
+      district,
+      aadhaarNumbers,
+      linkedNumbers,
+    })
+    const clientId = clientRows[0]?.id
+    if (!clientId) return { error: "Client was not created." }
+
+    formData.set("client_id", String(clientId))
+    formData.set("name", projectName)
+
+    const projectRes = await createProject(formData)
+    if (projectRes?.error) return projectRes
+
+    await logAudit(admin.id, "client.register_with_project", "project", projectRes.projectId!, {
+      clientId,
+    })
+    revalidateClientPaths(clientId)
+    return { success: true, clientId, projectId: projectRes.projectId }
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return { error: "You do not have permission to add clients." }
+    }
+    return clientActionFailure(error, "Could not register client and project.")
   }
-
-  const clientRows = (await sql`
-    INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
-    VALUES (
-      ${clientName}, ${phone}, ${email}, ${address}, ${street}, ${district},
-      ${sql.json(aadhaarNumbers)}, ${sql.json(linkedNumbers)}
-    )
-  `) as { id: number }[]
-
-  const clientId = clientRows[0].id
-  formData.set("client_id", String(clientId))
-  formData.set("name", projectName)
-
-  const projectRes = await createProject(formData)
-  if (projectRes?.error) return projectRes
-
-  await logAudit(admin.id, "client.register_with_project", "project", projectRes.projectId!, {
-    clientId,
-  })
-  revalidateClientPaths(clientId)
-  return { success: true, clientId, projectId: projectRes.projectId }
 }
 
 // ---------- Staff ----------

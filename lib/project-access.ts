@@ -181,10 +181,14 @@ export async function logAudit(
   } catch (error) {
     // Pre-migration databases may lack role / ip_address columns
     console.warn("[audit] Falling back to legacy audit_logs insert:", error)
-    await sql`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (${userId}, ${action}, ${entityType}, ${entityId}, ${detailsJson})
-    `
+    try {
+      await sql`
+        INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
+        VALUES (${userId}, ${action}, ${entityType}, ${entityId}, ${detailsJson})
+      `
+    } catch (fallbackError) {
+      console.warn("[audit] Skipping audit log:", fallbackError)
+    }
   }
 }
 

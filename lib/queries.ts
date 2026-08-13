@@ -317,18 +317,20 @@ export async function getClients(search?: string): Promise<Client[]> {
     const q = `%${search.trim()}%`
     return normalizeClients(
       (await sql`
-      SELECT c.*, COUNT(p.id) AS project_count
-      FROM clients c LEFT JOIN projects p ON p.client_id = c.id
+      SELECT c.*,
+        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+      FROM clients c
       WHERE c.name LIKE ${q} OR c.phone LIKE ${q} OR c.email LIKE ${q}
-      GROUP BY c.id ORDER BY c.created_at DESC
+      ORDER BY c.created_at DESC
     `) as Client[],
     )
   }
   return normalizeClients(
     (await sql`
-    SELECT c.*, COUNT(p.id) AS project_count
-    FROM clients c LEFT JOIN projects p ON p.client_id = c.id
-    GROUP BY c.id ORDER BY c.created_at DESC
+    SELECT c.*,
+      (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+    FROM clients c
+    ORDER BY c.created_at DESC
   `) as Client[],
   )
 }
@@ -367,29 +369,27 @@ export async function getClientsPaginated(
   const rows =
     pageSize === -1
       ? ((await sql`
-          SELECT c.*, COUNT(p.id) AS project_count
+          SELECT c.*,
+            (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
           FROM clients c
-          LEFT JOIN projects p ON p.client_id = c.id
           WHERE (${search} IS NULL OR
             c.name LIKE ${search} OR
             c.phone LIKE ${search} OR
             c.email LIKE ${search} OR
             c.address LIKE ${search} OR
             CAST(c.id AS CHAR) LIKE ${search})
-          GROUP BY c.id
           ORDER BY c.created_at DESC
         `) as Client[])
       : ((await sql`
-          SELECT c.*, COUNT(p.id) AS project_count
+          SELECT c.*,
+            (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
           FROM clients c
-          LEFT JOIN projects p ON p.client_id = c.id
           WHERE (${search} IS NULL OR
             c.name LIKE ${search} OR
             c.phone LIKE ${search} OR
             c.email LIKE ${search} OR
             c.address LIKE ${search} OR
             CAST(c.id AS CHAR) LIKE ${search})
-          GROUP BY c.id
           ORDER BY c.created_at DESC
           LIMIT ${pageSize} OFFSET ${offset}
         `) as Client[])

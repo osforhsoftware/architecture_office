@@ -271,6 +271,18 @@ const TRANSIENT_CODES = new Set([
   "ER_CON_COUNT_ERROR",
 ])
 
+export function mysqlErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === "string" ? code : undefined
+}
+
+export function mysqlErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") return ""
+  const message = (error as { message?: unknown }).message
+  return typeof message === "string" ? message : ""
+}
+
 export function isTransientDbError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false
   const e = error as { code?: string; message?: string }
