@@ -64,7 +64,7 @@ export function ClientDialog({ client }: { client?: Client }) {
     formData.set("linked_numbers", JSON.stringify(linkedNumbers))
     startTransition(async () => {
       const res = isEdit ? await updateClient(formData) : await createClient(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }

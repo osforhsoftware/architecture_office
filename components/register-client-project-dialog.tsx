@@ -74,13 +74,13 @@ export function RegisterClientProjectDialog({
     formData.set("linked_numbers", JSON.stringify(linkedNumbers))
     startTransition(async () => {
       const res = await registerClientWithProject(formData)
-      if (res?.error) {
+      if (res && "error" in res) {
         setError(res.error)
         return
       }
       toast.success("Client and project registered")
       setOpen(false)
-      if (res?.projectId) {
+      if ("projectId" in res && res.projectId) {
         openProjectPrint(res.projectId)
       }
     })
