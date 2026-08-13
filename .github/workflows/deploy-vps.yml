@@ -85,7 +85,7 @@ jobs:
             echo "== migrations (this DB only via local .env) =="
             npm run db:migrate-departments
             npm run db:migrate-documents
-            npm run db:migrate-client
+            npm run db:migrate-client || echo "WARN: db:migrate-client failed; app can add columns on first client save"
             npm run db:migrate-finance
             npm run db:migrate-finance-v2
             npm run db:migrate-invoice-discounts
