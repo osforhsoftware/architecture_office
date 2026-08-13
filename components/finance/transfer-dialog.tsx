@@ -28,7 +28,7 @@ export function TransferDialog({ accounts }: { accounts: FinanceSelectOption[] }
     setError(null)
     startTransition(async () => {
       const res = await transferBetweenAccounts(formData)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         setError(res.error)
         return
       }

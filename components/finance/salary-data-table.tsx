@@ -39,7 +39,7 @@ function SalaryTableInner({ result, search, dialogOptions }: SalaryDataTableProp
     fd.set("id", String(row.id))
     startTransition(async () => {
       const res = await paySalary(fd)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         toast.error(res.error)
         return
       }
@@ -52,7 +52,7 @@ function SalaryTableInner({ result, search, dialogOptions }: SalaryDataTableProp
     fd.set("id", String(row.id))
     startTransition(async () => {
       const res = await deleteSalary(fd)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         toast.error(res.error)
         return
       }

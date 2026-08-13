@@ -63,7 +63,7 @@ function IncomeRowActions({
     fd.set("ledger_scope", scope)
     startTransition(async () => {
       const res = await deleteIncome(fd)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         toast.error(res.error)
         return
       }

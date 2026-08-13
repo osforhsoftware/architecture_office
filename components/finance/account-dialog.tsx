@@ -38,7 +38,7 @@ export function AccountDialog({ account }: { account?: FinanceAccount }) {
     formData.set("account_type", accountType)
     startTransition(async () => {
       const res = isEdit ? await updateAccount(formData) : await createAccount(formData)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         setError(res.error)
         return
       }

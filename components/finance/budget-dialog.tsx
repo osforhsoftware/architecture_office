@@ -58,7 +58,7 @@ export function BudgetDialog({
     if (budget) formData.set("id", String(budget.id))
     startTransition(async () => {
       const res = await saveProjectBudget(formData)
-      if (res && "error" in res) {
+      if (res && "error" in res && res.error) {
         setError(res.error)
         return
       }
