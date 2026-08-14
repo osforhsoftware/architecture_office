@@ -57,6 +57,16 @@ import {
   checklistItemsFromTemplates,
   getDocumentTemplateById,
 } from "./document-templates"
+import {
+  getAdditionalRequirementTemplateById,
+  makeRequirementKey,
+  parseAdditionalRequirementsFromForm,
+  saveProjectAdditionalRequirements,
+} from "./additional-requirements"
+import {
+  parseChoiceOptions,
+  parseCustomFieldValueType,
+} from "./additional-requirements-shared"
 import { hashPassword, verifyPassword } from "./password"
 import {
   calculateInvoiceTotals,
@@ -761,6 +771,13 @@ function revalidateDocumentPaths() {
   revalidatePath("/staff")
 }
 
+function revalidateRequirementPaths() {
+  revalidatePath("/admin/requirements")
+  revalidatePath("/admin/projects")
+  revalidatePath("/admin")
+  revalidatePath("/staff")
+}
+
 function revalidateDepartmentPaths() {
   revalidatePath("/admin/departments")
   revalidatePath("/admin/staff")
@@ -1244,6 +1261,171 @@ export async function deleteDocumentTemplate(formData: FormData) {
   }
 }
 
+// ---------- Additional requirement templates (catalog) ----------
+
+export async function createAdditionalRequirementTemplate(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const label = String(formData.get("label") || "").trim()
+    const keyInput = String(formData.get("requirement_key") || "").trim()
+    const requirementKey = keyInput ? makeRequirementKey(keyInput) : makeRequirementKey(label)
+    const valueType = parseCustomFieldValueType(formData.get("value_type"))
+    const choiceOptions = valueType === "choice" ? parseChoiceOptions(formData.get("choice_options")) : []
+    const choiceOptionsJson = choiceOptions.length ? JSON.stringify(choiceOptions) : null
+
+    if (!label) return { error: "Field name is required." }
+    if (label.length > 255) return { error: "Field name is too long." }
+    if (!requirementKey) return { error: "Field key is required." }
+    if (valueType === "choice" && choiceOptions.length < 2) {
+      return { error: "Add at least two choices for a radio field." }
+    }
+
+    const dupKey = (await sql`
+      SELECT id FROM additional_requirement_templates
+      WHERE requirement_key = ${requirementKey}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dupKey[0]) return { error: "A requirement with this key already exists." }
+
+    const dupLabel = (await sql`
+      SELECT id FROM additional_requirement_templates
+      WHERE LOWER(label) = ${label.toLowerCase()}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dupLabel[0]) return { error: "A requirement with this name already exists." }
+
+    const sortRows = (await sql`
+      SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM additional_requirement_templates
+    `) as { max_sort: number }[]
+    const nextSort = Number(sortRows[0]?.max_sort ?? 0) + 1
+
+    const rows = (await sql`
+      INSERT INTO additional_requirement_templates (requirement_key, label, value_type, choice_options, sort_order, active)
+      VALUES (${requirementKey}, ${label}, ${valueType}, ${choiceOptionsJson}, ${nextSort}, 1)
+    `) as { id: number }[]
+
+    const requirementId = Number(rows[0]?.id)
+    if (!requirementId) {
+      return { error: "Requirement was created but no id was returned. Please refresh." }
+    }
+
+    await logAudit(admin.id, "requirement.create", "additional_requirement", requirementId, {
+      requirement_key: requirementKey,
+      label,
+      value_type: valueType,
+    })
+    revalidateRequirementPaths()
+    return { success: true, requirementId }
+  } catch (error) {
+    console.error("[additional-requirements] create failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Acmmo Admin can manage additional requirements." }
+    }
+    return {
+      error:
+        "Could not create requirement. Run npm run db:migrate-additional-requirements if the table is missing.",
+    }
+  }
+}
+
+export async function updateAdditionalRequirementTemplate(formData: FormData) {
+  try {
+    const admin = await requireSuperAdmin()
+    const id = Number(formData.get("id"))
+    const label = String(formData.get("label") || "").trim()
+    const sortOrder = Number(formData.get("sort_order") || 0)
+    const active = formData.get("active") === "on" || formData.get("active") === "true"
+    const valueType = parseCustomFieldValueType(formData.get("value_type"))
+    const choiceOptions = valueType === "choice" ? parseChoiceOptions(formData.get("choice_options")) : []
+    const choiceOptionsJson = choiceOptions.length ? JSON.stringify(choiceOptions) : null
+
+    if (!id || !label) return { error: "Field name is required." }
+    if (label.length > 255) return { error: "Field name is too long." }
+    if (valueType === "choice" && choiceOptions.length < 2) {
+      return { error: "Add at least two choices for a radio field." }
+    }
+
+    const current = await getAdditionalRequirementTemplateById(id)
+    if (!current) return { error: "Requirement not found." }
+
+    const dupLabel = (await sql`
+      SELECT id FROM additional_requirement_templates
+      WHERE LOWER(label) = ${label.toLowerCase()}
+        AND id <> ${id}
+      LIMIT 1
+    `) as { id: number }[]
+    if (dupLabel[0]) return { error: "A field with this name already exists." }
+
+    await sql`
+      UPDATE additional_requirement_templates
+      SET label = ${label},
+          value_type = ${valueType},
+          choice_options = ${choiceOptionsJson},
+          sort_order = ${Number.isFinite(sortOrder) ? sortOrder : current.sort_order},
+          active = ${active}
+      WHERE id = ${id}
+    `
+
+    await sql`
+      UPDATE project_additional_requirements
+      SET label = ${label},
+          value_type = ${valueType},
+          choice_options = ${choiceOptionsJson}
+      WHERE requirement_key = ${current.requirement_key}
+    `
+
+    await logAudit(admin.id, "requirement.update", "additional_requirement", id, {
+      from: current.label,
+      to: label,
+      value_type: valueType,
+      active,
+    })
+    revalidateRequirementPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[additional-requirements] update failed:", error)
+    const message = error instanceof Error ? error.message : ""
+    if (message === "Forbidden" || message === "Unauthorized") {
+      return { error: "Only Acmmo Admin can manage additional requirements." }
+    }
+    return { error: "Could not update requirement." }
+  }
+}
+
+export async function deleteAdditionalRequirementTemplate(formData: FormData) {
+  const admin = await requireSuperAdmin()
+  const id = Number(formData.get("id"))
+  if (!id) return { error: "Requirement is required." }
+
+  const current = await getAdditionalRequirementTemplateById(id)
+  if (!current) return { error: "Requirement not found." }
+
+  try {
+    const usage = (await sql`
+      SELECT COUNT(*) AS count
+      FROM project_additional_requirements
+      WHERE requirement_key = ${current.requirement_key}
+    `) as { count: number }[]
+    if (Number(usage[0]?.count ?? 0) > 0) {
+      return {
+        error: `Cannot delete "${current.label}" while ${usage[0].count} project(s) still use it. Hide it instead.`,
+      }
+    }
+
+    await sql`DELETE FROM additional_requirement_templates WHERE id = ${id}`
+    await logAudit(admin.id, "requirement.delete", "additional_requirement", id, {
+      requirement_key: current.requirement_key,
+      label: current.label,
+    })
+    revalidateRequirementPaths()
+    return { success: true }
+  } catch (error) {
+    console.error("[additional-requirements] delete failed:", error)
+    return { error: "Could not delete requirement." }
+  }
+}
+
 // ---------- Admin account management (Acmmo Admin only) ----------
 
 export async function createAdminAccount(formData: FormData) {
@@ -1531,6 +1713,7 @@ export async function createProject(formData: FormData) {
   const selectedServices = parseSelectedServices(formData, projectPackage, serviceCatalog)
   const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
   const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
+  const additionalRequirements = await parseAdditionalRequirementsFromForm(formData)
   const startDateInput = String(formData.get("start_date") || "").trim()
   const customStartAt =
     isSuperAdmin(admin.role) && startDateInput && !isLocalToday(startDateInput)
@@ -1589,6 +1772,7 @@ export async function createProject(formData: FormData) {
 
   const projectId = rows[0].id
   await seedProjectWorkflow(projectId, selectedServices, selectedDocuments)
+  await saveProjectAdditionalRequirements(projectId, additionalRequirements)
 
   for (const floor of KMAP_FLOOR_ROWS) {
     await sql`
@@ -1706,6 +1890,22 @@ export async function updateProjectNotes(formData: FormData) {
     WHERE id = ${id}
   `
   await logAudit(admin.id, "project.update_notes", "project", id)
+  revalidateProjectPaths(id)
+  return { success: true }
+}
+
+export async function updateProjectCustomFields(formData: FormData) {
+  const admin = await requireAdminOrSuperAdmin()
+  const id = Number(formData.get("project_id") || formData.get("id"))
+  if (!id) return { error: "Invalid project." }
+
+  const project = await getProjectOrThrow(id)
+  const closedError = closedProjectMutationError(admin, project)
+  if (closedError) return { error: closedError }
+
+  const fields = await parseAdditionalRequirementsFromForm(formData, { includeInactive: true })
+  await saveProjectAdditionalRequirements(id, fields)
+  await logAudit(admin.id, "project.update_custom_fields", "project", id)
   revalidateProjectPaths(id)
   return { success: true }
 }

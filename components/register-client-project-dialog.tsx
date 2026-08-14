@@ -17,6 +17,7 @@ import {
 } from "@/components/form-dialog-shell"
 import { FormSelect } from "@/components/form-select"
 import { FormField, FormSection, formControlClass, formTextareaClass } from "@/components/form-section"
+import { AdditionalRequirementsFields } from "@/components/additional-requirements-fields"
 import { ResidentialPropertyFields } from "@/components/residential-details-section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +27,7 @@ import { ProjectNotesField } from "@/components/project-notes-field"
 import { ProjectStartDateField } from "@/components/project-start-date-field"
 import { openProjectPrint } from "@/components/project-print-button"
 import { registerClientWithProject } from "@/lib/actions"
+import type { AdditionalRequirementOption } from "@/lib/additional-requirements-shared"
 import { KERALA_DISTRICTS, PRIORITIES, PROJECT_TYPES, showsResidentialDetails } from "@/lib/constants"
 
 const DISTRICT_OPTIONS = KERALA_DISTRICTS.map((d) => ({ value: d, label: d }))
@@ -34,8 +36,10 @@ const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }))
 
 export function RegisterClientProjectDialog({
   canSetStartDate = false,
+  additionalRequirementOptions = [],
 }: {
   canSetStartDate?: boolean
+  additionalRequirementOptions?: AdditionalRequirementOption[]
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -258,6 +262,13 @@ export function RegisterClientProjectDialog({
                     </AnimatePresence>
                   </div>
                 </FormSection>
+
+                {additionalRequirementOptions.length > 0 ? (
+                  <AdditionalRequirementsFields
+                    idPrefix="reg-"
+                    options={additionalRequirementOptions}
+                  />
+                ) : null}
 
                 <FormSection title="Timeline & Budget">
                   <div

@@ -30,6 +30,7 @@
     "db:migrate-staff-roles": "node scripts/migrate-staff-roles.mjs",
     "db:migrate-departments": "node scripts/migrate-departments.mjs",
     "db:migrate-documents": "node scripts/migrate-document-templates.mjs",
+    "db:migrate-additional-requirements": "node scripts/migrate-additional-requirements.mjs",
     "db:migrate-finance": "node scripts/migrate-finance.mjs",
     "db:migrate-finance-v2": "node scripts/migrate-finance-v2.mjs",
     "db:migrate-attendance": "node scripts/migrate-attendance.mjs",

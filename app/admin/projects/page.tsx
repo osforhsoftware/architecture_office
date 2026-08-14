@@ -12,6 +12,10 @@ import {
 import { ProjectDialog } from "@/components/project-dialog"
 import { ProjectsDataTable } from "@/components/projects-data-table"
 import { ProjectsExportButton } from "@/components/projects-export-button"
+import {
+  listAdditionalRequirementTemplates,
+  toAdditionalRequirementOption,
+} from "@/lib/additional-requirements"
 
 export default async function AdminProjectsPage({
   searchParams,
@@ -34,7 +38,8 @@ export default async function AdminProjectsPage({
   const status = params.status ?? "all"
   const section = billingOnly ? "Billing" : (params.section ?? "all")
 
-  const [result, clients, departmentNames, services, documentRows] = await Promise.all([
+  const [result, clients, departmentNames, services, documentRows, requirementTemplates] =
+    await Promise.all([
     getProjectsPaginated({
       search,
       status,
@@ -49,9 +54,13 @@ export default async function AdminProjectsPage({
     billingOnly
       ? Promise.resolve([])
       : listDocumentTemplates({ activeOnly: true }),
+    billingOnly
+      ? Promise.resolve([])
+      : listAdditionalRequirementTemplates({ activeOnly: true }),
   ])
 
   const documentTemplates = documentRows.map(toDocumentOption)
+  const additionalRequirementOptions = requirementTemplates.map(toAdditionalRequirementOption)
 
   return (
     <div className="flex flex-col gap-6">
@@ -78,6 +87,7 @@ export default async function AdminProjectsPage({
               clients={clients}
               services={services}
               documentTemplates={documentTemplates}
+              additionalRequirementOptions={additionalRequirementOptions}
               canSetStartDate={isFullAdmin}
             />
           </div>

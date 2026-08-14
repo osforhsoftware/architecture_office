@@ -96,6 +96,7 @@ jobs:
             npm run db:migrate-staff-avatar
             npm run db:migrate-attendance
             npm run db:migrate-attendance-late
+            npm run db:migrate-additional-requirements
 
             echo "== build (clean .next to avoid partial builds) =="
             rm -rf .next

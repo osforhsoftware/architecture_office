@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { apiOptionsResponse, withApiCors } from "@/lib/api-cors"
 import { getCurrentUser } from "@/lib/auth"
 import { userCanAccessAdminPortal } from "@/lib/constants"
+import { getProjectAdditionalRequirements } from "@/lib/additional-requirements"
 import { resolveOfficeLogoForPdf } from "@/lib/logo-utils"
 import { logAudit } from "@/lib/project-access"
 import { getClient, getOfficeProfile, getProject } from "@/lib/queries"
@@ -32,9 +33,10 @@ export async function GET(
       return withApiCors(NextResponse.json({ error: "Invalid project." }, { status: 400 }))
     }
 
-    const [project, profile] = await Promise.all([
+    const [project, profile, additionalRequirements] = await Promise.all([
       getProject(projectId),
       getOfficeProfile(),
+      getProjectAdditionalRequirements(projectId),
     ])
 
     if (!project) {
@@ -43,7 +45,7 @@ export async function GET(
 
     const client = await getClient(project.client_id)
     const profileWithLogo = await resolveOfficeLogoForPdf(profile)
-    const buffer = buildProjectPdfBuffer(project, client, profileWithLogo)
+    const buffer = buildProjectPdfBuffer(project, client, profileWithLogo, additionalRequirements)
     const fileName = getProjectPdfFileName(project.code)
 
     await logAudit(user.id, "project.pdf_export", "project", projectId, {})

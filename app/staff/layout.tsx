@@ -32,14 +32,14 @@ export default async function StaffLayout({
   const lateInfo = getLateComingInfo(settings, Boolean(todayRecord?.check_in))
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <StaffSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <StaffTopbar user={user} notifications={notifications} />
-        <main className="blueprint-bg flex-1 p-4 pb-24 md:pb-6 md:p-6">{children}</main>
-      </div>
-      <StaffBottomNav />
-      <LateComingAlert lateInfo={lateInfo} officeDate={officeDate} />
+    <div className="flex min-h-screen overflow-x-hidden bg-background">
+        <StaffSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <StaffTopbar user={user} notifications={notifications} />
+          <main className="blueprint-bg flex-1 p-4 pb-24 md:pb-6 md:p-6">{children}</main>
+        </div>
+        <StaffBottomNav />
+        <LateComingAlert lateInfo={lateInfo} officeDate={officeDate} />
     </div>
   )
 }

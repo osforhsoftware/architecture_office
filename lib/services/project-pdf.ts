@@ -3,7 +3,8 @@ import "server-only"
 import { jsPDF } from "jspdf"
 import { formatClientId } from "@/lib/constants"
 import { formatInvoiceDate } from "@/lib/invoice-utils"
-import type { Client, OfficeProfile, Project } from "@/lib/types"
+import { formatCustomFieldValue } from "@/lib/additional-requirements-shared"
+import type { Client, OfficeProfile, Project, ProjectAdditionalRequirement } from "@/lib/types"
 
 const ACCENT: [number, number, number] = [25, 181, 216] // #19B5D8
 const INK: [number, number, number] = [17, 17, 17]
@@ -247,6 +248,7 @@ export function buildProjectPdfBuffer(
   project: Project,
   client: Client | null,
   profile: OfficeProfile,
+  additionalRequirements: ProjectAdditionalRequirement[] = [],
 ): Buffer {
   const doc = new jsPDF({ unit: "mm", format: "a4" })
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -321,6 +323,17 @@ export function buildProjectPdfBuffer(
   }
 
   y = addFieldRows(doc, projectRows, y, pageWidth)
+
+  if (additionalRequirements.length) {
+    y += 4
+    y = addSectionTitle(doc, "CUSTOM FIELDS", y)
+    const requirementRows: [string, string][] = additionalRequirements.map((requirement) => [
+      pdfText(requirement.label).toUpperCase(),
+      pdfText(formatCustomFieldValue(requirement.value, requirement.value_type)) || "—",
+    ])
+    y = addFieldRows(doc, requirementRows, y, pageWidth)
+  }
+
   y += 6
   drawHRule(doc, y, pageWidth)
 

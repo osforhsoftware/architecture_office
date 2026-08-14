@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { GeistMono } from 'geist/font/mono'
 import { GeistSans } from 'geist/font/sans'
 import { Toaster } from '@/components/ui/sonner'
+import { SidebarCollapseScript } from '@/components/sidebar-collapse-script'
 import { getFrontendUrl } from '@/lib/app-urls'
 import './globals.css'
 
@@ -45,6 +46,9 @@ export default function RootLayout({
       lang="en"
       className={`light ${GeistSans.variable} ${GeistMono.variable} bg-background`}
     >
+      <head>
+        <SidebarCollapseScript />
+      </head>
       <body className="overflow-x-hidden font-sans antialiased" suppressHydrationWarning>
         {children}
         <Toaster position="top-center" richColors />

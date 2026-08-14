@@ -41,6 +41,16 @@ export default async function AdminSettingsPage() {
           </p>
           <p className="mt-3 text-xs font-medium text-primary">Manage documents →</p>
         </Link>
+        <Link
+          href="/admin/requirements"
+          className="rounded-xl border border-border/60 bg-card p-5 shadow-premium transition-colors hover:border-primary/40 hover:bg-muted/30"
+        >
+          <h3 className="font-semibold">Custom Fields</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Extra project fields with text, number, date, yes/no, or choice values
+          </p>
+          <p className="mt-3 text-xs font-medium text-primary">Manage custom fields →</p>
+        </Link>
         <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
           <h3 className="font-semibold">Notifications</h3>
           <p className="mt-1 text-sm text-muted-foreground">

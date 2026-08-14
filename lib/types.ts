@@ -1,4 +1,5 @@
 import type { Role } from "./constants"
+import type { CustomFieldValueType } from "./additional-requirements-shared"
 import type { UpiPaymentAppId } from "./upi-apps"
 
 export interface AppUser {
@@ -123,6 +124,30 @@ export interface ProjectKmapArea {
   floor_key: string
   plinth_area: string | null
   floor_area: string | null
+}
+
+export interface ProjectAdditionalRequirement {
+  project_id: number
+  requirement_key: string
+  label: string
+  value: string
+  sort_order: number
+  value_type: CustomFieldValueType
+  choice_options: string[]
+}
+
+export interface AdditionalRequirementTemplate {
+  id: number
+  requirement_key: string
+  label: string
+  sort_order: number
+  active: boolean
+  value_type: CustomFieldValueType
+  choice_options: string[]
+}
+
+export interface AdditionalRequirementTemplateRow extends AdditionalRequirementTemplate {
+  project_count: number
 }
 
 export interface Payment {

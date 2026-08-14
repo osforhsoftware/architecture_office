@@ -14,6 +14,7 @@ import { FormMultiSelect } from "@/components/form-multi-select"
 import { FormSelect } from "@/components/form-select"
 import { FormField, FormSection, formControlClass } from "@/components/form-section"
 import { ResidentialPropertyFields } from "@/components/residential-details-section"
+import { AdditionalRequirementsFields } from "@/components/additional-requirements-fields"
 import { DrawingNumberField } from "@/components/project-drawing-number-panel"
 import { ProjectNotesField } from "@/components/project-notes-field"
 import { ProjectStartDateField } from "@/components/project-start-date-field"
@@ -35,6 +36,7 @@ import {
   type ProjectServiceDef,
   type ServiceKey,
 } from "@/lib/workflow"
+import type { AdditionalRequirementOption } from "@/lib/additional-requirements-shared"
 import type { Client } from "@/lib/types"
 
 /** Residential custom keys that map into the workflow catalog. */
@@ -63,11 +65,13 @@ export function ProjectDialog({
   clients,
   services,
   documentTemplates = [],
+  additionalRequirementOptions = [],
   canSetStartDate = false,
 }: {
   clients: Client[]
   services: ProjectServiceDef[]
   documentTemplates?: DocumentTemplateOption[]
+  additionalRequirementOptions?: AdditionalRequirementOption[]
   canSetStartDate?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -364,6 +368,13 @@ export function ProjectDialog({
                       Select services above to choose the documents required for this project.
                     </p>
                   </FormSection>
+                ) : null}
+
+                {additionalRequirementOptions.length > 0 ? (
+                  <AdditionalRequirementsFields
+                    idPrefix="project-"
+                    options={additionalRequirementOptions}
+                  />
                 ) : null}
 
                 <FormSection title="Timeline & Budget">

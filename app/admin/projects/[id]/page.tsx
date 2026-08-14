@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 import { ApprovalHistory } from "@/components/approval-history"
+import { AdditionalRequirementsSection } from "@/components/additional-requirements-section"
 import { BillingStaffProjectView } from "@/components/billing-staff-project-view"
 import { ProjectBillingPanel } from "@/components/project-billing-panel"
 import { ProjectChecklist } from "@/components/project-checklist"
@@ -30,6 +31,11 @@ import {
   userIsBillingStaff,
 } from "@/lib/constants"
 import { getDepartmentNames, getSectionRoleMap } from "@/lib/departments"
+import {
+  getProjectAdditionalRequirements,
+  listAdditionalRequirementTemplates,
+  toAdditionalRequirementOption,
+} from "@/lib/additional-requirements"
 import {
   getChecklist,
   getClient,
@@ -66,7 +72,7 @@ export default async function AdminProjectDetailPage({
   /** Closed projects are read-only except for Super Admin. Billing remains available. */
   const detailsReadOnly = project.status === "Closed" && !superAdmin
 
-  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, reviews, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap] =
+  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, reviews, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap, additionalRequirements, customFieldTemplates] =
     await Promise.all([
       getClient(project.client_id),
       getStaffUsers(),
@@ -82,7 +88,11 @@ export default async function AdminProjectDetailPage({
       getCurrentWorkflowStep(projectId),
       getDepartmentNames(true),
       getSectionRoleMap(),
+      getProjectAdditionalRequirements(projectId),
+      listAdditionalRequirementTemplates({ activeOnly: true }),
     ])
+
+  const customFieldOptions = customFieldTemplates.map(toAdditionalRequirementOption)
 
   const progress = projectProgressPercent(project.current_stage, workflowSteps)
   const stageLabel = currentStep?.label ?? "—"
@@ -283,6 +293,12 @@ export default async function AdminProjectDetailPage({
                 </dd>
               </div>
             </dl>
+            <AdditionalRequirementsSection
+              projectId={projectId}
+              requirements={additionalRequirements}
+              options={customFieldOptions}
+              readOnly={detailsReadOnly}
+            />
             {superAdmin ? (
               <div className="mt-4 border-t border-border/60 pt-4">
                 <ProjectStartDatePanel

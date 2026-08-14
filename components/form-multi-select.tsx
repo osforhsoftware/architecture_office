@@ -31,8 +31,11 @@ type FormMultiSelectProps = {
   required?: boolean
   placeholder?: string
   searchPlaceholder?: string
+  emptyMessage?: string
   className?: string
   disabled?: boolean
+  /** Avatar + person icons. Keep on for staff; hide for catalogs like requirements. */
+  showAvatars?: boolean
   onSelectedChange?: (selected: string[]) => void
 }
 
@@ -47,8 +50,10 @@ export function FormMultiSelect({
   required,
   placeholder = "Search or select staff...",
   searchPlaceholder = "Search staff...",
+  emptyMessage = "No staff match your search.",
   className,
   disabled = false,
+  showAvatars = true,
   onSelectedChange,
 }: FormMultiSelectProps) {
   const listboxId = useId()
@@ -207,15 +212,20 @@ export function FormMultiSelect({
               return (
                 <span
                   key={option.value}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/15 bg-primary/10 py-1 pr-1 pl-1.5 text-xs font-medium text-primary transition-colors duration-200"
+                  className={cn(
+                    "inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/15 bg-primary/10 py-1 pr-1 text-xs font-medium text-primary transition-colors duration-200",
+                    showAvatars ? "pl-1.5" : "pl-2.5",
+                  )}
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <UserAvatar
-                    name={nameText}
-                    avatarUrl={option.avatarUrl}
-                    className="size-5"
-                    textClassName="bg-primary/15 text-[10px] font-semibold text-primary"
-                  />
+                  {showAvatars ? (
+                    <UserAvatar
+                      name={nameText}
+                      avatarUrl={option.avatarUrl}
+                      className="size-5"
+                      textClassName="bg-primary/15 text-[10px] font-semibold text-primary"
+                    />
+                  ) : null}
                   <span className="truncate">{nameText}</span>
                   <button
                     type="button"
@@ -299,30 +309,34 @@ export function FormMultiSelect({
                     aria-hidden
                     className="pointer-events-none"
                   />
-                  <UserAvatar
-                    name={nameText}
-                    avatarUrl={option.avatarUrl}
-                    className="size-8"
-                    textClassName={cn(
-                      "text-xs font-semibold",
-                      checked
-                        ? "bg-primary/15 text-primary"
-                        : "bg-muted text-muted-foreground",
-                    )}
-                  />
+                  {showAvatars ? (
+                    <UserAvatar
+                      name={nameText}
+                      avatarUrl={option.avatarUrl}
+                      className="size-8"
+                      textClassName={cn(
+                        "text-xs font-semibold",
+                        checked
+                          ? "bg-primary/15 text-primary"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    />
+                  ) : null}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{nameText}</p>
                     {option.description ? (
                       <p className="truncate text-xs text-muted-foreground">{option.description}</p>
                     ) : null}
                   </div>
-                  <User className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+                  {showAvatars ? (
+                    <User className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+                  ) : null}
                 </li>
               )
             })
           ) : (
             <li className="px-3 py-8 text-center text-sm text-muted-foreground">
-              No staff match your search.
+              {emptyMessage}
             </li>
           )}
         </ul>
