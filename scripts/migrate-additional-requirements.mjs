@@ -1,11 +1,5 @@
-import fs from "fs"
-import path from "path"
-import { fileURLToPath } from "url"
 import mysql from "mysql2/promise"
 import { loadEnv, parseDbUrl } from "./load-env.mjs"
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const migrationPath = path.join(root, "scripts", "migrate-additional-requirements.sql")
 
 const DEFAULT_REQUIREMENTS = [
   { key: "ward_number", label: "Ward Number", sort: 1 },
@@ -20,33 +14,90 @@ const pool = mysql.createPool({
   charset: "utf8mb4",
 })
 
-async function execRaw(rawSql) {
-  const statements = rawSql
-    .split(/;[ \t]*(?:\r?\n|$)/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  for (const stmt of statements) {
+function isSkippable(err) {
+  const code = err?.code || ""
+  const msg = String(err?.message || "")
+  return (
+    code === "ER_DUP_FIELDNAME" ||
+    code === "ER_TABLE_EXISTS_ERROR" ||
+    code === "ER_DUP_KEYNAME" ||
+    code === "ER_DUP_ENTRY" ||
+    code === "ER_FK_DUP_NAME" ||
+    /Duplicate column/i.test(msg) ||
+    /already exists/i.test(msg)
+  )
+}
+
+async function run(sql, params) {
+  try {
+    if (params) await pool.execute(sql, params)
+    else await pool.query(sql)
+  } catch (err) {
+    if (isSkippable(err)) {
+      console.warn(`  Skipping: ${err.message}`)
+      return
+    }
+    throw err
+  }
+}
+
+async function addColumn(table, name, preferredType, fallbackType) {
+  try {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${name} ${preferredType}`)
+    console.log(`  Added ${table}.${name} ${preferredType}`)
+  } catch (err) {
+    if (isSkippable(err)) {
+      console.warn(`  Column already exists, skipping: ${table}.${name}`)
+      return
+    }
+    if (!fallbackType) throw err
     try {
-      await pool.execute(stmt)
-    } catch (err) {
-      if (
-        err.code === "ER_DUP_FIELDNAME" ||
-        err.code === "ER_TABLE_EXISTS_ERROR" ||
-        err.code === "ER_DUP_KEYNAME" ||
-        err.code === "ER_DUP_ENTRY"
-      ) {
-        console.warn(`  Skipping: ${err.message}`)
-      } else {
-        throw err
+      await pool.query(`ALTER TABLE ${table} ADD COLUMN ${name} ${fallbackType}`)
+      console.log(`  Added ${table}.${name} ${fallbackType} (fallback)`)
+    } catch (fallbackErr) {
+      if (isSkippable(fallbackErr)) {
+        console.warn(`  Column already exists, skipping: ${table}.${name}`)
+        return
       }
+      throw fallbackErr
     }
   }
 }
 
 try {
   console.log("Applying additional requirements migration (MySQL)...")
-  const ddl = fs.readFileSync(migrationPath, "utf8")
-  await execRaw(ddl)
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS additional_requirement_templates (
+      id              INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      requirement_key VARCHAR(100) UNIQUE NOT NULL,
+      label           VARCHAR(255) NOT NULL,
+      sort_order      INT NOT NULL DEFAULT 0,
+      active          TINYINT(1) NOT NULL DEFAULT 1,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_additional_requirement_label (label),
+      KEY idx_additional_requirement_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS project_additional_requirements (
+      project_id      INT NOT NULL,
+      requirement_key VARCHAR(100) NOT NULL,
+      label           VARCHAR(255) NOT NULL,
+      value           VARCHAR(500) NOT NULL DEFAULT '',
+      sort_order      INT NOT NULL DEFAULT 0,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (project_id, requirement_key),
+      CONSTRAINT fk_par_project
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+
+  await addColumn("additional_requirement_templates", "value_type", "VARCHAR(20) NOT NULL DEFAULT 'text'")
+  await addColumn("additional_requirement_templates", "choice_options", "JSON", "TEXT")
+  await addColumn("project_additional_requirements", "value_type", "VARCHAR(20) NOT NULL DEFAULT 'text'")
+  await addColumn("project_additional_requirements", "choice_options", "JSON", "TEXT")
 
   const [countRows] = await pool.execute(
     "SELECT COUNT(*) AS count FROM additional_requirement_templates",

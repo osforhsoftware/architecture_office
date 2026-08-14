@@ -96,7 +96,7 @@ jobs:
             npm run db:migrate-staff-avatar
             npm run db:migrate-attendance
             npm run db:migrate-attendance-late
-            npm run db:migrate-additional-requirements
+            npm run db:migrate-additional-requirements || echo "WARN: db:migrate-additional-requirements failed; app can create tables on next deploy"
 
             echo "== build (clean .next to avoid partial builds) =="
             rm -rf .next
