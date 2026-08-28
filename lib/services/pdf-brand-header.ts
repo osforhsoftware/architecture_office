@@ -8,7 +8,7 @@ const CAP = 0.718
 const DESC = 0.207
 
 const LOGO_MAX_W = 22
-const LOGO_GAP = 0.8
+const LOGO_GAP = 2.4
 const NAME_SIZE = 12
 const BODY_SIZE = 8
 
