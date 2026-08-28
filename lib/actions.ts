@@ -1826,7 +1826,7 @@ export async function updateProjectDetails(formData: FormData) {
   const priority = String(formData.get("priority") || "Medium")
   const dueDate = String(formData.get("due_date") || "") || null
   const amount = Number(formData.get("project_amount") || 0)
-  const drawingNumber = String(formData.get("drawing_number") || "").trim() || null
+  const drawingNumberInput = String(formData.get("drawing_number") || "").trim() || null
   const edgebookNumber = String(formData.get("edgebook_number") || "").trim() || null
   const referName = String(formData.get("refer_name") || "").trim() || null
   const notes = String(formData.get("notes") || "").trim() || null
@@ -1856,6 +1856,9 @@ export async function updateProjectDetails(formData: FormData) {
   const project = await getProjectOrThrow(id)
   const closedError = closedProjectMutationError(admin, project)
   if (closedError) return { error: closedError }
+  const drawingNumber = project.drawing_number?.trim()
+    ? project.drawing_number.trim()
+    : drawingNumberInput
 
   const clientId = Number(formData.get("client_id") || project.client_id)
   if (!clientId) return { error: "Client is required." }
@@ -2641,6 +2644,12 @@ export async function updateProjectDrawingNumber(formData: FormData) {
   const project = await getProjectOrThrow(projectId)
   const closedError = closedProjectMutationError(user, project)
   if (closedError) return { error: closedError }
+
+  const existingDrawing = project.drawing_number?.trim() || ""
+  if (existingDrawing) {
+    if ((drawingNumber || "") === existingDrawing) return { success: true }
+    return { error: "Drawing number cannot be changed once it has been saved." }
+  }
 
   if (isAdmin(user)) {
     // Admin can set drawing number at any stage (Super Admin when closed)

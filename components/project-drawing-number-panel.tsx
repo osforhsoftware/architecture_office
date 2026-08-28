@@ -24,6 +24,8 @@ export function ProjectDrawingNumberPanel({
   edgebookNumber?: string | null
   readOnly?: boolean
 }) {
+  const savedDrawing = drawingNumber?.trim() ?? ""
+  const drawingLocked = Boolean(savedDrawing)
   const [value, setValue] = useState(drawingNumber ?? "")
   const [edgebook, setEdgebook] = useState(edgebookNumber ?? "")
   const [pending, startTransition] = useTransition()
@@ -33,7 +35,7 @@ export function ProjectDrawingNumberPanel({
     const fd = new FormData()
     if (!readOnly) {
       fd.set("save_drawing", "1")
-      fd.set("drawing_number", value)
+      fd.set("drawing_number", drawingLocked ? savedDrawing : value)
       fd.set("edgebook_number", edgebook)
     }
     return fd
@@ -90,6 +92,7 @@ export function ProjectDrawingNumberPanel({
   }
 
   const busy = pending || generating || edgebookPending || groupedPending
+  const showAutoGenerate = !drawingLocked && !value.trim()
 
   return (
     <div className="flex flex-col gap-5">
@@ -101,8 +104,15 @@ export function ProjectDrawingNumberPanel({
           </p>
         </div>
 
-        {readOnly ? (
-          <p className="text-sm font-medium">{drawingNumber?.trim() ? drawingNumber : "—"}</p>
+        {readOnly || drawingLocked ? (
+          <div>
+            <p className="text-sm font-medium">{savedDrawing || "—"}</p>
+            {drawingLocked ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Saved drawing numbers cannot be changed.
+              </p>
+            ) : null}
+          </div>
         ) : (
           <>
             <div className="flex flex-col gap-1.5">
@@ -118,16 +128,18 @@ export function ProjectDrawingNumberPanel({
                   disabled={busy}
                   className={formControlClass}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={onGenerate}
-                  className="shrink-0"
-                >
-                  {generating ? "Generating..." : "Auto generate"}
-                </Button>
+                {showAutoGenerate ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={onGenerate}
+                    className="shrink-0"
+                  >
+                    {generating ? "Generating..." : "Auto generate"}
+                  </Button>
+                ) : null}
               </div>
             </div>
             {!grouped ? (
@@ -189,6 +201,7 @@ export function DrawingNumberField({
   idPrefix?: string
   defaultValue?: string
 }) {
+  const locked = Boolean(defaultValue.trim())
   const [value, setValue] = useState(defaultValue)
   const [generating, startGenerate] = useTransition()
 
@@ -206,6 +219,23 @@ export function DrawingNumberField({
     })
   }
 
+  if (locked) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}drawing_number`} className="text-sm font-medium">
+          Drawing Number
+        </Label>
+        <p id={`${idPrefix}drawing_number`} className="text-sm font-medium">
+          {defaultValue.trim()}
+        </p>
+        <input type="hidden" name="drawing_number" value={defaultValue.trim()} />
+        <p className="text-xs text-muted-foreground">
+          Saved drawing numbers cannot be changed.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={`${idPrefix}drawing_number`} className="text-sm font-medium">
@@ -221,16 +251,18 @@ export function DrawingNumberField({
           disabled={generating}
           className={formControlClass}
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={generating}
-          onClick={onGenerate}
-          className="shrink-0"
-        >
-          {generating ? "Generating..." : "Auto generate"}
-        </Button>
+        {!value.trim() ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={generating}
+            onClick={onGenerate}
+            className="shrink-0"
+          >
+            {generating ? "Generating..." : "Auto generate"}
+          </Button>
+        ) : null}
       </div>
     </div>
   )
