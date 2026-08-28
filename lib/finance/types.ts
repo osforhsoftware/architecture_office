@@ -83,6 +83,9 @@ export interface FinanceIncome {
   created_at: string
   updated_at: string
   client_name?: string | null
+  client_phone?: string | null
+  client_email?: string | null
+  client_address?: string | null
   project_name?: string | null
   project_code?: string | null
   category_name?: string | null
@@ -116,6 +119,12 @@ export interface FinanceExpense {
   created_at: string
   updated_at: string
   vendor_name?: string | null
+  vendor_phone?: string | null
+  vendor_email?: string | null
+  client_name?: string | null
+  client_phone?: string | null
+  client_email?: string | null
+  client_address?: string | null
   project_name?: string | null
   project_code?: string | null
   category_name?: string | null
@@ -305,6 +314,11 @@ export interface ProjectFinanceSummary {
   project_name?: string
   project_code?: string
   client_name?: string | null
+  client_phone?: string | null
+  client_email?: string | null
+  client_address?: string | null
+  client_street?: string | null
+  client_district?: string | null
 }
 
 export interface ApprovalLog {

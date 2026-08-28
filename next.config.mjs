@@ -1,12 +1,56 @@
+import os from "os"
 import path from "path"
 import { fileURLToPath } from "url"
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url))
+const devPort = process.env.PORT ?? "3000"
+
+function localDevHosts() {
+  const hosts = new Set(["localhost", "127.0.0.1"])
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) {
+        hosts.add(entry.address)
+      }
+    }
+  }
+  return [...hosts]
+}
+
+function envPublicHosts() {
+  const hosts = []
+  for (const key of [
+    "FRONTEND_URL",
+    "NEXT_PUBLIC_FRONTEND_URL",
+    "APP_URL",
+    "NEXT_PUBLIC_APP_URL",
+  ]) {
+    const raw = process.env[key]?.trim()
+    if (!raw) continue
+    try {
+      const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+      hosts.push(url.host, url.hostname)
+    } catch {
+      /* ignore invalid env */
+    }
+  }
+  return hosts
+}
+
+const localHosts = localDevHosts()
+const publicHosts = [...new Set([...localHosts, ...envPublicHosts()])]
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  allowedDevOrigins: ["192.168.220.51", "192.168.220.47", "192.168.220.*"],
+  allowedDevOrigins: localHosts,
+  experimental: {
+    serverActions: {
+      allowedOrigins: publicHosts.flatMap((host) =>
+        host.includes(":") ? [host] : [host, `${host}:${devPort}`],
+      ),
+    },
+  },
   /**
    * Inline non-sensitive connection metadata at build time so Hostinger's Node
    * wrapper (which drops runtime process.env) still has host/user/database.

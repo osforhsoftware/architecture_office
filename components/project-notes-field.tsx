@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { FormField, FormSection, formTextareaClass } from "@/components/form-section"
+import { useProjectSaveSection } from "@/components/project-details-save"
 import { updateProjectNotes } from "@/lib/actions"
 
 export function ProjectNotesField({
@@ -45,6 +46,15 @@ export function ProjectNotesPanel({
 }) {
   const [value, setValue] = useState(notes ?? "")
   const [pending, startTransition] = useTransition()
+  const { grouped, pending: groupedPending } = useProjectSaveSection("notes", () => {
+    const fd = new FormData()
+    if (!readOnly) {
+      fd.set("save_notes", "1")
+      fd.set("notes", value)
+    }
+    return fd
+  })
+  const saving = grouped ? groupedPending : pending
 
   useEffect(() => {
     setValue(notes ?? "")
@@ -82,14 +92,16 @@ export function ProjectNotesPanel({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="Add a project note"
-            disabled={pending}
+            disabled={saving}
             className={formTextareaClass}
           />
-          <div className="flex justify-end">
-            <Button type="button" size="sm" disabled={pending} onClick={onSave}>
-              {pending ? "Saving..." : "Save note"}
-            </Button>
-          </div>
+          {!grouped ? (
+            <div className="flex justify-end">
+              <Button type="button" size="sm" disabled={saving} onClick={onSave}>
+                {saving ? "Saving..." : "Save note"}
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
 

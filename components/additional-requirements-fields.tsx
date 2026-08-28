@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { CustomFieldValueInput } from "@/components/custom-field-value-input"
 import { FormMultiSelect } from "@/components/form-multi-select"
 import { FormField, FormSection } from "@/components/form-section"
+import { Button } from "@/components/ui/button"
 import type { AdditionalRequirementOption } from "@/lib/additional-requirements-shared"
 
 type AdditionalRequirementsFieldsProps = {
@@ -12,6 +13,8 @@ type AdditionalRequirementsFieldsProps = {
   idPrefix?: string
   defaultSelected?: string[]
   defaultValues?: Record<string, string>
+  /** Select every catalog field on first render (new-project create). */
+  selectAllByDefault?: boolean
   /** Compact picker + value inputs, without the create-form section wrapper. */
   embedded?: boolean
 }
@@ -21,31 +24,72 @@ export function AdditionalRequirementsFields({
   idPrefix = "",
   defaultSelected = [],
   defaultValues = {},
+  selectAllByDefault = false,
   embedded = false,
 }: AdditionalRequirementsFieldsProps) {
-  const [selectedKeys, setSelectedKeys] = useState<string[]>(defaultSelected)
+  const allKeys = useMemo(() => options.map((option) => option.value), [options])
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(() =>
+    selectAllByDefault ? options.map((option) => option.value) : defaultSelected,
+  )
 
   const selectedOptions = useMemo(
     () => options.filter((option) => selectedKeys.includes(option.value)),
     [options, selectedKeys],
   )
+  const allSelected = options.length > 0 && selectedKeys.length === options.length
 
   if (!options.length) return null
 
+  function selectAll() {
+    setSelectedKeys(allKeys)
+  }
+
+  function clearAll() {
+    setSelectedKeys([])
+  }
+
+  const selectActions = (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={selectAll}
+        disabled={allSelected}
+      >
+        Select all
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={clearAll}
+        disabled={selectedKeys.length === 0}
+      >
+        Clear
+      </Button>
+    </div>
+  )
+
   const fields = (
     <>
-      <FormField label={embedded ? "Add fields" : "Custom fields"}>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium">{embedded ? "Add fields" : "Custom fields"}</p>
+          {selectActions}
+        </div>
         <FormMultiSelect
           name="additional_requirements"
           placeholder="Select fields..."
           searchPlaceholder="Search fields..."
           emptyMessage="No fields match your search."
           options={options}
-          defaultSelected={defaultSelected}
+          value={selectedKeys}
           showAvatars={false}
+          showSelectAll
           onSelectedChange={setSelectedKeys}
         />
-      </FormField>
+      </div>
 
       <AnimatePresence initial={false}>
         {selectedOptions.length > 0 ? (
@@ -81,7 +125,7 @@ export function AdditionalRequirementsFields({
 
       <p className="mt-2 text-xs text-muted-foreground">
         {embedded
-          ? "Select a field to add it, then enter its value and save."
+          ? "Select a field to add it, then enter its value."
           : "Selected fields appear on the project details page and print form."}
       </p>
     </>

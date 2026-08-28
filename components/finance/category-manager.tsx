@@ -113,6 +113,7 @@ function CategoryList({
       {(adding || editing) && (
         <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
           <CategoryForm
+            key={editing?.id ?? "new"}
             type={type}
             category={editing ?? undefined}
             scope={scope}

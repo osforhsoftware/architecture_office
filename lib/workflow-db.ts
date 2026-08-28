@@ -72,6 +72,137 @@ export async function seedProjectWorkflow(
   return firstStepId
 }
 
+function workflowStepHasProgress(step: WorkflowStepRecord): boolean {
+  return (
+    step.step_status === "completed" ||
+    step.step_status === "active" ||
+    Boolean(step.started_at) ||
+    Boolean(step.completed_at) ||
+    Boolean(step.assigned_to)
+  )
+}
+
+/** Add/remove workflow steps, services, and documents from an existing project. */
+export async function syncProjectWorkflowFromServices(
+  projectId: number,
+  selectedServices: readonly ServiceKey[],
+  selectedDocuments?: readonly { itemKey: string; serviceKey: string }[],
+): Promise<{ error?: string }> {
+  const catalog = await listProjectServiceDefs({ includeInactive: true })
+  const definitions = buildWorkflowSteps(selectedServices, catalog)
+  const existing = await getWorkflowSteps(projectId)
+  const desiredKeys = new Set(definitions.map((def) => def.stepKey))
+
+  for (const step of existing) {
+    if (desiredKeys.has(step.step_key)) continue
+    if (workflowStepHasProgress(step)) {
+      return {
+        error: `Cannot remove "${step.label}" from the workflow because that step already has progress. Keep the service, or finish that work first.`,
+      }
+    }
+  }
+
+  for (const step of existing) {
+    if (desiredKeys.has(step.step_key)) continue
+    await sql`DELETE FROM workflow_steps WHERE id = ${step.id} AND project_id = ${projectId}`
+  }
+
+  const remaining = await getWorkflowSteps(projectId)
+  const remainingByKey = new Map(remaining.map((step) => [step.step_key, step]))
+
+  for (const def of definitions) {
+    const current = remainingByKey.get(def.stepKey)
+    if (current) {
+      await sql`
+        UPDATE workflow_steps
+        SET label = ${def.label},
+            section = ${def.section},
+            service_key = ${def.serviceKey},
+            sort_order = ${def.sortOrder}
+        WHERE id = ${current.id}
+      `
+      continue
+    }
+    await sql`
+      INSERT INTO workflow_steps (
+        project_id, step_type, step_key, label, section, service_key, sort_order, step_status
+      )
+      VALUES (
+        ${projectId}, ${def.stepType}, ${def.stepKey}, ${def.label}, ${def.section},
+        ${def.serviceKey}, ${def.sortOrder}, 'pending'
+      )
+    `
+  }
+
+  const existingServiceKeys = await getProjectServices(projectId)
+  const keepServices = new Set(selectedServices)
+  for (const key of existingServiceKeys) {
+    if (!keepServices.has(key)) {
+      await sql`
+        DELETE FROM project_services
+        WHERE project_id = ${projectId} AND service_key = ${key}
+      `
+    }
+  }
+  for (const key of selectedServices) {
+    await sql`
+      INSERT IGNORE INTO project_services (project_id, service_key) VALUES (${projectId}, ${key})
+    `
+  }
+
+  const documents =
+    selectedDocuments ?? (await checklistItemsFromTemplates(selectedServices))
+  const desiredDocs = new Set(documents.map((item) => item.itemKey))
+  const checklist = (await sql`
+    SELECT id, item_key, checked, filed, review_status
+    FROM checklist_items
+    WHERE project_id = ${projectId}
+  `) as {
+    id: number
+    item_key: string
+    checked: boolean | number
+    filed: boolean
+    review_status: string | null
+  }[]
+
+  for (const item of checklist) {
+    if (desiredDocs.has(item.item_key)) continue
+    const kept =
+      Boolean(item.checked) ||
+      Boolean(item.filed) ||
+      (item.review_status && item.review_status !== "Pending")
+    if (kept) continue
+    await sql`DELETE FROM checklist_items WHERE id = ${item.id}`
+  }
+
+  for (const item of documents) {
+    await sql`
+      INSERT IGNORE INTO checklist_items (project_id, item_key, service_key, checked, filed, review_status)
+      VALUES (${projectId}, ${item.itemKey}, ${item.serviceKey}, false, false, 'Pending')
+    `
+  }
+
+  const current = await getCurrentWorkflowStep(projectId)
+  if (!current) {
+    const first = (await sql`
+      SELECT id FROM workflow_steps
+      WHERE project_id = ${projectId}
+      ORDER BY sort_order ASC
+      LIMIT 1
+    `) as { id: number }[]
+    if (first[0]?.id) {
+      await sql`
+        UPDATE workflow_steps SET step_status = 'active' WHERE id = ${first[0].id}
+      `
+      await sql`
+        UPDATE projects SET current_workflow_step_id = ${first[0].id} WHERE id = ${projectId}
+      `
+    }
+  }
+
+  return {}
+}
+
 export async function getWorkflowSteps(projectId: number): Promise<WorkflowStepRecord[]> {
   return (await sql`
     SELECT id, project_id, step_type, step_key, label, section, service_key, sort_order,

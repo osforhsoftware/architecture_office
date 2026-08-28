@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Plus } from "lucide-react"
+import { Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
 import {
@@ -20,8 +20,7 @@ import { ProjectNotesField } from "@/components/project-notes-field"
 import { ProjectStartDateField } from "@/components/project-start-date-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { openProjectPrint } from "@/components/project-print-button"
-import { createProject } from "@/lib/actions"
+import { updateProjectDetails } from "@/lib/actions"
 import {
   PRIORITIES,
   PROJECT_TYPES,
@@ -30,6 +29,7 @@ import {
   showsResidentialPropertyFields,
   type ResidentialServiceKey,
 } from "@/lib/constants"
+import { localDateInputValue } from "@/lib/project-dates"
 import {
   serviceByKey,
   type DocumentTemplateOption,
@@ -37,9 +37,13 @@ import {
   type ServiceKey,
 } from "@/lib/workflow"
 import type { AdditionalRequirementOption } from "@/lib/additional-requirements-shared"
-import type { Client } from "@/lib/types"
+import type {
+  ChecklistItem,
+  Client,
+  Project,
+  ProjectAdditionalRequirement,
+} from "@/lib/types"
 
-/** Residential custom keys that map into the workflow catalog. */
 const SERVICE_ALIASES: Record<string, ServiceKey> = {
   architectural_plan: "architecture_design",
 }
@@ -61,37 +65,88 @@ function resolveServiceKeys(
 const TYPE_OPTIONS = PROJECT_TYPES.map((t) => ({ value: t, label: t }))
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }))
 
-export function ProjectDialog({
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+function resolveTypeState(type: string | null | undefined): {
+  projectType: string
+  customType: string
+} {
+  if (!type) return { projectType: "Residential", customType: "" }
+  if ((PROJECT_TYPES as readonly string[]).includes(type)) {
+    return { projectType: type, customType: "" }
+  }
+  return { projectType: "Other", customType: type }
+}
+
+function mergeFieldOptions(
+  catalog: AdditionalRequirementOption[],
+  saved: ProjectAdditionalRequirement[],
+): AdditionalRequirementOption[] {
+  const byKey = new Map(catalog.map((option) => [option.value, option]))
+  for (const field of saved) {
+    if (byKey.has(field.requirement_key)) continue
+    byKey.set(field.requirement_key, {
+      value: field.requirement_key,
+      label: field.label,
+      valueType: field.value_type,
+      choiceOptions: field.choice_options,
+    })
+  }
+  return [...byKey.values()]
+}
+
+export function ProjectEditDialog({
+  project,
   clients,
   services,
   documentTemplates = [],
   additionalRequirementOptions = [],
+  additionalRequirements = [],
+  selectedServiceKeys = [],
+  checklist = [],
   canSetStartDate = false,
 }: {
+  project: Project
   clients: Client[]
   services: ProjectServiceDef[]
   documentTemplates?: DocumentTemplateOption[]
   additionalRequirementOptions?: AdditionalRequirementOption[]
+  additionalRequirements?: ProjectAdditionalRequirement[]
+  selectedServiceKeys?: string[]
+  checklist?: ChecklistItem[]
   canSetStartDate?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [projectType, setProjectType] = useState("Residential")
-  const [customType, setCustomType] = useState("")
-  const [projectPackage, setProjectPackage] = useState<"full" | "custom">("full")
-  const [selectedServices, setSelectedServices] = useState<string[]>([])
+  const [projectType, setProjectType] = useState(() => resolveTypeState(project.type).projectType)
+  const [customType, setCustomType] = useState(() => resolveTypeState(project.type).customType)
+  const [projectPackage, setProjectPackage] = useState<"full" | "custom">(() =>
+    project.project_package === "custom" ? "custom" : "full",
+  )
+  const [selectedServices, setSelectedServices] = useState<string[]>(() =>
+    project.project_package === "custom" ? selectedServiceKeys : [],
+  )
   const [pending, startTransition] = useTransition()
 
+  const fieldId = `project-edit-${project.id}`
   const isOtherType = projectType === "Other"
   const isResidential = showsResidentialDetails(projectType)
   const showPropertyFields =
     isResidential &&
-    projectPackage === "custom" &&
-    showsResidentialPropertyFields(
-      selectedServices.filter((key): key is ResidentialServiceKey =>
-        RESIDENTIAL_SERVICE_TYPES.some((service) => service.key === key),
-      ),
-    )
+    (projectPackage === "full" ||
+      showsResidentialPropertyFields(
+        selectedServices.filter((key): key is ResidentialServiceKey =>
+          RESIDENTIAL_SERVICE_TYPES.some((service) => service.key === key),
+        ),
+      ))
 
   const clientOptions = useMemo(
     () =>
@@ -135,14 +190,34 @@ export function ProjectDialog({
     [projectPackage, activeServiceKeys],
   )
 
+  const selectedDocumentKeys = useMemo(
+    () => checklist.map((item) => item.item_key),
+    [checklist],
+  )
+
+  const customFieldOptions = useMemo(
+    () => mergeFieldOptions(additionalRequirementOptions, additionalRequirements),
+    [additionalRequirementOptions, additionalRequirements],
+  )
+  const customFieldSelected = useMemo(
+    () => additionalRequirements.map((field) => field.requirement_key),
+    [additionalRequirements],
+  )
+  const customFieldValues = useMemo(
+    () => Object.fromEntries(additionalRequirements.map((field) => [field.requirement_key, field.value])),
+    [additionalRequirements],
+  )
+
   useEffect(() => {
     if (!open) return
-    setProjectType("Residential")
-    setCustomType("")
-    setProjectPackage("full")
-    setSelectedServices([])
+    const resolved = resolveTypeState(project.type)
+    setProjectType(resolved.projectType)
+    setCustomType(resolved.customType)
+    const isCustom = project.project_package === "custom"
+    setProjectPackage(isCustom ? "custom" : "full")
+    setSelectedServices(isCustom ? selectedServiceKeys : [])
     setError(null)
-  }, [open])
+  }, [open, project, selectedServiceKeys])
 
   function onSubmit(formData: FormData) {
     setError(null)
@@ -155,17 +230,15 @@ export function ProjectDialog({
       formData.set("type", custom)
     }
     formData.set("project_package", projectPackage)
+
     startTransition(async () => {
-      const res = await createProject(formData)
+      const res = await updateProjectDetails(formData)
       if (res?.error) {
         setError(res.error)
         return
       }
-      toast.success("Project created")
+      toast.success("Project details updated")
       setOpen(false)
-      if (res?.projectId) {
-        openProjectPrint(res.projectId)
-      }
     })
   }
 
@@ -173,54 +246,59 @@ export function ProjectDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button disabled={clients.length === 0}>
-            <Plus className="size-4" /> New Project
+          <Button variant="outline" size="sm">
+            <Pencil className="size-4" /> Edit details
           </Button>
         }
       />
       <FormDialogShell
-        title="New Project"
-        description="Select a package or custom services to generate the project workflow."
+        title="Edit Project Details"
+        description="Update all project fields, including package, services, and workflow documents."
       >
         {open ? (
           <form action={onSubmit} className="flex min-h-0 flex-1 flex-col">
+            <input type="hidden" name="id" value={project.id} />
+
             <FormDialogBody>
               <div className="flex flex-col gap-5">
                 <FormSection title="Project Details">
                   <div className="flex flex-col gap-3">
-                    <FormField label="Project name" htmlFor="project-name">
+                    <FormField label="Project name" htmlFor={`${fieldId}-name`}>
                       <Input
-                        id="project-name"
+                        id={`${fieldId}-name`}
                         name="name"
-                        placeholder="e.g. Hillside Villa"
+                        defaultValue={project.name}
                         required
                         className={formControlClass}
                       />
                     </FormField>
 
-                    <FormField label="Refer name" htmlFor="project-refer-name">
+                    <FormField label="Refer name" htmlFor={`${fieldId}-refer`}>
                       <Input
-                        id="project-refer-name"
+                        id={`${fieldId}-refer`}
                         name="refer_name"
+                        defaultValue={project.refer_name ?? ""}
                         placeholder="Who referred this project"
                         className={formControlClass}
                       />
                     </FormField>
 
-                    <FormField label="MBook Number" htmlFor="project-edgebook-number">
+                    <FormField label="MBook Number" htmlFor={`${fieldId}-edgebook`}>
                       <Input
-                        id="project-edgebook-number"
+                        id={`${fieldId}-edgebook`}
                         name="edgebook_number"
+                        defaultValue={project.edgebook_number ?? ""}
                         placeholder="e.g. MB-2024-001"
                         className={formControlClass}
                       />
                     </FormField>
 
-                    <FormField label="Client" htmlFor="project-client">
+                    <FormField label="Client" htmlFor={`${fieldId}-client`}>
                       <FormSelect
-                        id="project-client"
+                        id={`${fieldId}-client`}
                         name="client_id"
                         required
+                        defaultValue={String(project.client_id)}
                         placeholder="Select a client"
                         options={clientOptions}
                         className={formControlClass}
@@ -228,17 +306,18 @@ export function ProjectDialog({
                     </FormField>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <FormField label="Location" htmlFor="project-location">
+                      <FormField label="Location" htmlFor={`${fieldId}-location`}>
                         <Input
-                          id="project-location"
+                          id={`${fieldId}-location`}
                           name="location"
+                          defaultValue={project.location ?? ""}
                           placeholder="City, State"
                           className={formControlClass}
                         />
                       </FormField>
-                      <FormField label="Type" htmlFor="project-type">
+                      <FormField label="Type" htmlFor={`${fieldId}-type`}>
                         <FormSelect
-                          id="project-type"
+                          id={`${fieldId}-type`}
                           name="type"
                           value={projectType}
                           onValueChange={(value) => {
@@ -262,9 +341,9 @@ export function ProjectDialog({
                           transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                           className="overflow-hidden"
                         >
-                          <FormField label="Custom type" htmlFor="project-custom-type">
+                          <FormField label="Custom type" htmlFor={`${fieldId}-custom-type`}>
                             <Input
-                              id="project-custom-type"
+                              id={`${fieldId}-custom-type`}
                               name="custom_type"
                               value={customType}
                               onChange={(e) => setCustomType(e.target.value)}
@@ -277,7 +356,10 @@ export function ProjectDialog({
                       ) : null}
                     </AnimatePresence>
 
-                    <DrawingNumberField idPrefix="project-" />
+                    <DrawingNumberField
+                      idPrefix={`${fieldId}-`}
+                      defaultValue={project.drawing_number ?? ""}
+                    />
                   </div>
                 </FormSection>
 
@@ -301,7 +383,12 @@ export function ProjectDialog({
                         type="radio"
                         name="project_package_ui"
                         checked={projectPackage === "custom"}
-                        onChange={() => setProjectPackage("custom")}
+                        onChange={() => {
+                          setProjectPackage("custom")
+                          setSelectedServices((current) =>
+                            current.length ? current : selectedServiceKeys,
+                          )
+                        }}
                         className="size-4 accent-primary"
                       />
                       <span className="text-sm">
@@ -320,29 +407,44 @@ export function ProjectDialog({
                           placeholder="Select services..."
                           searchPlaceholder="Search services..."
                           options={serviceOptions}
+                          defaultSelected={
+                            selectedServices.length ? selectedServices : selectedServiceKeys
+                          }
+                          showAvatars={false}
                           onSelectedChange={setSelectedServices}
                         />
                       </FormField>
                       <p className="text-xs text-muted-foreground">
-                        Only selected services appear in the workflow timeline and staff queues.
+                        New services are added to the workflow. A service with progress cannot be
+                        removed.
                       </p>
-
-                      <AnimatePresence initial={false}>
-                        {showPropertyFields ? (
-                          <motion.div
-                            key="residential-property-fields"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                            className="overflow-hidden"
-                          >
-                            <ResidentialPropertyFields idPrefix="project-" />
-                          </motion.div>
-                        ) : null}
-                      </AnimatePresence>
                     </div>
-                  ) : null}
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Full package keeps every core service on the workflow timeline.
+                    </p>
+                  )}
+
+                  <AnimatePresence initial={false}>
+                    {showPropertyFields ? (
+                      <motion.div
+                        key="residential-property-fields"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-3">
+                          <ResidentialPropertyFields
+                            idPrefix={`${fieldId}-`}
+                            defaultBuildingNumber={project.building_number ?? ""}
+                            defaultBuildingPermitNumber={project.building_permit_number ?? ""}
+                          />
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </FormSection>
 
                 {documentOptions.length > 0 ? (
@@ -354,12 +456,13 @@ export function ProjectDialog({
                         placeholder="Select documents for this project..."
                         searchPlaceholder="Search documents..."
                         options={documentOptions}
+                        defaultSelected={selectedDocumentKeys}
+                        showAvatars={false}
                       />
                     </FormField>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {projectPackage === "custom"
-                        ? "Pick only the documents needed for the selected services."
-                        : "Pick only the documents needed for this project."}
+                      Documents are added to the project checklist. Checked or filed documents are
+                      kept even if you unselect them.
                     </p>
                   </FormSection>
                 ) : projectPackage === "custom" ? (
@@ -370,12 +473,16 @@ export function ProjectDialog({
                   </FormSection>
                 ) : null}
 
-                {additionalRequirementOptions.length > 0 ? (
-                  <AdditionalRequirementsFields
-                    idPrefix="project-"
-                    options={additionalRequirementOptions}
-                    selectAllByDefault
-                  />
+                {customFieldOptions.length > 0 ? (
+                  <>
+                    <input type="hidden" name="edit_custom_fields" value="1" />
+                    <AdditionalRequirementsFields
+                      idPrefix={`${fieldId}-`}
+                      options={customFieldOptions}
+                      defaultSelected={customFieldSelected}
+                      defaultValues={customFieldValues}
+                    />
+                  </>
                 ) : null}
 
                 <FormSection title="Timeline & Budget">
@@ -386,48 +493,55 @@ export function ProjectDialog({
                         : "grid grid-cols-1 gap-3 sm:grid-cols-3"
                     }
                   >
-                    <FormField label="Priority" htmlFor="project-priority">
+                    <FormField label="Priority" htmlFor={`${fieldId}-priority`}>
                       <FormSelect
-                        id="project-priority"
+                        id={`${fieldId}-priority`}
                         name="priority"
-                        defaultValue="Medium"
+                        defaultValue={project.priority || "Medium"}
                         options={PRIORITY_OPTIONS}
                         className={formControlClass}
                       />
                     </FormField>
                     {canSetStartDate ? (
-                      <ProjectStartDateField id="project-start" />
+                      <ProjectStartDateField
+                        id={`${fieldId}-start`}
+                        defaultValue={localDateInputValue(project.created_at)}
+                      />
                     ) : null}
-                    <FormField label="Due date" htmlFor="project-due">
+                    <FormField label="Due date" htmlFor={`${fieldId}-due`}>
                       <Input
-                        id="project-due"
+                        id={`${fieldId}-due`}
                         name="due_date"
                         type="date"
+                        defaultValue={toDateInputValue(project.due_date)}
                         className={formControlClass}
                       />
                     </FormField>
-                    <FormField label="Amount (₹)" htmlFor="project-amount">
+                    <FormField label="Amount (₹)" htmlFor={`${fieldId}-amount`}>
                       <Input
-                        id="project-amount"
+                        id={`${fieldId}-amount`}
                         name="project_amount"
                         type="number"
                         min="0"
                         step="1000"
-                        defaultValue="0"
+                        defaultValue={Number(project.project_amount) || 0}
                         className={formControlClass}
                       />
                     </FormField>
                   </div>
                 </FormSection>
 
-                <ProjectNotesField id="project-notes" />
+                <ProjectNotesField
+                  id={`${fieldId}-notes`}
+                  defaultValue={project.notes ?? ""}
+                />
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
               </div>
             </FormDialogBody>
 
             <FormDialogFooter
-              submitLabel={pending ? "Creating..." : "Create project"}
+              submitLabel={pending ? "Saving..." : "Save changes"}
               pending={pending}
             />
           </form>

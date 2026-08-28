@@ -135,14 +135,16 @@ jobs:
             fi
 
             echo "== HTTP check =="
-            CODE80=$(curl -s -o /tmp/ao_ip.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
+            CODE3001=$(curl -s -o /tmp/ao_3001.html -w "%{http_code}" --max-time 20 http://127.0.0.1:3001/login || true)
+            echo "local_port3001_login=$CODE3001"
+            CODE80=$(curl -s -o /tmp/ao_ip.html -w "%{http_code}" --max-time 20 -H "Host: acmm.mooo.com" http://127.0.0.1/ || true)
             echo "local_port80_http=$CODE80"
             # 200 OK or 307 redirect to /login are both healthy for this app
-            CODE_FOLLOW=$(curl -sL -o /tmp/ao_follow.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
+            CODE_FOLLOW=$(curl -sL -o /tmp/ao_follow.html -w "%{http_code}" --max-time 20 -H "Host: acmm.mooo.com" http://127.0.0.1/ || true)
             echo "local_port80_follow_http=$CODE_FOLLOW"
             head -c 400 /tmp/ao_follow.html || true
             echo
-            if [ "$CODE_FOLLOW" != "200" ] && [ "$CODE80" != "200" ] && [ "$CODE80" != "307" ]; then
+            if [ "$CODE3001" != "200" ] && [ "$CODE_FOLLOW" != "200" ] && [ "$CODE80" != "200" ] && [ "$CODE80" != "307" ]; then
               echo "WARN: unexpected HTTP from nginx; dumping recent logs"
               pm2 logs architecture_office --lines 80 --nostream || true
               exit 1

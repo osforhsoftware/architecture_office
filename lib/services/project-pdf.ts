@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf"
 import { formatClientId } from "@/lib/constants"
 import { formatInvoiceDate } from "@/lib/invoice-utils"
 import { formatCustomFieldValue } from "@/lib/additional-requirements-shared"
+import { drawPdfBrandLockup, formatPdfCompanyName } from "@/lib/services/pdf-brand-header"
 import type { Client, OfficeProfile, Project, ProjectAdditionalRequirement } from "@/lib/types"
 
 const ACCENT: [number, number, number] = [25, 181, 216] // #19B5D8
@@ -74,100 +75,33 @@ function packageLabel(value: string | null | undefined): string {
   return pdfText(value)
 }
 
-/** Fit logo inside max box without stretching (avoids black wide bars). */
-function fitLogoSize(
-  doc: jsPDF,
-  dataUrl: string,
-  maxW: number,
-  maxH: number,
-): { w: number; h: number; format: "PNG" | "JPEG" } {
-  const format: "PNG" | "JPEG" = dataUrl.includes("image/png") ? "PNG" : "JPEG"
-  try {
-    const props = doc.getImageProperties(dataUrl)
-    const ratio = props.width / Math.max(props.height, 1)
-    let w = maxW
-    let h = w / ratio
-    if (h > maxH) {
-      h = maxH
-      w = h * ratio
-    }
-    return { w, h, format }
-  } catch {
-    return { w: maxW, h: maxH, format }
-  }
-}
-
 function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY: number): number {
   const pageWidth = doc.internal.pageSize.getWidth()
-  /** Branding sits left of project meta; leave room for the right column. */
   const brandMaxX = pageWidth / 2 - 2
-  const LOGO_MAX_W = 18
-  const LOGO_MAX_H = 16
-  const LOGO_GAP = 2.5
-
-  let logoW = 0
-  let logoH = 0
-  let hasLogo = false
-
-  if (profile.logoDataUrl) {
-    try {
-      const sized = fitLogoSize(doc, profile.logoDataUrl, LOGO_MAX_W, LOGO_MAX_H)
-      logoW = sized.w
-      logoH = sized.h
-      doc.addImage(profile.logoDataUrl, sized.format, MARGIN, startY, logoW, logoH)
-      hasLogo = true
-    } catch {
-      // skip invalid logo
-    }
-  }
-
-  // Compact row: [small logo] [company name + contact] — same as invoice print
-  const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
-  const detailsMaxW = Math.max(40, brandMaxX - detailsX)
-
-  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
-  const detailLines = companyDetailLines(profile)
-  const showTagline = !hasLogo && Boolean(profile.tagline)
-
-  const logoBottom = hasLogo ? startY + logoH : startY
-  // Keep company name near the top of the compact logo; contact lines stay beside/below it.
-  let detailsY = hasLogo ? startY + Math.min(4.2, logoH * 0.38 + 2) : startY + 4
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(12)
-  doc.setTextColor(...INK)
-  doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
-  detailsY += 4.8
-
-  if (showTagline) {
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8)
-    doc.setTextColor(...MUTED)
-    doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
-    detailsY += 4
-  }
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.setTextColor(...MUTED)
-  for (const line of detailLines) {
-    const wrapped = doc.splitTextToSize(line, detailsMaxW)
-    doc.text(wrapped, detailsX, detailsY)
-    detailsY += wrapped.length * 3.7
-  }
-
-  const brandBottom = Math.max(logoBottom, detailsY)
+  const brandBottom = drawPdfBrandLockup(doc, {
+    startY,
+    margin: MARGIN,
+    brandMaxX,
+    companyName: formatPdfCompanyName(pdfText(profile.companyName)),
+    detailLines: companyDetailLines(profile),
+    tagline: pdfText(profile.tagline) || null,
+    logoDataUrl: profile.logoDataUrl,
+    ink: INK,
+    muted: MUTED,
+  })
 
   const metaX = pageWidth - MARGIN
   const metaLabelX = metaX - 62
+  const titleSize = 16
+  const titleBaseline = startY + titleSize * (25.4 / 72) * 0.718
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(16)
+  doc.setFontSize(titleSize)
   doc.setTextColor(...INK)
-  doc.text("PROJECT SHEET", metaX, startY + 8, { align: "right" })
+  doc.text("PROJECT SHEET", metaX, titleBaseline, { align: "right" })
 
   doc.setDrawColor(...ACCENT)
   doc.setLineWidth(0.7)
-  doc.line(metaX - 48, startY + 11, metaX, startY + 11)
+  doc.line(metaX - 48, titleBaseline + 1.6, metaX, titleBaseline + 1.6)
 
   const metaRows: [string, string][] = [
     ["PROJECT ID", pdfText(project.code)],
@@ -177,8 +111,9 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
     metaRows.push(["INVOICE NO", pdfText(project.invoice_number)])
   }
 
+  const metaStart = titleBaseline + 5.2
   metaRows.forEach(([label, value], i) => {
-    const y = startY + 17 + i * 5
+    const y = metaStart + i * 4.6
     doc.setFont("helvetica", "bold")
     doc.setFontSize(7.5)
     doc.setTextColor(...INK)
@@ -190,7 +125,7 @@ function addHeader(doc: jsPDF, profile: OfficeProfile, project: Project, startY:
 
   const headerBottom = Math.max(
     brandBottom + 4,
-    startY + 17 + metaRows.length * 5 + 4,
+    metaStart + metaRows.length * 4.6 + 2,
   )
   drawHRule(doc, headerBottom, pageWidth)
   return headerBottom + 8

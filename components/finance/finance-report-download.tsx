@@ -68,7 +68,15 @@ export function FinanceReportDownload({
       URL.revokeObjectURL(url)
       toast.success("Report downloaded")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to download report")
+      const isNetworkError =
+        error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message)
+      toast.error(
+        isNetworkError
+          ? "Could not reach the server. Restart npm run dev and try again."
+          : error instanceof Error
+            ? error.message
+            : "Failed to download report",
+      )
     } finally {
       setLoading(null)
     }

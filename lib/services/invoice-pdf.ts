@@ -5,6 +5,7 @@ import autoTable from "jspdf-autotable"
 import { formatCurrency } from "@/lib/constants"
 import { formatInvoiceDate, sanitizeLineItemInput } from "@/lib/invoice-utils"
 import type { InvoiceLineItem, InvoiceWithDetails, OfficeProfile } from "@/lib/types"
+import { drawPdfBrandLockup, formatPdfCompanyName } from "@/lib/services/pdf-brand-header"
 import { getUpiPaymentApp, UPI_PAYMENT_APPS, upiPaymentNumberLabel } from "@/lib/upi-apps"
 
 /** Professional monochrome palette for print / PDF — dark enough to stay crisp on paper */
@@ -106,71 +107,27 @@ function addHeader(
   startY: number,
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth()
-  /** Branding sits left of invoice meta; leave room for the right column. */
   const brandMaxX = pageWidth / 2 - 2
-  const LOGO_MAX_W = 18
-  const LOGO_MAX_H = 16
-  const LOGO_GAP = 2.5
+  const brandBottom = drawPdfBrandLockup(doc, {
+    startY,
+    margin: MARGIN,
+    brandMaxX,
+    companyName: formatPdfCompanyName(pdfText(profile.companyName)),
+    detailLines: companyDetailLines(profile),
+    tagline: pdfText(profile.tagline) || null,
+    logoDataUrl: profile.logoDataUrl,
+    ink: INK,
+    muted: MUTED,
+  })
 
-  let logoW = 0
-  let logoH = 0
-  let hasLogo = false
-  if (profile.logoDataUrl) {
-    try {
-      const sized = fitLogoSize(doc, profile.logoDataUrl, LOGO_MAX_W, LOGO_MAX_H)
-      logoW = sized.w
-      logoH = sized.h
-      doc.addImage(profile.logoDataUrl, sized.format, MARGIN, startY, logoW, logoH)
-      hasLogo = true
-    } catch {
-      // skip invalid logo
-    }
-  }
-
-  // Compact row: [small logo] [company name + contact]
-  const detailsX = hasLogo ? MARGIN + logoW + LOGO_GAP : MARGIN
-  const detailsMaxW = Math.max(40, brandMaxX - detailsX)
-
-  const companyName = pdfText(profile.companyName).toUpperCase() || "COMPANY"
-  const detailLines = companyDetailLines(profile)
-  const showTagline = !hasLogo && Boolean(profile.tagline)
-
-  const logoBottom = hasLogo ? startY + logoH : startY
-  // Keep company name near the top of the compact logo; contact lines stay beside/below it.
-  let detailsY = hasLogo ? startY + Math.min(4.2, logoH * 0.38 + 2) : startY + 4
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(12)
-  doc.setTextColor(...INK)
-  doc.text(companyName, detailsX, detailsY, { maxWidth: detailsMaxW })
-  detailsY += 4.8
-
-  if (showTagline) {
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8)
-    doc.setTextColor(...MUTED)
-    doc.text(pdfText(profile.tagline), detailsX, detailsY, { maxWidth: detailsMaxW })
-    detailsY += 4
-  }
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.setTextColor(...MUTED)
-  for (const line of detailLines) {
-    const wrapped = doc.splitTextToSize(line, detailsMaxW)
-    doc.text(wrapped, detailsX, detailsY)
-    detailsY += wrapped.length * 3.7
-  }
-
-  const brandBottom = Math.max(logoBottom, detailsY)
-
-  // INVOICE title + meta (top-right)
   const metaX = pageWidth - MARGIN
   const metaLabelX = metaX - 52
+  const titleSize = 18
+  const titleBaseline = startY + titleSize * (25.4 / 72) * 0.718
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(20)
+  doc.setFontSize(titleSize)
   doc.setTextColor(...INK)
-  doc.text("INVOICE", metaX, startY + 8, { align: "right" })
+  doc.text("INVOICE", metaX, titleBaseline, { align: "right" })
 
   const metaRows: [string, string][] = [
     ["Invoice No", pdfText(invoice.invoice_number)],
@@ -179,8 +136,9 @@ function addHeader(
   if (invoice.due_date) metaRows.push(["Due Date", formatInvoiceDate(invoice.due_date)])
   if (invoice.project_code) metaRows.push(["Project Code", pdfText(invoice.project_code)])
 
+  const metaStart = titleBaseline + 4.4
   metaRows.forEach(([label, value], i) => {
-    const rowY = startY + 15 + i * 5.2
+    const rowY = metaStart + i * 4.4
     doc.setFont("helvetica", "bold")
     doc.setFontSize(8)
     doc.setTextColor(...INK)
@@ -190,8 +148,8 @@ function addHeader(
     doc.text(value, metaX, rowY, { align: "right" })
   })
 
-  const metaBottom = startY + 15 + metaRows.length * 5.2 + 2
-  const headerBottom = Math.max(brandBottom + 2, metaBottom)
+  const metaBottom = metaStart + metaRows.length * 4.4
+  const headerBottom = Math.max(brandBottom + 2.5, metaBottom + 1.5)
   drawHRule(doc, headerBottom, pageWidth, true)
   return headerBottom + 6
 }

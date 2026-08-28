@@ -6,8 +6,9 @@ const COOKIE_NAME = "ao_session"
 const PUBLIC_PATHS = ["/login"]
 
 /**
- * Prefer the public URL (IP/domain via nginx) over the internal listen address.
- * Without this, redirects behind a reverse proxy become http://localhost:3001/...
+ * Stay on the origin the browser actually used (Host / X-Forwarded-Host).
+ * Using FRONTEND_URL for loopback made 127.0.0.1 vs localhost redirects
+ * cross-origin, which surfaces as TypeError: Failed to fetch on login.
  */
 function publicOrigin(request: NextRequest): string {
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
@@ -17,22 +18,7 @@ function publicOrigin(request: NextRequest): string {
     request.nextUrl.protocol.replace(":", "") ||
     "http"
 
-  if (host && !/^localhost(?::\d+)?$/i.test(host) && !/^127\.\d+\.\d+\.\d+(?::\d+)?$/.test(host)) {
-    return `${proto}://${host}`
-  }
-
-  const configured =
-    process.env.NEXT_PUBLIC_FRONTEND_URL?.trim() ||
-    process.env.FRONTEND_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (configured) {
-    try {
-      return new URL(configured).origin
-    } catch {
-      /* ignore invalid env */
-    }
-  }
-
+  if (host) return `${proto}://${host}`
   return request.nextUrl.origin
 }
 

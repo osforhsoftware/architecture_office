@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useProjectSaveSection } from "@/components/project-details-save"
 import {
   generateDrawingNumber,
   updateProjectDrawingNumber,
@@ -28,6 +29,15 @@ export function ProjectDrawingNumberPanel({
   const [pending, startTransition] = useTransition()
   const [edgebookPending, startEdgebookTransition] = useTransition()
   const [generating, startGenerate] = useTransition()
+  const { grouped, pending: groupedPending } = useProjectSaveSection("drawing", () => {
+    const fd = new FormData()
+    if (!readOnly) {
+      fd.set("save_drawing", "1")
+      fd.set("drawing_number", value)
+      fd.set("edgebook_number", edgebook)
+    }
+    return fd
+  })
 
   useEffect(() => {
     setValue(drawingNumber ?? "")
@@ -70,12 +80,16 @@ export function ProjectDrawingNumberPanel({
       }
       if (res?.drawingNumber) {
         setValue(res.drawingNumber)
-        toast.success("Drawing number generated")
+        toast.success(
+          grouped
+            ? "Drawing number generated. Click Update Project to save."
+            : "Drawing number generated",
+        )
       }
     })
   }
 
-  const busy = pending || generating || edgebookPending
+  const busy = pending || generating || edgebookPending || groupedPending
 
   return (
     <div className="flex flex-col gap-5">
@@ -116,11 +130,13 @@ export function ProjectDrawingNumberPanel({
                 </Button>
               </div>
             </div>
-            <div className="flex justify-end">
-              <Button type="button" size="sm" disabled={busy} onClick={onSave}>
-                {pending ? "Saving..." : "Save drawing number"}
-              </Button>
-            </div>
+            {!grouped ? (
+              <div className="flex justify-end">
+                <Button type="button" size="sm" disabled={busy} onClick={onSave}>
+                  {pending ? "Saving..." : "Save drawing number"}
+                </Button>
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -151,11 +167,13 @@ export function ProjectDrawingNumberPanel({
                   className={formControlClass}
                 />
               </div>
-              <div className="flex justify-end">
-                <Button type="button" size="sm" disabled={busy} onClick={onSaveEdgebook}>
-                  {edgebookPending ? "Saving..." : "Save MBook Number"}
-                </Button>
-              </div>
+              {!grouped ? (
+                <div className="flex justify-end">
+                  <Button type="button" size="sm" disabled={busy} onClick={onSaveEdgebook}>
+                    {edgebookPending ? "Saving..." : "Save MBook Number"}
+                  </Button>
+                </div>
+              ) : null}
             </>
           )}
         </div>

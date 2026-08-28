@@ -10,11 +10,14 @@ import { BillingStaffProjectView } from "@/components/billing-staff-project-view
 import { ProjectBillingPanel } from "@/components/project-billing-panel"
 import { ProjectChecklist } from "@/components/project-checklist"
 import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
+import { ProjectEditDialog } from "@/components/project-edit-dialog"
 import { ProjectStartDatePanel } from "@/components/project-start-date-field"
 import { ProjectNotesPanel } from "@/components/project-notes-field"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
+import { ProjectDetailsSaveShell } from "@/components/project-details-save"
 import { ProjectPrintButton } from "@/components/project-print-button"
+import { ProjectDeleteDialog } from "@/components/project-delete-dialog"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { ProjectActivityFeed } from "@/components/project-activity-feed"
 import { WorkflowTimeline } from "@/components/workflow-timeline"
@@ -36,15 +39,20 @@ import {
   listAdditionalRequirementTemplates,
   toAdditionalRequirementOption,
 } from "@/lib/additional-requirements"
+import { listDocumentTemplates, toDocumentOption } from "@/lib/document-templates"
+import { listProjectServiceDefs } from "@/lib/project-services"
+import { getProjectDeleteBlockers } from "@/lib/project-delete"
 import {
   getChecklist,
   getClient,
+  getClients,
   getCurrentWorkflowStep,
   getInvoicesByProject,
   getPayments,
   getProject,
   getProjectFiles,
   getProjectKmapAreas,
+  getProjectServices,
   getReturnHistory,
   getStaffUsers,
   getStatusHistory,
@@ -72,7 +80,7 @@ export default async function AdminProjectDetailPage({
   /** Closed projects are read-only except for Super Admin. Billing remains available. */
   const detailsReadOnly = project.status === "Closed" && !superAdmin
 
-  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, reviews, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap, additionalRequirements, customFieldTemplates] =
+  const [client, staff, checklist, files, payments, invoices, statusHistory, returnHistory, reviews, kmapAreas, workflowSteps, currentStep, departmentOptions, sectionRoleMap, additionalRequirements, customFieldTemplates, deleteBlockers, clients, serviceDefs, documentRows, projectServiceKeys] =
     await Promise.all([
       getClient(project.client_id),
       getStaffUsers(),
@@ -90,9 +98,18 @@ export default async function AdminProjectDetailPage({
       getSectionRoleMap(),
       getProjectAdditionalRequirements(projectId),
       listAdditionalRequirementTemplates({ activeOnly: true }),
+      getProjectDeleteBlockers(projectId),
+      getClients(),
+      listProjectServiceDefs({ includeInactive: true }),
+      listDocumentTemplates({ includeInactive: true }),
+      getProjectServices(projectId),
     ])
 
   const customFieldOptions = customFieldTemplates.map(toAdditionalRequirementOption)
+  const documentTemplates = documentRows.map(toDocumentOption)
+  const visibleServices = serviceDefs.filter(
+    (service) => service.active !== false || projectServiceKeys.includes(service.key),
+  )
 
   const progress = projectProgressPercent(project.current_stage, workflowSteps)
   const stageLabel = currentStep?.label ?? "—"
@@ -129,6 +146,7 @@ export default async function AdminProjectDetailPage({
         <ArrowLeft className="size-4" /> Back to projects
       </Link>
 
+      <ProjectDetailsSaveShell projectId={projectId} enabled={!detailsReadOnly}>
       <div className="rounded-xl border border-border/60 bg-card p-6 shadow-premium">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -142,6 +160,19 @@ export default async function AdminProjectDetailPage({
           </div>
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {!detailsReadOnly ? (
+                <ProjectEditDialog
+                  project={project}
+                  clients={clients}
+                  services={visibleServices}
+                  documentTemplates={documentTemplates}
+                  additionalRequirementOptions={customFieldOptions}
+                  additionalRequirements={additionalRequirements}
+                  selectedServiceKeys={projectServiceKeys}
+                  checklist={checklist}
+                  canSetStartDate={superAdmin}
+                />
+              ) : null}
               <Link
                 href={`/admin/finance/project/${project.id}`}
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
@@ -293,12 +324,6 @@ export default async function AdminProjectDetailPage({
                 </dd>
               </div>
             </dl>
-            <AdditionalRequirementsSection
-              projectId={projectId}
-              requirements={additionalRequirements}
-              options={customFieldOptions}
-              readOnly={detailsReadOnly}
-            />
             {superAdmin ? (
               <div className="mt-4 border-t border-border/60 pt-4">
                 <ProjectStartDatePanel
@@ -402,9 +427,10 @@ export default async function AdminProjectDetailPage({
 
           <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
             <Tabs defaultValue="checklist">
-              <TabsList className="mb-4">
+              <TabsList className="mb-4 h-auto flex-wrap">
                 <TabsTrigger value="checklist">Documents</TabsTrigger>
                 <TabsTrigger value="files">Files</TabsTrigger>
+                <TabsTrigger value="custom-fields">Custom Fields</TabsTrigger>
                 <TabsTrigger value="billing">Billing</TabsTrigger>
               </TabsList>
               <TabsContent value="checklist">
@@ -418,6 +444,14 @@ export default async function AdminProjectDetailPage({
                 <ProjectFilesPanel
                   files={files}
                   projectId={projectId}
+                  readOnly={detailsReadOnly}
+                />
+              </TabsContent>
+              <TabsContent value="custom-fields">
+                <AdditionalRequirementsSection
+                  projectId={projectId}
+                  requirements={additionalRequirements}
+                  options={customFieldOptions}
                   readOnly={detailsReadOnly}
                 />
               </TabsContent>
@@ -470,6 +504,16 @@ export default async function AdminProjectDetailPage({
             </div>
           </div>
         </div>
+      </div>
+      </ProjectDetailsSaveShell>
+
+      <div className="flex justify-start">
+        <ProjectDeleteDialog
+          projectId={project.id}
+          projectName={project.name}
+          projectCode={project.code}
+          blockers={deleteBlockers}
+        />
       </div>
     </div>
   )

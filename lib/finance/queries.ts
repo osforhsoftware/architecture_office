@@ -12,6 +12,7 @@ import {
   type PaginationParams,
 } from "@/lib/pagination"
 import { isCashAccountType, isBankAccountType, type LedgerScope } from "./constants"
+import { financeDateRange } from "./date-range"
 import type {
   FinanceAccount,
   IncomeCategory,
@@ -261,8 +262,7 @@ async function getProjectIncomePaginated(
   const clientId = params.clientId ? Number(params.clientId) : null
   const projectId = params.projectId ? Number(params.projectId) : null
   const method = params.method?.trim() || null
-  const from = params.from?.trim() || null
-  const to = params.to?.trim() || null
+  const { from, toExclusive } = financeDateRange(params.from, params.to)
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -280,7 +280,7 @@ async function getProjectIncomePaginated(
     AND (${projectId} IS NULL OR i.project_id = ${projectId})
     AND (${method} IS NULL OR i.payment_method = ${method})
     AND (${from} IS NULL OR i.income_date >= ${from})
-    AND (${to} IS NULL OR i.income_date <= ${to})
+    AND (${toExclusive} IS NULL OR i.income_date < ${toExclusive})
   `) as { count: number }[]
 
   const total = toNum(countRows[0]?.count)
@@ -290,6 +290,9 @@ async function getProjectIncomePaginated(
   const rows = (await sql`
     SELECT i.*,
       c.name AS client_name,
+      c.phone AS client_phone,
+      c.email AS client_email,
+      c.address AS client_address,
       p.name AS project_name, p.code AS project_code,
       cat.name AS category_name, cat.color AS category_color,
       a.name AS account_name,
@@ -297,8 +300,8 @@ async function getProjectIncomePaginated(
       au.name AS approver_name,
       'project' AS ledger_scope
     FROM project_income i
-    LEFT JOIN clients c ON c.id = i.client_id
     LEFT JOIN projects p ON p.id = i.project_id
+    LEFT JOIN clients c ON c.id = COALESCE(i.client_id, p.client_id)
     LEFT JOIN income_categories cat ON cat.id = i.category_id
     LEFT JOIN finance_accounts a ON a.id = i.account_id
     LEFT JOIN app_users cu ON cu.id = i.created_by
@@ -314,7 +317,7 @@ async function getProjectIncomePaginated(
     AND (${projectId} IS NULL OR i.project_id = ${projectId})
     AND (${method} IS NULL OR i.payment_method = ${method})
     AND (${from} IS NULL OR i.income_date >= ${from})
-    AND (${to} IS NULL OR i.income_date <= ${to})
+    AND (${toExclusive} IS NULL OR i.income_date < ${toExclusive})
     ORDER BY i.income_date DESC, i.id DESC
     LIMIT ${pageSize === -1 ? 10000 : pageSize} OFFSET ${offset}
   `) as FinanceIncome[]
@@ -331,8 +334,7 @@ async function getOfficeIncomePaginated(
   const status = params.status?.trim() || null
   const categoryId = params.categoryId ? Number(params.categoryId) : null
   const method = params.method?.trim() || null
-  const from = params.from?.trim() || null
-  const to = params.to?.trim() || null
+  const { from, toExclusive } = financeDateRange(params.from, params.to)
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -345,7 +347,7 @@ async function getOfficeIncomePaginated(
     AND (${categoryId} IS NULL OR i.category_id = ${categoryId})
     AND (${method} IS NULL OR i.payment_method = ${method})
     AND (${from} IS NULL OR i.income_date >= ${from})
-    AND (${to} IS NULL OR i.income_date <= ${to})
+    AND (${toExclusive} IS NULL OR i.income_date < ${toExclusive})
   `) as { count: number }[]
 
   const total = toNum(countRows[0]?.count)
@@ -372,7 +374,7 @@ async function getOfficeIncomePaginated(
     AND (${categoryId} IS NULL OR i.category_id = ${categoryId})
     AND (${method} IS NULL OR i.payment_method = ${method})
     AND (${from} IS NULL OR i.income_date >= ${from})
-    AND (${to} IS NULL OR i.income_date <= ${to})
+    AND (${toExclusive} IS NULL OR i.income_date < ${toExclusive})
     ORDER BY i.income_date DESC, i.id DESC
     LIMIT ${pageSize === -1 ? 10000 : pageSize} OFFSET ${offset}
   `) as FinanceIncome[]
@@ -446,8 +448,7 @@ async function getProjectExpensesPaginated(
   const vendorId = params.vendorId ? Number(params.vendorId) : null
   const projectId = params.projectId ? Number(params.projectId) : null
   const method = params.method?.trim() || null
-  const from = params.from?.trim() || null
-  const to = params.to?.trim() || null
+  const { from, toExclusive } = financeDateRange(params.from, params.to)
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -465,7 +466,7 @@ async function getProjectExpensesPaginated(
     AND (${projectId} IS NULL OR e.project_id = ${projectId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
-    AND (${to} IS NULL OR e.expense_date <= ${to})
+    AND (${toExclusive} IS NULL OR e.expense_date < ${toExclusive})
   `) as { count: number }[]
 
   const total = toNum(countRows[0]?.count)
@@ -475,6 +476,12 @@ async function getProjectExpensesPaginated(
   const rows = (await sql`
     SELECT e.*,
       v.name AS vendor_name,
+      v.phone AS vendor_phone,
+      v.email AS vendor_email,
+      c.name AS client_name,
+      c.phone AS client_phone,
+      c.email AS client_email,
+      c.address AS client_address,
       p.name AS project_name, p.code AS project_code,
       cat.name AS category_name, cat.color AS category_color,
       a.name AS account_name,
@@ -484,6 +491,7 @@ async function getProjectExpensesPaginated(
     FROM project_expenses e
     LEFT JOIN vendors v ON v.id = e.vendor_id
     LEFT JOIN projects p ON p.id = e.project_id
+    LEFT JOIN clients c ON c.id = p.client_id
     LEFT JOIN expense_categories cat ON cat.id = e.category_id
     LEFT JOIN finance_accounts a ON a.id = e.account_id
     LEFT JOIN app_users cu ON cu.id = e.created_by
@@ -499,7 +507,7 @@ async function getProjectExpensesPaginated(
     AND (${projectId} IS NULL OR e.project_id = ${projectId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
-    AND (${to} IS NULL OR e.expense_date <= ${to})
+    AND (${toExclusive} IS NULL OR e.expense_date < ${toExclusive})
     ORDER BY e.expense_date DESC, e.id DESC
     LIMIT ${pageSize === -1 ? 10000 : pageSize} OFFSET ${offset}
   `) as FinanceExpense[]
@@ -517,8 +525,7 @@ async function getOfficeExpensesPaginated(
   const categoryId = params.categoryId ? Number(params.categoryId) : null
   const vendorId = params.vendorId ? Number(params.vendorId) : null
   const method = params.method?.trim() || null
-  const from = params.from?.trim() || null
-  const to = params.to?.trim() || null
+  const { from, toExclusive } = financeDateRange(params.from, params.to)
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -533,7 +540,7 @@ async function getOfficeExpensesPaginated(
     AND (${vendorId} IS NULL OR e.vendor_id = ${vendorId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
-    AND (${to} IS NULL OR e.expense_date <= ${to})
+    AND (${toExclusive} IS NULL OR e.expense_date < ${toExclusive})
   `) as { count: number }[]
 
   const total = toNum(countRows[0]?.count)
@@ -543,6 +550,8 @@ async function getOfficeExpensesPaginated(
   const rows = (await sql`
     SELECT e.*,
       v.name AS vendor_name,
+      v.phone AS vendor_phone,
+      v.email AS vendor_email,
       cat.name AS category_name, cat.color AS category_color,
       a.name AS account_name,
       cu.name AS creator_name,
@@ -563,7 +572,7 @@ async function getOfficeExpensesPaginated(
     AND (${vendorId} IS NULL OR e.vendor_id = ${vendorId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
-    AND (${to} IS NULL OR e.expense_date <= ${to})
+    AND (${toExclusive} IS NULL OR e.expense_date < ${toExclusive})
     ORDER BY e.expense_date DESC, e.id DESC
     LIMIT ${pageSize === -1 ? 10000 : pageSize} OFFSET ${offset}
   `) as FinanceExpense[]
@@ -614,15 +623,14 @@ export async function getCashBookPaginated(
   const pageSize = parsePageSize(params.pageSize)
   const search = buildSearchPattern(params.search)
   const accountId = params.accountId ? Number(params.accountId) : null
-  const from = params.from?.trim() || null
-  const to = params.to?.trim() || null
+  const { from, toExclusive } = financeDateRange(params.from, params.to)
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count FROM cash_book cb
     WHERE cb.ledger_scope = 'office'
     AND (${accountId} IS NULL OR cb.account_id = ${accountId})
     AND (${from} IS NULL OR cb.entry_date >= ${from})
-    AND (${to} IS NULL OR cb.entry_date <= ${to})
+    AND (${toExclusive} IS NULL OR cb.entry_date < ${toExclusive})
     AND (${search} IS NULL OR
       cb.transaction_id LIKE ${search} OR cb.description LIKE ${search})
   `) as { count: number }[]
@@ -638,7 +646,7 @@ export async function getCashBookPaginated(
     WHERE cb.ledger_scope = 'office'
     AND (${accountId} IS NULL OR cb.account_id = ${accountId})
     AND (${from} IS NULL OR cb.entry_date >= ${from})
-    AND (${to} IS NULL OR cb.entry_date <= ${to})
+    AND (${toExclusive} IS NULL OR cb.entry_date < ${toExclusive})
     AND (${search} IS NULL OR
       cb.transaction_id LIKE ${search} OR cb.description LIKE ${search})
     ORDER BY cb.entry_date DESC, cb.id DESC
@@ -924,6 +932,11 @@ export async function getProjectFinanceList(
       p.name AS project_name,
       p.code AS project_code,
       c.name AS client_name,
+      c.phone AS client_phone,
+      c.email AS client_email,
+      c.address AS client_address,
+      c.street AS client_street,
+      c.district AS client_district,
       COALESCE(pf.project_value, p.project_amount, 0) AS project_value,
       COALESCE(pf.total_income, 0) AS total_income,
       COALESCE(pf.total_expense, 0) AS total_expense,
@@ -958,6 +971,11 @@ export async function getProjectFinanceDetail(projectId: number): Promise<{
       p.name AS project_name,
       p.code AS project_code,
       c.name AS client_name,
+      c.phone AS client_phone,
+      c.email AS client_email,
+      c.address AS client_address,
+      c.street AS client_street,
+      c.district AS client_district,
       COALESCE(pf.project_value, p.project_amount, 0) AS project_value,
       COALESCE(pf.total_income, 0) AS total_income,
       COALESCE(pf.total_expense, 0) AS total_expense,

@@ -267,6 +267,7 @@ export function RegisterClientProjectDialog({
                   <AdditionalRequirementsFields
                     idPrefix="reg-"
                     options={additionalRequirementOptions}
+                    selectAllByDefault
                   />
                 ) : null}
 

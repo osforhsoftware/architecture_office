@@ -11,6 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useProjectSaveSection } from "@/components/project-details-save"
 import { updateProjectKmapAreas } from "@/lib/actions"
 import {
   KMAP_FLOOR_ROWS,
@@ -22,7 +23,7 @@ import {
 import type { ProjectKmapArea } from "@/lib/types"
 
 const TOTAL_TOOLTIP =
-  "Sum of all floor values, then multiplied by 9 for square feet."
+  "Sum of all floor values in square feet."
 
 const DEFAULT_FLOOR_KEYS = new Set<string>(KMAP_FLOOR_ROWS.map((f) => f.key))
 
@@ -61,8 +62,7 @@ function buildRows(areas: ProjectKmapArea[]): RowState[] {
 }
 
 function formatTotal(value: number): string {
-  const sqFt = value * 9
-  return `${sqFt.toLocaleString("en-IN", { maximumFractionDigits: 2 })} sq ft`
+  return `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })} sq ft`
 }
 
 export function ProjectKmapPanel({
@@ -76,6 +76,20 @@ export function ProjectKmapPanel({
 }) {
   const [rows, setRows] = useState<RowState[]>(() => buildRows(areas))
   const [pending, startTransition] = useTransition()
+  const { grouped, pending: groupedPending } = useProjectSaveSection("areas", () => {
+    const fd = new FormData()
+    if (!readOnly) {
+      const payload = rows.map((row) => ({
+        floor_key: row.floor_key,
+        plinth_area: row.plinth_area.trim() ? Number(row.plinth_area) : null,
+        floor_area: row.floor_area.trim() ? Number(row.floor_area) : null,
+      }))
+      fd.set("save_areas", "1")
+      fd.set("areas", JSON.stringify(payload))
+    }
+    return fd
+  })
+  const saving = grouped ? groupedPending : pending
 
   const totals = useMemo(() => {
     const plinth = rows.reduce((sum, row) => sum + toNumber(row.plinth_area), 0)
@@ -138,7 +152,7 @@ export function ProjectKmapPanel({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Area Capture</h3>
+          <h3 className="text-sm font-semibold">Area section</h3>
           <p className="text-xs text-muted-foreground">
             Floor plinth and floor areas in square feet.
           </p>
@@ -149,7 +163,7 @@ export function ProjectKmapPanel({
             type="button"
             size="sm"
             variant="outline"
-            disabled={pending || !canAddFloor}
+            disabled={saving || !canAddFloor}
             onClick={addFloor}
           >
             <Plus className="size-4" />
@@ -179,7 +193,7 @@ export function ProjectKmapPanel({
                     step="0.01"
                     inputMode="decimal"
                     value={row.plinth_area}
-                    disabled={readOnly || pending}
+                    disabled={readOnly || saving}
                     onChange={(e) => updateRow(index, { plinth_area: e.target.value })}
                     placeholder="0"
                     className="h-8"
@@ -192,7 +206,7 @@ export function ProjectKmapPanel({
                     step="0.01"
                     inputMode="decimal"
                     value={row.floor_area}
-                    disabled={readOnly || pending}
+                    disabled={readOnly || saving}
                     onChange={(e) => updateRow(index, { floor_area: e.target.value })}
                     placeholder="0"
                     className="h-8"
@@ -206,7 +220,7 @@ export function ProjectKmapPanel({
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground hover:text-destructive"
-                        disabled={pending}
+                        disabled={saving}
                         onClick={() => removeFloor(row.floor_key)}
                         aria-label={`Remove ${row.label}`}
                       >
@@ -249,10 +263,10 @@ export function ProjectKmapPanel({
         </table>
       </div>
 
-      {!readOnly ? (
+      {!readOnly && !grouped ? (
         <div className="flex justify-end">
-          <Button type="button" size="sm" disabled={pending} onClick={onSave}>
-            {pending ? "Saving..." : "Save areas"}
+          <Button type="button" size="sm" disabled={saving} onClick={onSave}>
+            {saving ? "Saving..." : "Save areas"}
           </Button>
         </div>
       ) : null}

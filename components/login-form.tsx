@@ -1,29 +1,36 @@
 "use client"
 
-import { useActionState, useState } from "react"
+import { useActionState, useEffect, useState } from "react"
 import { useFormStatus } from "react-dom"
 import { Eye, EyeOff } from "lucide-react"
-import { loginAction } from "@/lib/actions"
+import { loginAction } from "@/lib/auth-actions"
 import { FormField, formControlClass } from "@/components/form-section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-function SubmitButton() {
+function SubmitButton({ redirecting }: { redirecting?: boolean }) {
   const { pending } = useFormStatus()
+  const busy = pending || redirecting
   return (
-    <Button type="submit" className="min-h-11 w-full" disabled={pending}>
-      {pending ? "Signing in..." : "Sign in"}
+    <Button type="submit" className="min-h-11 w-full" disabled={busy}>
+      {busy ? (redirecting ? "Redirecting..." : "Signing in...") : "Sign in"}
     </Button>
   )
 }
 
-export function LoginForm() {
+export function LoginForm({ nextPath }: { nextPath?: string }) {
   const [state, formAction] = useActionState(loginAction, null)
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    if (!state?.redirectTo) return
+    window.location.assign(state.redirectTo)
+  }, [state])
 
   return (
     <div className="w-full max-w-sm">
       <form action={formAction} className="flex flex-col gap-4">
+        {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
         <FormField label="Email or username" htmlFor="username">
           <Input
             id="username"
@@ -62,7 +69,7 @@ export function LoginForm() {
             {state.error}
           </p>
         ) : null}
-        <SubmitButton />
+        <SubmitButton redirecting={Boolean(state?.redirectTo)} />
       </form>
     </div>
   )

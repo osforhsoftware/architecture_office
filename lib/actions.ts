@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { mysqlErrorCode, mysqlErrorMessage, sql } from "./db"
-import { clearSession, getCurrentUser, setSession } from "./auth"
+import { clearSession, getCurrentUser } from "./auth"
 import {
   allowsMultiAssignee,
   isReviewStep,
@@ -20,6 +20,7 @@ import {
   recordWorkflowAssignment,
   recordWorkflowReview,
   seedProjectWorkflow,
+  syncProjectWorkflowFromServices,
 } from "./workflow-db"
 import {
   DEFAULT_INVOICE_TERMS,
@@ -30,7 +31,6 @@ import {
   RETURN_REASONS,
   ADMIN_ROLE,
   firstStageInSection,
-  homePathForRole,
   isOfficeAdmin,
   isPrivilegedRole,
   isSuperAdmin,
@@ -109,6 +109,8 @@ import {
   isLocalToday,
   projectStartAtFromDate,
 } from "./project-dates"
+import { projectDeleteBlockedMessage } from "./project-delete"
+import { projectDeleteConfirmationPhrase } from "./project-utils"
 import { headers } from "next/headers"
 
 // ---------- Auth ----------
@@ -132,36 +134,6 @@ async function notifyOfficeAdmins(type: string, title: string, message: string) 
   for (const a of admins) {
     await notify(a.id, type, title, message)
   }
-}
-
-export async function loginAction(_prev: unknown, formData: FormData) {
-  const loginId = String(formData.get("username") || "").trim()
-  const password = String(formData.get("password") || "")
-
-  if (!loginId || !password) {
-    return { error: "Please enter your email or username and password." }
-  }
-
-  const rows = (await sql`
-    SELECT id, username, password, role, name, active FROM app_users
-    WHERE username = ${loginId}
-       OR (email IS NOT NULL AND LOWER(email) = LOWER(${loginId}))
-    LIMIT 1
-  `) as (AppUser & { password: string; active: boolean })[]
-
-  const user = rows[0]
-  if (!user || !(await verifyPassword(password, user.password))) {
-    return { error: "Invalid email/username or password." }
-  }
-
-  if (user.active === false) {
-    return { error: "This account has been deactivated. Contact your administrator." }
-  }
-
-  await setSession(user.id)
-  const ip = await clientIpAddress()
-  await logAuditForUser(user, "auth.login", "user", user.id, { username: user.username }, ip)
-  redirect(homePathForRole(user.role))
 }
 
 export async function logoutAction() {
@@ -1800,8 +1772,53 @@ export async function createProject(formData: FormData) {
   return { success: true, projectId }
 }
 
+export async function deleteProject(formData: FormData) {
+  const admin = await requireAdminOrSuperAdmin()
+  const id = Number(formData.get("id"))
+  const confirmation = String(formData.get("confirmation") || "").trim()
+  if (!id) return { error: "Project is required." }
+
+  const rows = (await sql`
+    SELECT id, code, name FROM projects WHERE id = ${id} LIMIT 1
+  `) as { id: number; code: string; name: string }[]
+  if (!rows.length) return { error: "Project not found." }
+
+  const blocked = await projectDeleteBlockedMessage(id)
+  if (blocked) return { error: blocked }
+
+  const expected = projectDeleteConfirmationPhrase(rows[0].code)
+  if (confirmation !== expected) {
+    return { error: `Type ${expected} exactly to confirm hard delete.` }
+  }
+
+  try {
+    await sql`DELETE FROM projects WHERE id = ${id}`
+  } catch (error) {
+    const code = mysqlErrorCode(error)
+    if (code === "ER_ROW_IS_REFERENCED_2" || code === "ER_ROW_IS_REFERENCED") {
+      return {
+        error:
+          "This project cannot be deleted because related records already exist (invoices, payments, or other activity). Only a newly created project with no other activity can be permanently removed.",
+      }
+    }
+    console.error("[projects] delete failed:", error)
+    return { error: "Could not delete this project." }
+  }
+
+  await logAudit(admin.id, "project.delete", "project", id, {
+    code: rows[0].code,
+    name: rows[0].name,
+  })
+  revalidatePath("/admin/projects")
+  revalidatePath("/admin")
+  revalidatePath("/staff")
+  revalidatePath("/staff/projects")
+  revalidatePath("/admin/finance/project")
+  return { success: true }
+}
+
 export async function updateProjectDetails(formData: FormData) {
-  await requireSuperAdmin()
+  const admin = await requireAdminOrSuperAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") || "").trim()
   const location = String(formData.get("location") || "").trim() || null
@@ -1814,15 +1831,59 @@ export async function updateProjectDetails(formData: FormData) {
   const referName = String(formData.get("refer_name") || "").trim() || null
   const notes = String(formData.get("notes") || "").trim() || null
   const residential = parseResidentialDetails(formData, type)
+  const projectPackage = (String(formData.get("project_package") || "full") as ProjectPackage)
+  const serviceCatalog = await listProjectServiceDefs({ includeInactive: true })
+  const selectedServices = parseSelectedServices(
+    formData,
+    projectPackage,
+    projectPackage === "full"
+      ? serviceCatalog.filter((service) => service.active !== false)
+      : serviceCatalog,
+  )
+  const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
+  const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
 
   if (!id || !name) return { error: "Project name is required." }
+  if (
+    !selectedServices.length &&
+    !residential.reqArchitecturalPlan &&
+    !residential.reqBuildingPermit &&
+    !residential.reqRegularization
+  ) {
+    return { error: "Select at least one project service." }
+  }
+
+  const project = await getProjectOrThrow(id)
+  const closedError = closedProjectMutationError(admin, project)
+  if (closedError) return { error: closedError }
+
+  const clientId = Number(formData.get("client_id") || project.client_id)
+  if (!clientId) return { error: "Client is required." }
+  const clientRows = (await sql`
+    SELECT id FROM clients WHERE id = ${clientId} LIMIT 1
+  `) as { id: number }[]
+  if (!clientRows.length) return { error: "Client not found." }
 
   const drawingConflict = await assertDrawingNumberAvailable(drawingNumber, id)
   if (drawingConflict) return { error: drawingConflict }
 
+  let nextStartAt: string | null = null
+  if (isSuperAdmin(admin.role)) {
+    const startDateInput = String(formData.get("start_date") || "").trim()
+    if (startDateInput) {
+      const startAt = projectStartAtFromDate(startDateInput)
+      if (!startAt) return { error: "Enter a valid project start date." }
+      nextStartAt = projectStartAtFromDate(startDateInput, project.created_at) ?? startAt
+    }
+  }
+
+  const workflowSync = await syncProjectWorkflowFromServices(id, selectedServices, selectedDocuments)
+  if (workflowSync.error) return { error: workflowSync.error }
+
   await sql`
     UPDATE projects
     SET name = ${name}, location = ${location}, type = ${type}, priority = ${priority},
+        client_id = ${clientId},
         due_date = ${dueDate}, project_amount = ${amount},
         building_number = ${residential.buildingNumber},
         building_permit_number = ${residential.buildingPermitNumber},
@@ -1830,12 +1891,42 @@ export async function updateProjectDetails(formData: FormData) {
         edgebook_number = ${edgebookNumber},
         refer_name = ${referName},
         notes = ${notes},
+        project_package = ${projectPackage},
         req_architectural_plan = ${residential.reqArchitecturalPlan},
         req_building_permit = ${residential.reqBuildingPermit},
         req_regularization = ${residential.reqRegularization},
         updated_at = now()
     WHERE id = ${id}
   `
+
+  if (formData.get("edit_custom_fields") === "1") {
+    const additionalRequirements = await parseAdditionalRequirementsFromForm(formData, {
+      includeInactive: true,
+    })
+    await saveProjectAdditionalRequirements(id, additionalRequirements)
+  }
+
+  if (nextStartAt) {
+    await sql`
+      UPDATE projects SET created_at = ${nextStartAt}, updated_at = now() WHERE id = ${id}
+    `
+    await sql`
+      UPDATE status_history
+      SET created_at = ${nextStartAt}
+      WHERE project_id = ${id}
+        AND status IN ('New', 'Awaiting Assignment')
+        AND (
+          note = 'Project created'
+          OR note = 'Workflow generated from selected services'
+        )
+    `
+  }
+
+  await logAudit(admin.id, "project.update_details", "project", id, {
+    name,
+    project_package: projectPackage,
+    services: selectedServices,
+  })
   revalidateProjectPaths(id)
   return { success: true }
 }
@@ -1907,6 +1998,42 @@ export async function updateProjectCustomFields(formData: FormData) {
   await saveProjectAdditionalRequirements(id, fields)
   await logAudit(admin.id, "project.update_custom_fields", "project", id)
   revalidateProjectPaths(id)
+  return { success: true }
+}
+
+/** Saves all project-detail page fields in one request (custom fields, date, drawing, areas, notes). */
+export async function saveProjectPageDetails(formData: FormData) {
+  const admin = await requireAdminOrSuperAdmin()
+  const id = Number(formData.get("project_id"))
+  if (!id) return { error: "Invalid project." }
+
+  if (formData.get("save_drawing") === "1") {
+    const drawingRes = await updateProjectDrawingNumber(formData)
+    if (drawingRes && "error" in drawingRes && drawingRes.error) return drawingRes
+    const edgeRes = await updateProjectEdgebookNumber(formData)
+    if (edgeRes && "error" in edgeRes && edgeRes.error) return edgeRes
+  }
+
+  if (formData.get("save_notes") === "1") {
+    const notesRes = await updateProjectNotes(formData)
+    if (notesRes && "error" in notesRes && notesRes.error) return notesRes
+  }
+
+  if (formData.get("save_start_date") === "1" && isSuperAdmin(admin.role)) {
+    const startRes = await updateProjectStartDate(formData)
+    if (startRes && "error" in startRes && startRes.error) return startRes
+  }
+
+  if (formData.get("save_custom_fields") === "1") {
+    const fieldsRes = await updateProjectCustomFields(formData)
+    if (fieldsRes && "error" in fieldsRes && fieldsRes.error) return fieldsRes
+  }
+
+  if (formData.get("save_areas") === "1") {
+    const areasRes = await updateProjectKmapAreas(formData)
+    if (areasRes && "error" in areasRes && areasRes.error) return areasRes
+  }
+
   return { success: true }
 }
 

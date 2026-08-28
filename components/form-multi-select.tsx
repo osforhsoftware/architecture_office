@@ -28,6 +28,8 @@ type FormMultiSelectProps = {
   name: string
   options: FormMultiSelectOption[]
   defaultSelected?: string[]
+  /** Controlled selected values. When set, `defaultSelected` is ignored. */
+  value?: string[]
   required?: boolean
   placeholder?: string
   searchPlaceholder?: string
@@ -36,6 +38,8 @@ type FormMultiSelectProps = {
   disabled?: boolean
   /** Avatar + person icons. Keep on for staff; hide for catalogs like requirements. */
   showAvatars?: boolean
+  /** Show Select all / Clear actions in the dropdown. */
+  showSelectAll?: boolean
   onSelectedChange?: (selected: string[]) => void
 }
 
@@ -47,6 +51,7 @@ export function FormMultiSelect({
   name,
   options,
   defaultSelected = [],
+  value,
   required,
   placeholder = "Search or select staff...",
   searchPlaceholder = "Search staff...",
@@ -54,6 +59,7 @@ export function FormMultiSelect({
   className,
   disabled = false,
   showAvatars = true,
+  showSelectAll = false,
   onSelectedChange,
 }: FormMultiSelectProps) {
   const listboxId = useId()
@@ -62,7 +68,14 @@ export function FormMultiSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [highlight, setHighlight] = useState(0)
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelected))
+  const isControlled = value !== undefined
+  const [internalSelected, setInternalSelected] = useState<Set<string>>(
+    () => new Set(defaultSelected),
+  )
+  const selected = useMemo(
+    () => (isControlled ? new Set(value) : internalSelected),
+    [isControlled, value, internalSelected],
+  )
   const onSelectedChangeRef = useRef(onSelectedChange)
   onSelectedChangeRef.current = onSelectedChange
 
@@ -82,17 +95,35 @@ export function FormMultiSelect({
   )
 
   useEffect(() => {
-    onSelectedChangeRef.current?.(Array.from(selected))
-  }, [selected])
+    if (isControlled) return
+    onSelectedChangeRef.current?.(Array.from(internalSelected))
+  }, [internalSelected, isControlled])
 
-  const toggle = useCallback((value: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(value)
-      else next.delete(value)
-      return next
-    })
-  }, [])
+  const applySelected = useCallback(
+    (next: Set<string>) => {
+      if (!isControlled) setInternalSelected(next)
+      onSelectedChangeRef.current?.(Array.from(next))
+    },
+    [isControlled],
+  )
+
+  const toggle = useCallback(
+    (optionValue: string, checked: boolean) => {
+      const next = new Set(selected)
+      if (checked) next.add(optionValue)
+      else next.delete(optionValue)
+      applySelected(next)
+    },
+    [applySelected, selected],
+  )
+
+  const selectAll = useCallback(() => {
+    applySelected(new Set(options.map((option) => option.value)))
+  }, [applySelected, options])
+
+  const clearAll = useCallback(() => {
+    applySelected(new Set())
+  }, [applySelected])
 
   const removeChip = useCallback(
     (value: string, event: React.MouseEvent) => {
@@ -276,6 +307,35 @@ export function FormMultiSelect({
             />
           </div>
         </div>
+
+        {showSelectAll && options.length > 0 ? (
+          <div className="flex items-center justify-between gap-2 border-b border-[#E5E7EB] px-3 py-1.5 dark:border-border">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                selectAll()
+              }}
+              disabled={selected.size === options.length}
+              className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-40"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                clearAll()
+              }}
+              disabled={selected.size === 0}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-40"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
 
         <ul
           id={listboxId}

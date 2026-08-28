@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FormField, formControlClass } from "@/components/form-section"
+import { useProjectSaveSection } from "@/components/project-details-save"
 import { updateProjectStartDate } from "@/lib/actions"
 import { localDateInputValue } from "@/lib/project-dates"
 
@@ -42,6 +43,15 @@ export function ProjectStartDatePanel({
 }) {
   const [value, setValue] = useState(localDateInputValue(createdAt))
   const [pending, startTransition] = useTransition()
+  const { grouped, pending: groupedPending } = useProjectSaveSection("start-date", () => {
+    const fd = new FormData()
+    if (!readOnly) {
+      fd.set("save_start_date", "1")
+      fd.set("start_date", value)
+    }
+    return fd
+  })
+  const saving = grouped ? groupedPending : pending
 
   useEffect(() => {
     setValue(localDateInputValue(createdAt))
@@ -91,13 +101,15 @@ export function ProjectStartDatePanel({
             type="date"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            disabled={pending}
+            disabled={saving}
             className={formControlClass}
           />
         </FormField>
-        <Button type="button" size="sm" disabled={pending || !value} onClick={onSave}>
-          {pending ? "Saving..." : "Save date"}
-        </Button>
+        {!grouped ? (
+          <Button type="button" size="sm" disabled={saving || !value} onClick={onSave}>
+            {saving ? "Saving..." : "Save date"}
+          </Button>
+        ) : null}
       </div>
     </div>
   )

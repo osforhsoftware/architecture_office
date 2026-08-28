@@ -1,12 +1,18 @@
+import { Suspense } from "react"
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 import { homePathForRole } from "@/lib/constants"
 import { BrandLogo, BrandLogoHeader } from "@/components/brand-logo"
 import { LoginForm } from "@/components/login-form"
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>
+}) {
   const user = await getCurrentUser()
   if (user) redirect(homePathForRole(user.role))
+  const { next } = await searchParams
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
@@ -63,7 +69,9 @@ export default async function LoginPage() {
             Sign in to access your dashboard.
           </p>
           <div className="mt-6">
-            <LoginForm />
+            <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-muted" />}>
+              <LoginForm nextPath={next} />
+            </Suspense>
           </div>
         </div>
       </section>
