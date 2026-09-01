@@ -11,11 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { InvoiceNumberInput } from "@/components/invoice/invoice-number-input"
 import {
   formatInvoiceCurrency,
   INVOICE_LIMITS,
   INVOICE_SERVICE_PRESETS,
-  parseInvoiceInputNumber,
   sanitizeInvoiceText,
   type InvoiceServicePreset,
   type LineItemInput,
@@ -151,16 +151,13 @@ export function InvoiceLineItemsTable({
                 <Label className="text-[10px] uppercase tracking-wide text-neutral-500 sm:sr-only">
                   Rate
                 </Label>
-                <Input
-                  type="number"
+                <InvoiceNumberInput
+                  aria-label="Rate"
                   min={0}
                   max={INVOICE_LIMITS.maxUnitPrice}
-                  step="0.01"
                   value={item.unit_price}
-                  onChange={(e) =>
-                    onChange(index, { unit_price: parseInvoiceInputNumber(e.target.value) })
-                  }
-                  className="h-9 rounded-none border-neutral-900/15 text-right tabular-nums"
+                  onValueChange={(unit_price) => onChange(index, { unit_price })}
+                  className="h-9 rounded-none border-neutral-900/15 text-right"
                 />
               </div>
 
@@ -168,19 +165,15 @@ export function InvoiceLineItemsTable({
                 <Label className="text-[10px] uppercase tracking-wide text-neutral-500 sm:sr-only">
                   Discount ₹
                 </Label>
-                <Input
-                  type="number"
+                <InvoiceNumberInput
+                  aria-label="Discount amount"
                   min={0}
                   max={item.unit_price}
-                  step="0.01"
                   value={item.discount_amount}
-                  onChange={(e) =>
-                    onChange(index, {
-                      discount_amount: parseInvoiceInputNumber(e.target.value),
-                      discount_percent: 0,
-                    })
+                  onValueChange={(discount_amount) =>
+                    onChange(index, { discount_amount, discount_percent: 0 })
                   }
-                  className="h-9 rounded-none border-neutral-900/15 text-right tabular-nums"
+                  className="h-9 rounded-none border-neutral-900/15 text-right"
                 />
               </div>
 
@@ -188,21 +181,19 @@ export function InvoiceLineItemsTable({
                 <Label className="text-[10px] uppercase tracking-wide text-neutral-500 sm:sr-only">
                   Discount %
                 </Label>
-                <Input
-                  type="number"
+                <InvoiceNumberInput
+                  aria-label="Discount percent"
                   min={0}
                   max={100}
-                  step="0.01"
                   value={item.discount_percent}
-                  onChange={(e) => {
-                    const discount_percent = parseInvoiceInputNumber(e.target.value)
+                  onValueChange={(discount_percent) => {
                     const discount_amount =
                       item.unit_price > 0
                         ? Math.round(item.unit_price * (discount_percent / 100) * 100) / 100
                         : 0
                     onChange(index, { discount_percent, discount_amount })
                   }}
-                  className="h-9 rounded-none border-neutral-900/15 text-right tabular-nums"
+                  className="h-9 rounded-none border-neutral-900/15 text-right"
                 />
               </div>
 
@@ -217,16 +208,13 @@ export function InvoiceLineItemsTable({
                 <Label className="text-[10px] uppercase tracking-wide text-neutral-500 sm:sr-only">
                   Qty
                 </Label>
-                <Input
-                  type="number"
+                <InvoiceNumberInput
+                  aria-label="Quantity"
                   min={0}
                   max={INVOICE_LIMITS.maxQuantity}
-                  step="0.01"
                   value={item.quantity}
-                  onChange={(e) =>
-                    onChange(index, { quantity: parseInvoiceInputNumber(e.target.value) })
-                  }
-                  className="h-9 rounded-none border-neutral-900/15 text-right tabular-nums"
+                  onValueChange={(quantity) => onChange(index, { quantity })}
+                  className="h-9 rounded-none border-neutral-900/15 text-right"
                 />
                 <Input
                   value={item.unit ?? ""}

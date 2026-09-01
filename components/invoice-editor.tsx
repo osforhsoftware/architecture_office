@@ -1,11 +1,13 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
+import { flushSync } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Download, Mail, Printer, Save } from "lucide-react"
 import { toast } from "sonner"
 import { InvoiceLineItemsTable } from "@/components/invoice/invoice-line-items-table"
+import { InvoiceNumberInput } from "@/components/invoice/invoice-number-input"
 import {
   InvoiceFooterPreview,
   InvoiceNotesSection,
@@ -243,6 +245,11 @@ export function InvoiceEditor({
   const [form, setForm] = useState<InvoiceFormState>(() =>
     buildInitialForm(invoice, profile, suggestedInvoiceNumber, preselectedProject),
   )
+  const [pdfNonce, setPdfNonce] = useState(0)
+  const lineItemsRef = useRef(lineItems)
+  const formRef = useRef(form)
+  lineItemsRef.current = lineItems
+  formRef.current = form
 
   const projectOptions = useMemo(
     () => [
@@ -305,26 +312,32 @@ export function InvoiceEditor({
   }
 
   function handleSave() {
+    flushSync(() => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement) active.blur()
+    })
+    const currentForm = formRef.current
+    const currentItems = lineItemsRef.current
     startTransition(async () => {
       const fd = new FormData()
       if (invoice?.id) fd.set("id", String(invoice.id))
-      fd.set("project_id", form.projectId ? String(form.projectId) : "")
-      fd.set("invoice_number", form.invoiceNumber)
-      fd.set("invoice_date", form.invoiceDate)
-      fd.set("due_date", form.dueDate)
-      fd.set("client_name", form.clientName)
-      fd.set("client_address", form.clientAddress)
-      fd.set("client_email", form.clientEmail)
-      fd.set("client_phone", form.clientPhone)
-      fd.set("client_tax_id", form.clientTaxId)
-      fd.set("project_name", form.projectName)
-      fd.set("project_location", form.projectLocation)
-      fd.set("notes", form.notes)
-      fd.set("terms", form.terms)
-      fd.set("tax_percent", String(form.taxPercent))
+      fd.set("project_id", currentForm.projectId ? String(currentForm.projectId) : "")
+      fd.set("invoice_number", currentForm.invoiceNumber)
+      fd.set("invoice_date", currentForm.invoiceDate)
+      fd.set("due_date", currentForm.dueDate)
+      fd.set("client_name", currentForm.clientName)
+      fd.set("client_address", currentForm.clientAddress)
+      fd.set("client_email", currentForm.clientEmail)
+      fd.set("client_phone", currentForm.clientPhone)
+      fd.set("client_tax_id", currentForm.clientTaxId)
+      fd.set("project_name", currentForm.projectName)
+      fd.set("project_location", currentForm.projectLocation)
+      fd.set("notes", currentForm.notes)
+      fd.set("terms", currentForm.terms)
+      fd.set("tax_percent", String(currentForm.taxPercent))
       fd.set("discount_percent", "0")
-      fd.set("status", form.status)
-      fd.set("line_items", JSON.stringify(lineItems.filter((i) => i.description.trim())))
+      fd.set("status", currentForm.status)
+      fd.set("line_items", JSON.stringify(currentItems.filter((i) => i.description.trim())))
 
       const res = await saveInvoice(fd)
       if (res?.error) {
@@ -332,7 +345,8 @@ export function InvoiceEditor({
         return
       }
       toast.success(isNew ? "Invoice created" : "Invoice saved")
-      if (res.invoiceId) router.push(`/admin/invoices/${res.invoiceId}`)
+      setPdfNonce(Date.now())
+      if (isNew && res.invoiceId) router.push(`/admin/invoices/${res.invoiceId}`)
       else router.refresh()
     })
   }
@@ -352,7 +366,16 @@ export function InvoiceEditor({
     })
   }
 
-  const pdfUrl = invoice?.id ? apiUrl(`/api/admin/invoices/${invoice.id}/pdf`) : null
+  const pdfUrl = invoice?.id
+    ? `${apiUrl(`/api/admin/invoices/${invoice.id}/pdf`)}?v=${encodeURIComponent(String(invoice.updated_at ?? ""))}&n=${pdfNonce}`
+    : null
+
+  function openInvoicePdf(print = false) {
+    if (!invoice?.id) return
+    const url = `${apiUrl(`/api/admin/invoices/${invoice.id}/pdf`)}?t=${Date.now()}`
+    const w = window.open(url, "_blank", "noopener,noreferrer")
+    if (print) w?.addEventListener("load", () => w.print())
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -394,6 +417,10 @@ export function InvoiceEditor({
                 href={pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.preventDefault()
+                  openInvoicePdf()
+                }}
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
               >
                 <Download className="size-4" /> Download PDF
@@ -402,11 +429,7 @@ export function InvoiceEditor({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  if (!pdfUrl) return
-                  const w = window.open(pdfUrl, "_blank")
-                  w?.addEventListener("load", () => w.print())
-                }}
+                onClick={() => openInvoicePdf(true)}
               >
                 <Printer className="size-4" /> Print
               </Button>
@@ -662,16 +685,15 @@ export function InvoiceEditor({
                   <Label className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
                     GST / Tax (%)
                   </Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
+                  <InvoiceNumberInput
+                    aria-label="GST / Tax percent"
+                    min={0}
+                    max={100}
                     value={form.taxPercent}
-                    onChange={(e) =>
+                    onValueChange={(taxPercent) =>
                       setForm((f) => ({
                         ...f,
-                        taxPercent: sanitizeInvoicePercent(e.target.value),
+                        taxPercent: sanitizeInvoicePercent(taxPercent),
                       }))
                     }
                     className="rounded-none border-neutral-900/15"

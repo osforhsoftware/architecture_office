@@ -117,7 +117,7 @@ function InvoicesTableInner({ result, search, status }: InvoicesDataTableProps) 
         header: "",
         cell: ({ row }) => (
           <a
-            href={apiUrl(`/api/admin/invoices/${row.original.id}/pdf`)}
+            href={`${apiUrl(`/api/admin/invoices/${row.original.id}/pdf`)}?v=${encodeURIComponent(String(row.original.updated_at ?? ""))}`}
             target="_blank"
             rel="noopener noreferrer"
             title="Download PDF"

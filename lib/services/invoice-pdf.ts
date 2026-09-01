@@ -154,6 +154,24 @@ function addHeader(
   return headerBottom + 6
 }
 
+/** Split newlines and wrap to width so later lines never share a Y with earlier ones. */
+function wrapPdfBlock(doc: jsPDF, parts: Array<string | null | undefined>, maxWidth: number): string[] {
+  const lines: string[] = []
+  for (const part of parts) {
+    const text = pdfText(part)
+    if (!text) continue
+    for (const chunk of text.split(/\r?\n/)) {
+      const trimmed = chunk.trim()
+      if (!trimmed) continue
+      for (const wrapped of doc.splitTextToSize(trimmed, maxWidth) as string[]) {
+        const line = wrapped.trim()
+        if (line) lines.push(line)
+      }
+    }
+  }
+  return lines
+}
+
 function addClientProjectBlock(
   doc: jsPDF,
   invoice: InvoiceWithDetails,
@@ -161,34 +179,51 @@ function addClientProjectBlock(
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth()
   const midX = pageWidth / 2
-  let y = startY
+  const colGap = 6
+  const billMaxW = midX - MARGIN - colGap
+  const projectLabelX = midX + 4
+  const projectValueX = midX + 28
+  const projectValueMaxW = Math.max(24, pageWidth - MARGIN - projectValueX)
+  // Generous leading so tablet PDF viewers do not paint wrapped lines on top of each other.
+  const bodyLineH = 5.2
+  const nameLineH = 6
+  const sectionGap = 4.8
+
+  doc.setLineHeightFactor(1.35)
 
   doc.setFont("helvetica", "bold")
   doc.setFontSize(8.5)
   doc.setTextColor(...INK)
-  doc.text("BILL TO", MARGIN, y)
-  doc.text("PROJECT DETAILS", midX + 4, y)
+  doc.text("BILL TO", MARGIN, startY)
+  doc.text("PROJECT DETAILS", projectLabelX, startY)
 
-  y += 5
+  const nameY = startY + sectionGap
   doc.setFont("helvetica", "bold")
   doc.setFontSize(10.5)
   doc.setTextColor(...INK)
-  doc.text(pdfText(invoice.client_name), MARGIN, y)
+  const nameLines = wrapPdfBlock(doc, [invoice.client_name], billMaxW)
+  nameLines.forEach((line, i) => {
+    doc.text(line, MARGIN, nameY + i * nameLineH)
+  })
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
-
-  const billLines = [
-    pdfText(invoice.client_address),
-    invoice.client_tax_id ? `GSTIN: ${pdfText(invoice.client_tax_id)}` : "",
-    pdfText(invoice.client_phone),
-    pdfText(invoice.client_email),
-  ].filter(Boolean) as string[]
-
+  const billStartY = nameY + Math.max(nameLines.length, 1) * nameLineH + 1.2
+  const billLines = wrapPdfBlock(
+    doc,
+    [
+      invoice.client_address,
+      invoice.client_tax_id ? `GSTIN: ${pdfText(invoice.client_tax_id)}` : "",
+      invoice.client_phone,
+      invoice.client_email,
+    ],
+    billMaxW,
+  )
   billLines.forEach((line, i) => {
-    doc.text(line, MARGIN, y + 5 + i * 4.2, { maxWidth: midX - MARGIN - 6 })
+    doc.text(line, MARGIN, billStartY + i * bodyLineH)
   })
+  const billBottom = billStartY + Math.max(billLines.length, 0) * bodyLineH
 
   const projectRows: [string, string][] = []
   if (invoice.project_name) projectRows.push(["Project", pdfText(invoice.project_name)])
@@ -197,31 +232,30 @@ function addClientProjectBlock(
   }
   if (invoice.status) projectRows.push(["Status", pdfText(invoice.status)])
 
-  const projectLabelX = midX + 4
-  const projectValueX = midX + 28
-  const projectValueMaxW = pageWidth - MARGIN - projectValueX
-  const projectRowH = 5.5
-
-  projectRows.forEach(([label, value], i) => {
-    const rowY = y + i * projectRowH
+  let projectY = nameY
+  projectRows.forEach(([label, value]) => {
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8.5)
+    const wrapped = wrapPdfBlock(doc, [value], projectValueMaxW)
+    const rowLines = wrapped.length ? wrapped : ["—"]
     doc.setFont("helvetica", "bold")
     doc.setFontSize(8)
     doc.setTextColor(...INK)
-    doc.text(label, projectLabelX, rowY)
+    doc.text(label, projectLabelX, projectY)
     doc.setFont("helvetica", "normal")
     doc.setFontSize(8.5)
     doc.setTextColor(...MUTED)
-    doc.text(value, projectValueX, rowY, { maxWidth: projectValueMaxW })
+    rowLines.forEach((line, i) => {
+      doc.text(line, projectValueX, projectY + i * bodyLineH)
+    })
+    projectY += rowLines.length * bodyLineH + 1.2
   })
 
-  const projectBlockH = Math.max(projectRows.length * projectRowH, 0)
-  const billBlockH = billLines.length * 4.2 + 5
-
+  const blockBottom = Math.max(billBottom, projectY) + 3
   doc.setDrawColor(...RULE)
   doc.setLineWidth(0.35)
-  doc.line(midX, startY - 1, midX, y + Math.max(billBlockH, projectBlockH) + 1)
+  doc.line(midX, startY - 1, midX, blockBottom - 1.5)
 
-  const blockBottom = y + Math.max(billBlockH, projectBlockH) + 3
   drawHRule(doc, blockBottom, pageWidth)
   return blockBottom + 5
 }

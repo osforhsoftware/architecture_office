@@ -53,7 +53,9 @@ export async function GET(
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `inline; filename="${fileName}"`,
-          "Cache-Control": "no-store",
+          "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+          Pragma: "no-cache",
+          Expires: "0",
         },
       }),
     )
