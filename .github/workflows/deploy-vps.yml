@@ -57,11 +57,6 @@ jobs:
             echo "APP_DIR=$APP_DIR"
             cd "$APP_DIR"
 
-            echo "== stop leftover builds for this app =="
-            pkill -f "/var/www/architecture_office/.*/next" || true
-            pkill -f "/var/www/architecture_office/node_modules/.bin/next" || true
-            sleep 2
-
             # Snapshot nginx configs to prove we do not change other sites
             NGINX_SNAP_BEFORE=$(mktemp)
             if command -v nginx >/dev/null 2>&1; then
