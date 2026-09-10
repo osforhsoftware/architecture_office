@@ -116,6 +116,57 @@ export async function getProjectDeleteBlockers(projectId: number): Promise<Proje
   ].filter((item) => item.count > 0)
 }
 
+async function deleteRelated(run: () => Promise<unknown>): Promise<void> {
+  try {
+    await run()
+  } catch (error) {
+    const code = mysqlErrorCode(error)
+    if (code === "ER_NO_SUCH_TABLE" || code === "ER_BAD_FIELD_ERROR") return
+    throw error
+  }
+}
+
+/** Permanently remove a project and every related record we can reach. */
+export async function deleteProjectAndRelatedData(projectId: number): Promise<void> {
+  await deleteRelated(
+    () => sql`UPDATE projects SET current_workflow_step_id = NULL WHERE id = ${projectId}`,
+  )
+  await deleteRelated(
+    () =>
+      sql`DELETE FROM invoice_payments WHERE invoice_id IN (SELECT id FROM invoices WHERE project_id = ${projectId})`,
+  )
+  await deleteRelated(
+    () =>
+      sql`DELETE FROM invoice_line_items WHERE invoice_id IN (SELECT id FROM invoices WHERE project_id = ${projectId})`,
+  )
+  await deleteRelated(() => sql`DELETE FROM invoices WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM payments WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM finance_income WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM finance_expenses WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM finance_transactions WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM cash_book WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_income WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_expenses WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_budget WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_ledger WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_finance WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM staff_expenses WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM workflow_assignments WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM workflow_reviews WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM checklist_items WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_kmap_areas WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_files WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM project_services WHERE project_id = ${projectId}`)
+  await deleteRelated(
+    () => sql`DELETE FROM project_additional_requirements WHERE project_id = ${projectId}`,
+  )
+  await deleteRelated(() => sql`DELETE FROM project_assignees WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM status_history WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM return_history WHERE project_id = ${projectId}`)
+  await deleteRelated(() => sql`DELETE FROM workflow_steps WHERE project_id = ${projectId}`)
+  await sql`DELETE FROM projects WHERE id = ${projectId}`
+}
+
 export async function projectDeleteBlockedMessage(projectId: number): Promise<string | null> {
   const blockers = await getProjectDeleteBlockers(projectId)
   if (!blockers.length) return null

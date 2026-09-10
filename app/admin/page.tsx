@@ -35,6 +35,7 @@ export default async function AdminDashboard({
     search?: string
     status?: string
     section?: string
+    filter?: string
     page?: string
     pageSize?: string
   }>
@@ -46,6 +47,7 @@ export default async function AdminDashboard({
   const search = params.search ?? ""
   const status = params.status ?? "all"
   const section = params.section ?? "all"
+  const filter = params.filter ?? "all"
 
   const [stats, sparklines, revenueTrend, projectsResult, returned, payments, staffPerf, departmentNames] =
     await Promise.all([
@@ -56,6 +58,7 @@ export default async function AdminDashboard({
         search,
         status,
         section,
+        filter,
         page: params.page,
         pageSize: params.pageSize,
       }),
@@ -110,7 +113,7 @@ export default async function AdminDashboard({
           icon="folder-kanban"
           sparkline={sparklines.projects}
           trend={5}
-          href="/admin/projects?status=In%20Progress"
+          href="/admin/projects?filter=active"
           delay={0.05}
         />
         <KpiCard
@@ -139,8 +142,29 @@ export default async function AdminDashboard({
           label="Needs Attention"
           value={pendingProjects}
           icon="clock"
-          href="/admin/projects"
+          href="/admin/projects?filter=attention"
           delay={0.16}
+        />
+        <KpiCard
+          label="Plinth Inspection"
+          value={stats.plinthInspection}
+          icon="clock"
+          href="/admin/projects?filter=plinth_inspection"
+          delay={0.17}
+        />
+        <KpiCard
+          label="Under Construction"
+          value={stats.underConstruction}
+          icon="folder-kanban"
+          href="/admin/projects?filter=under_construction"
+          delay={0.18}
+        />
+        <KpiCard
+          label="Site Visit Pending"
+          value={stats.siteVisitPending}
+          icon="calendar"
+          href="/admin/projects?filter=site_visit_pending"
+          delay={0.19}
         />
         <KpiCard
           label="Completed"
@@ -162,7 +186,7 @@ export default async function AdminDashboard({
           label="Delayed"
           value={stats.delayed}
           icon="calendar"
-          href="/admin/projects"
+          href="/admin/projects?filter=delayed"
           delay={0.22}
         />
         <KpiCard
@@ -195,7 +219,7 @@ export default async function AdminDashboard({
         <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium lg:col-span-1">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Needs Attention</h3>
-            <Link href="/admin/projects" className="text-xs font-medium text-primary hover:underline">
+            <Link href="/admin/projects?filter=attention" className="text-xs font-medium text-primary hover:underline">
               View all
             </Link>
           </div>
@@ -207,7 +231,11 @@ export default async function AdminDashboard({
                 className="flex items-center justify-between gap-3 rounded-lg border border-border/50 p-3 transition-colors hover:bg-muted/40"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
+                  <p className="truncate text-sm">
+                    <span className="font-semibold">{p.client_name}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    {p.name}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">{p.code}</p>
                 </div>
                 <StatusBadge status={p.status} />
@@ -277,6 +305,7 @@ export default async function AdminDashboard({
             search={search}
             status={status}
             section={section}
+            filter={filter}
             statusOptions={[...PROJECT_STATUSES]}
             sectionOptions={departmentNames}
           />

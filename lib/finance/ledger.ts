@@ -80,8 +80,7 @@ export async function recordLedgerEntry(
   `) as { id: number }[]
   const txnId = Number(txnRows[0]?.id ?? 0)
 
-  if (params.scope === "project") {
-    if (!params.projectId) throw new Error("Project ledger entry requires projectId")
+  if (params.scope === "project" && params.projectId) {
     const prev = await getLatestProjectLedgerBalance(params.projectId)
     const balance =
       params.direction === "in" ? prev + params.amount : prev - params.amount

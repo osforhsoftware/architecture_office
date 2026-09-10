@@ -21,6 +21,7 @@ import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
 import { IncomeDialog, type IncomeDialogOptions } from "@/components/finance/income-dialog"
+import { ClientDialog } from "@/components/client-dialog"
 import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { FinanceStatusBadge } from "@/components/finance/finance-status-badge"
 import { Button } from "@/components/ui/button"
@@ -212,7 +213,8 @@ function IncomeTableInner({ result, search, status, scope = "project", dialogOpt
         </div>
         <div className="flex flex-wrap gap-2">
           <FinanceReportDownload scope={scope} type="income" compact />
-          <IncomeDialog {...dialogOptions} scope={scope} requireProject={scope === "project"} />
+          {scope === "project" ? <ClientDialog source="finance" triggerLabel="Add Finance Client" /> : null}
+          <IncomeDialog {...dialogOptions} scope={scope} />
         </div>
       </div>
 
@@ -270,7 +272,6 @@ function IncomeTableInner({ result, search, status, scope = "project", dialogOpt
         <IncomeDialog
           {...dialogOptions}
           scope={scope}
-          requireProject={scope === "project"}
           income={editIncome}
           open={Boolean(editIncome)}
           onOpenChange={(next) => {

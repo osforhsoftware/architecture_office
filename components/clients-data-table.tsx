@@ -9,20 +9,40 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table"
 import { Mail, Phone } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ClientDialog } from "@/components/client-dialog"
 import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
-import { TableQueryProvider } from "@/components/use-table-params"
+import { TableQueryProvider, useTableParams } from "@/components/use-table-params"
+import { Badge } from "@/components/ui/badge"
+import { KERALA_DISTRICTS } from "@/lib/constants"
+import { clientSourceLabel } from "@/lib/client-source"
 import type { PaginatedResult } from "@/lib/pagination"
 import type { Client } from "@/lib/types"
 
 interface ClientsDataTableProps {
   result: PaginatedResult<Client>
   search: string
+  district?: string
+  hasProjects?: string
+  source?: string
 }
 
-function ClientsTableInner({ result, search }: ClientsDataTableProps) {
+function ClientsTableInner({
+  result,
+  search,
+  district = "all",
+  hasProjects = "all",
+  source = "all",
+}: ClientsDataTableProps) {
+  const { updateParams } = useTableParams()
   const columns = useMemo<ColumnDef<Client>[]>(
     () => [
       {
@@ -43,6 +63,18 @@ function ClientsTableInner({ result, search }: ClientsDataTableProps) {
             {row.original.name}
           </Link>
         ),
+      },
+      {
+        accessorKey: "source",
+        header: "Category",
+        cell: ({ row }) => {
+          const isFinance = row.original.source === "finance"
+          return (
+            <Badge variant={isFinance ? "secondary" : "outline"}>
+              {clientSourceLabel(row.original.source)}
+            </Badge>
+          )
+        },
       },
       {
         accessorKey: "phone",
@@ -117,12 +149,67 @@ function ClientsTableInner({ result, search }: ClientsDataTableProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <DebouncedSearchInput placeholder="Search by name, phone, email, address, or ID..." />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <DebouncedSearchInput placeholder="Search by name, phone, email, address, or ID..." />
+        <div className="flex flex-wrap gap-2">
+          <Select
+            value={district}
+            onValueChange={(value) => {
+              if (!value) return
+              updateParams({ district: value === "all" ? null : value }, { resetPage: true })
+            }}
+          >
+            <SelectTrigger className="w-full min-w-0 sm:w-[160px]">
+              <SelectValue placeholder="District" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All districts</SelectItem>
+              {KERALA_DISTRICTS.map((d) => (
+                <SelectItem key={d} value={d}>
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={hasProjects}
+            onValueChange={(value) => {
+              if (!value) return
+              updateParams({ hasProjects: value === "all" ? null : value }, { resetPage: true })
+            }}
+          >
+            <SelectTrigger className="w-full min-w-0 sm:w-[150px]">
+              <SelectValue placeholder="Projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All clients</SelectItem>
+              <SelectItem value="with">With projects</SelectItem>
+              <SelectItem value="without">No projects</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={source}
+            onValueChange={(value) => {
+              if (!value) return
+              updateParams({ source: value === "all" ? null : value }, { resetPage: true })
+            }}
+          >
+            <SelectTrigger className="w-full min-w-0 sm:w-[150px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="office">Office</SelectItem>
+              <SelectItem value="finance">Finance</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-0 table-fixed text-sm">
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>

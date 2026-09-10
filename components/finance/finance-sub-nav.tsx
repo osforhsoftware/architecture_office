@@ -78,13 +78,25 @@ function NavPills({
   )
 }
 
-export function FinanceSubNav({ role }: { role?: string }) {
+export function FinanceSubNav({
+  role,
+  children,
+}: {
+  role?: string
+  children?: React.ReactNode
+}) {
   const pathname = usePathname()
   const billingLimited = role ? isBillingStaff(role) : false
 
   if (pathname.startsWith(`${PROJECT_FINANCE_BASE}`)) {
     const items = billingLimited ? filterBilling(PROJECT_NAV) : PROJECT_NAV
-    return <NavPills items={items} />
+    const showHubActions = pathname === PROJECT_FINANCE_BASE
+    return (
+      <div className="flex w-full flex-wrap items-center justify-between gap-3">
+        <NavPills items={items} />
+        {showHubActions ? children : null}
+      </div>
+    )
   }
 
   if (pathname.startsWith(`${OFFICE_FINANCE_BASE}`)) {

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS clients (
   district         VARCHAR(100),
   aadhaar_numbers  JSON,
   linked_numbers   JSON,
+  source           VARCHAR(20) NOT NULL DEFAULT 'office',
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -84,6 +85,8 @@ CREATE TABLE IF NOT EXISTS projects (
   project_package        VARCHAR(50) DEFAULT 'full',
   current_workflow_step_id INT,
   work_completed_at      DATETIME,
+  site_visit_pending     TINYINT(1) NOT NULL DEFAULT 0,
+  under_construction     TINYINT(1) NOT NULL DEFAULT 0,
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_projects_client   FOREIGN KEY (client_id)   REFERENCES clients(id),
@@ -124,7 +127,8 @@ INSERT IGNORE INTO services (service_key, label, section, role, sort_order) VALU
   ('working_drawings', 'Working Drawings', 'Estimation & Construction', 'Estimation Staff', 9),
   ('estimation', 'Estimation', 'Estimation & Construction', 'Estimation Staff', 10),
   ('construction_supervision', 'Construction Supervision', 'Estimation & Construction', 'Estimation Staff', 11),
-  ('valuation', 'Valuation Course', 'Estimation & Construction', 'Estimation Staff', 12);
+  ('valuation', 'Valuation Course', 'Estimation & Construction', 'Estimation Staff', 12),
+  ('plinth_level_inspection', 'Plinth-Level Inspection', 'Planning & Design', 'Planning Staff', 13);
 
 CREATE TABLE IF NOT EXISTS project_services (
   project_id   INT NOT NULL,

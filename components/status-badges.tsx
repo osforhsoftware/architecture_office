@@ -19,7 +19,18 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
-  return <Pill className={priorityColor(priority)}>{priority}</Pill>
+  return (
+    <Pill className={priorityColor(priority)}>
+      {priority === "High" ? (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-white" aria-hidden />
+          {priority}
+        </span>
+      ) : (
+        priority
+      )}
+    </Pill>
+  )
 }
 
 export function PaymentBadge({ status }: { status: string }) {

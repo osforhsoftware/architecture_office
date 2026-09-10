@@ -16,7 +16,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { logoutAction } from "@/lib/actions"
 import { formatRolesLabel, rolesOf } from "@/lib/constants"
 import { getRoleSectionMap } from "@/lib/departments"
-import { getStaffAllProjects, getStaffDashboardStats } from "@/lib/queries"
+import { UserActivityPanel } from "@/components/user-activity-panel"
+import { getStaffAllProjects, getStaffDashboardStats, getUserActivity } from "@/lib/queries"
 import { staffOwnsProject } from "@/lib/project-access"
 
 function formatMemberSince(value?: string) {
@@ -35,10 +36,11 @@ export default async function StaffProfilePage() {
   const roleLabel = formatRolesLabel(user)
   const memberSince = formatMemberSince(user.created_at)
 
-  const [stats, projects, roleSectionMap] = await Promise.all([
+  const [stats, projects, roleSectionMap, activity] = await Promise.all([
     getStaffDashboardStats(user.id, user.name),
     getStaffAllProjects(user.id, user.name),
     getRoleSectionMap(),
+    getUserActivity(user.id, user.name),
   ])
 
   const departmentLabel =
@@ -141,6 +143,8 @@ export default async function StaffProfilePage() {
       </Card>
 
       <StaffProfileSettings user={user} />
+
+      <UserActivityPanel events={activity} userName={user.name} />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">

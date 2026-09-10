@@ -8,8 +8,13 @@ export type FinanceDialogOptions = {
   vendors?: FinanceSelectOption[]
 }
 
-export function clientsToOptions(clients: { id: number; name: string }[]): FinanceSelectOption[] {
-  return clients.map((c) => ({ value: String(c.id), label: c.name }))
+export function clientsToOptions(
+  clients: { id: number; name: string; source?: string | null }[],
+): FinanceSelectOption[] {
+  return clients.map((c) => ({
+    value: String(c.id),
+    label: c.source === "finance" ? `${c.name} (Finance)` : c.name,
+  }))
 }
 
 export function projectsToOptions(
@@ -30,7 +35,7 @@ export function projectsToOptions(
     return {
       value: String(p.id),
       label,
-      ...(p.client_id != null ? { clientId: String(p.client_id) } : {}),
+      clientId: p.client_id != null ? String(p.client_id) : undefined,
     }
   })
 }

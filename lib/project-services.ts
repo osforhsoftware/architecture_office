@@ -2,6 +2,7 @@ import "server-only"
 
 import { cache } from "react"
 import { sql } from "./db"
+import { ensureProjectAcmmoUpdates } from "./project-schema"
 import {
   PROJECT_SERVICES as DEFAULT_PROJECT_SERVICES,
   type ProjectServiceDef,
@@ -97,6 +98,7 @@ export const listProjectServices = cache(
     const activeOnly = opts?.includeInactive ? false : opts?.activeOnly !== false
     try {
       await ensureDefaultServicesSeeded()
+      await ensureProjectAcmmoUpdates()
 
       const rows = activeOnly
         ? ((await sql`

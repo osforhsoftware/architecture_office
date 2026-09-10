@@ -22,6 +22,14 @@ export const PROJECT_SERVICES: ProjectServiceDef[] = [
     sortOrder: 1,
   },
   {
+    key: "plinth_level_inspection",
+    label: "Plinth-Level Inspection",
+    section: "Planning & Design",
+    role: "Planning Staff",
+    allowsMultiAssignee: true,
+    sortOrder: 1.5,
+  },
+  {
     key: "architecture_design",
     label: "Architecture Design",
     section: "Planning & Design",
@@ -148,6 +156,7 @@ export interface WorkflowStepRecord {
 /** Service-specific checklist items shown only when that service is selected. */
 export const SERVICE_CHECKLIST_ITEMS: Record<string, readonly string[]> = {
   site_survey: ["Site Photos", "Measurement Notes", "Location Sketch"],
+  plinth_level_inspection: ["Plinth Photos", "Level Measurements", "Inspection Report"],
   architecture_design: ["Client Brief", "Site Constraints", "Design Options"],
   concept_design: ["Concept Drawings", "Client Approval"],
   plot_sketch: ["Plot Dimensions", "Boundary Sketch", "North Point"],

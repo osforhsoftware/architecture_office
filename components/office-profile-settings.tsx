@@ -30,7 +30,7 @@ function buildInitialForm(profile: OfficeProfile) {
     email: profile.email ?? "",
     website: profile.website ?? "",
     address: profile.address ?? "",
-    tagline: profile.tagline ?? "Architecture • Interiors • Planning",
+    tagline: profile.tagline ?? "Architecture / Interiors / Construction",
     termsAndConditions: profile.termsAndConditions || DEFAULT_INVOICE_TERMS,
     bankName: profile.bankName ?? "",
     accountName: profile.accountName ?? "",
@@ -386,7 +386,7 @@ export function OfficeProfileSettings({ profile }: { profile: OfficeProfile }) {
             id="tagline"
             value={form.tagline}
             onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
-            placeholder="Architecture • Interiors • Planning"
+            placeholder="Architecture / Interiors / Construction"
             className={formControlClass}
           />
         </FormField>

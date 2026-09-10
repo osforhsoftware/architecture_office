@@ -35,7 +35,8 @@
     "db:migrate-finance-v2": "node scripts/migrate-finance-v2.mjs",
     "db:migrate-attendance": "node scripts/migrate-attendance.mjs",
     "db:migrate-attendance-late": "node scripts/migrate-attendance-late.mjs",
-    "db:migrate-pg": "node scripts/migrate-pg-to-mysql.mjs"
+    "db:migrate-pg": "node scripts/migrate-pg-to-mysql.mjs",
+    "db:migrate-acmmo": "node scripts/migrate-acmmo-updates.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

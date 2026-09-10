@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { mysqlErrorCode, mysqlErrorMessage, sql } from "./db"
+import {
+  ensureClientExtraColumns,
+} from "./client-schema"
+import { parseClientSource, type ClientSource } from "./client-source"
+import { ensureProjectAcmmoUpdates } from "./project-schema"
 import { clearSession, getCurrentUser } from "./auth"
 import {
   allowsMultiAssignee,
@@ -36,6 +41,7 @@ import {
   isSuperAdmin,
   roleToKey,
   showsResidentialDetails,
+  userCanAccessBilling,
   userHasRole,
 } from "./constants"
 import {
@@ -109,7 +115,7 @@ import {
   isLocalToday,
   projectStartAtFromDate,
 } from "./project-dates"
-import { projectDeleteBlockedMessage } from "./project-delete"
+import { deleteProjectAndRelatedData } from "./project-delete"
 import { projectDeleteConfirmationPhrase } from "./project-utils"
 import { headers } from "next/headers"
 
@@ -240,6 +246,9 @@ function revalidateClientPaths(clientId?: number) {
   revalidatePath("/admin/clients")
   revalidatePath("/admin")
   revalidatePath("/admin/reports")
+  revalidatePath("/admin/finance")
+  revalidatePath("/admin/finance/project")
+  revalidatePath("/admin/finance/project/income")
   if (clientId) revalidatePath(`/admin/clients/${clientId}`)
 }
 
@@ -277,45 +286,6 @@ function clientActionFailure(error: unknown, fallback: string): { error: string 
   return { error: message || fallback }
 }
 
-let clientExtraColumnsReady = false
-
-async function addClientColumn(sqlTypeJson: () => Promise<unknown>, sqlTypeText: () => Promise<unknown>) {
-  try {
-    await sqlTypeJson()
-  } catch (error) {
-    if (mysqlErrorCode(error) === "ER_DUP_FIELDNAME") return
-    try {
-      await sqlTypeText()
-    } catch (fallbackError) {
-      if (mysqlErrorCode(fallbackError) !== "ER_DUP_FIELDNAME") {
-        console.warn("[clients] could not add extra column:", fallbackError)
-      }
-    }
-  }
-}
-
-/** Live DBs may predate street / Aadhaar columns — add them on first write. */
-async function ensureClientExtraColumns() {
-  if (clientExtraColumnsReady) return
-  await addClientColumn(
-    () => sql`ALTER TABLE clients ADD COLUMN street VARCHAR(500)`,
-    () => sql`ALTER TABLE clients ADD COLUMN street TEXT`,
-  )
-  await addClientColumn(
-    () => sql`ALTER TABLE clients ADD COLUMN district VARCHAR(100)`,
-    () => sql`ALTER TABLE clients ADD COLUMN district VARCHAR(255)`,
-  )
-  await addClientColumn(
-    () => sql`ALTER TABLE clients ADD COLUMN aadhaar_numbers JSON`,
-    () => sql`ALTER TABLE clients ADD COLUMN aadhaar_numbers TEXT`,
-  )
-  await addClientColumn(
-    () => sql`ALTER TABLE clients ADD COLUMN linked_numbers JSON`,
-    () => sql`ALTER TABLE clients ADD COLUMN linked_numbers TEXT`,
-  )
-  clientExtraColumnsReady = true
-}
-
 async function insertClientRow(input: {
   name: string
   phone: string
@@ -325,13 +295,15 @@ async function insertClientRow(input: {
   district: string | null
   aadhaarNumbers: string[]
   linkedNumbers: string[]
+  source?: ClientSource
 }): Promise<{ id: number }[]> {
+  const source = parseClientSource(input.source)
   try {
     return (await sql`
-      INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+      INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source)
       VALUES (
         ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
-        ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}
+        ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source}
       )
     `) as { id: number }[]
   } catch (error) {
@@ -341,10 +313,10 @@ async function insertClientRow(input: {
     await ensureClientExtraColumns()
     try {
       return (await sql`
-        INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers)
+        INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source)
         VALUES (
           ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
-          ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}
+          ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source}
         )
       `) as { id: number }[]
     } catch (retryError) {
@@ -364,12 +336,18 @@ async function insertClientRow(input: {
 
 export async function createClient(formData: FormData) {
   try {
-    const admin = await requireAdminOrSuperAdmin()
+    const user = await requireUser()
     const name = String(formData.get("name") || "").trim()
     const phone = String(formData.get("phone") || "").trim()
     const email = String(formData.get("email") || "").trim() || null
     const address = String(formData.get("address") || "").trim() || null
     const { street, district, aadhaarNumbers, linkedNumbers } = parseClientAddressFields(formData)
+    const source = parseClientSource(formData.get("source"))
+    const canManageClients = isOfficeAdmin(user.role)
+    const canCreateFinanceClient = canManageClients || userCanAccessBilling(user)
+    if (source === "finance" ? !canCreateFinanceClient : !canManageClients) {
+      throw new ForbiddenError("Forbidden")
+    }
 
     if (!name) return { error: "Name is required." }
 
@@ -389,11 +367,12 @@ export async function createClient(formData: FormData) {
       district,
       aadhaarNumbers,
       linkedNumbers,
+      source,
     })
     const clientId = rows[0]?.id
     if (!clientId) return { error: "Client was not created." }
 
-    await logAudit(admin.id, "client.create", "client", clientId, { name, phone })
+    await logAudit(user.id, "client.create", "client", clientId, { name, phone, source })
     revalidateClientPaths(clientId)
     return { success: true, clientId }
   } catch (error) {
@@ -1488,6 +1467,38 @@ export async function updateAdminAccount(formData: FormData) {
   return { success: true }
 }
 
+export async function updateSuperAdminPassword(formData: FormData) {
+  const actor = await requireSuperAdmin()
+  const currentPassword = String(formData.get("current_password") || "")
+  const newPassword = String(formData.get("new_password") || "")
+  const confirmPassword = String(formData.get("confirm_password") || "")
+
+  if (!currentPassword || !newPassword) {
+    return { error: "Current and new passwords are required." }
+  }
+  if (newPassword.length < 8) {
+    return { error: "New password must be at least 8 characters." }
+  }
+  if (newPassword !== confirmPassword) {
+    return { error: "New passwords do not match." }
+  }
+
+  const rows = (await sql`
+    SELECT id, password FROM app_users WHERE id = ${actor.id} LIMIT 1
+  `) as { id: number; password: string }[]
+  if (!rows.length) return { error: "Account not found." }
+
+  const valid = await verifyPassword(currentPassword, rows[0].password)
+  if (!valid) return { error: "Current password is incorrect." }
+
+  const hash = await hashPassword(newPassword)
+  await sql`UPDATE app_users SET password = ${hash} WHERE id = ${actor.id}`
+
+  await logAuditForUser(actor, "auth.password_change", "user", actor.id, {})
+  revalidatePath("/admin/security")
+  return { success: true }
+}
+
 export async function deleteAdminAccount(formData: FormData) {
   const actor = await requireSuperAdmin()
   const id = Number(formData.get("id"))
@@ -1686,6 +1697,9 @@ export async function createProject(formData: FormData) {
   const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
   const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
   const additionalRequirements = await parseAdditionalRequirementsFromForm(formData)
+  const projectFlags = new Set(formData.getAll("project_flags").map((v) => String(v)))
+  const siteVisitPending = projectFlags.has("site_visit_pending")
+  const underConstruction = projectFlags.has("under_construction")
   const startDateInput = String(formData.get("start_date") || "").trim()
   const customStartAt =
     isSuperAdmin(admin.role) && startDateInput && !isLocalToday(startDateInput)
@@ -1708,6 +1722,7 @@ export async function createProject(formData: FormData) {
   const drawingConflict = await assertDrawingNumberAvailable(drawingNumber)
   if (drawingConflict) return { error: drawingConflict }
 
+  await ensureProjectAcmmoUpdates()
   const code = await nextProjectCode()
   const invoice = await nextInvoiceNumber()
 
@@ -1717,14 +1732,15 @@ export async function createProject(formData: FormData) {
           code, name, client_id, location, type, priority, status, section, current_stage,
           due_date, project_amount, invoice_number, project_package,
           building_number, building_permit_number, drawing_number, edgebook_number, refer_name, notes,
-          req_architectural_plan, req_building_permit, req_regularization, created_at
+          req_architectural_plan, req_building_permit, req_regularization,
+          site_visit_pending, under_construction, created_at
         )
         VALUES (
           ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
           ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
           ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName}, ${notes},
           ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization},
-          ${customStartAt}
+          ${siteVisitPending}, ${underConstruction}, ${customStartAt}
         )
       `) as { id: number }[])
     : ((await sql`
@@ -1732,13 +1748,15 @@ export async function createProject(formData: FormData) {
           code, name, client_id, location, type, priority, status, section, current_stage,
           due_date, project_amount, invoice_number, project_package,
           building_number, building_permit_number, drawing_number, edgebook_number, refer_name, notes,
-          req_architectural_plan, req_building_permit, req_regularization
+          req_architectural_plan, req_building_permit, req_regularization,
+          site_visit_pending, under_construction
         )
         VALUES (
           ${code}, ${name}, ${clientId}, ${location}, ${type}, ${priority}, 'Awaiting Assignment', 'Planning & Design', 0,
           ${dueDate}, ${amount}, ${invoice}, ${projectPackage},
           ${residential.buildingNumber}, ${residential.buildingPermitNumber}, ${drawingNumber}, ${edgebookNumber}, ${referName}, ${notes},
-          ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization}
+          ${residential.reqArchitecturalPlan}, ${residential.reqBuildingPermit}, ${residential.reqRegularization},
+          ${siteVisitPending}, ${underConstruction}
         )
       `) as { id: number }[])
 
@@ -1783,22 +1801,19 @@ export async function deleteProject(formData: FormData) {
   `) as { id: number; code: string; name: string }[]
   if (!rows.length) return { error: "Project not found." }
 
-  const blocked = await projectDeleteBlockedMessage(id)
-  if (blocked) return { error: blocked }
-
   const expected = projectDeleteConfirmationPhrase(rows[0].code)
   if (confirmation !== expected) {
     return { error: `Type ${expected} exactly to confirm hard delete.` }
   }
 
   try {
-    await sql`DELETE FROM projects WHERE id = ${id}`
+    await deleteProjectAndRelatedData(id)
   } catch (error) {
     const code = mysqlErrorCode(error)
     if (code === "ER_ROW_IS_REFERENCED_2" || code === "ER_ROW_IS_REFERENCED") {
       return {
         error:
-          "This project cannot be deleted because related records already exist (invoices, payments, or other activity). Only a newly created project with no other activity can be permanently removed.",
+          "This project could not be deleted because some related records are still linked. Try again or contact support if it continues.",
       }
     }
     console.error("[projects] delete failed:", error)
@@ -1842,6 +1857,9 @@ export async function updateProjectDetails(formData: FormData) {
   )
   const allowedDocuments = await checklistItemsFromTemplates(selectedServices)
   const selectedDocuments = parseSelectedDocuments(formData, allowedDocuments)
+  const projectFlags = new Set(formData.getAll("project_flags").map((v) => String(v)))
+  const siteVisitPending = projectFlags.has("site_visit_pending")
+  const underConstruction = projectFlags.has("under_construction")
 
   if (!id || !name) return { error: "Project name is required." }
   if (
@@ -1867,6 +1885,7 @@ export async function updateProjectDetails(formData: FormData) {
   `) as { id: number }[]
   if (!clientRows.length) return { error: "Client not found." }
 
+  await ensureProjectAcmmoUpdates()
   const drawingConflict = await assertDrawingNumberAvailable(drawingNumber, id)
   if (drawingConflict) return { error: drawingConflict }
 
@@ -1898,6 +1917,8 @@ export async function updateProjectDetails(formData: FormData) {
         req_architectural_plan = ${residential.reqArchitecturalPlan},
         req_building_permit = ${residential.reqBuildingPermit},
         req_regularization = ${residential.reqRegularization},
+        site_visit_pending = ${siteVisitPending},
+        under_construction = ${underConstruction},
         updated_at = now()
     WHERE id = ${id}
   `
@@ -2646,7 +2667,7 @@ export async function updateProjectDrawingNumber(formData: FormData) {
   if (closedError) return { error: closedError }
 
   const existingDrawing = project.drawing_number?.trim() || ""
-  if (existingDrawing) {
+  if (existingDrawing) {  
     if ((drawingNumber || "") === existingDrawing) return { success: true }
     return { error: "Drawing number cannot be changed once it has been saved." }
   }

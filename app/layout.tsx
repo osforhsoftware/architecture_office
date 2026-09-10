@@ -45,6 +45,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`light ${GeistSans.variable} ${GeistMono.variable} bg-background`}
+      suppressHydrationWarning
     >
       <head>
         <SidebarCollapseScript />

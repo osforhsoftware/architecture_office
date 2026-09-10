@@ -2,10 +2,12 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, Phone, Mail, MapPin } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { getClient, getProjectsByClient } from "@/lib/queries"
 import { ClientDialog } from "@/components/client-dialog"
 import { StatusBadge, PriorityBadge } from "@/components/status-badges"
 import { formatClientId, formatCurrency } from "@/lib/constants"
+import { clientSourceLabel } from "@/lib/client-source"
 
 export default async function ClientDetailPage({
   params,
@@ -35,7 +37,12 @@ export default async function ClientDetailPage({
               {client.name.charAt(0)}
             </div>
             <div>
-              <h2 className="text-xl font-semibold">{client.name}</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-semibold">{client.name}</h2>
+                <Badge variant={client.source === "finance" ? "secondary" : "outline"}>
+                  {clientSourceLabel(client.source)}
+                </Badge>
+              </div>
               <p className="text-xs text-muted-foreground">{formatClientId(client.id)}</p>
               <div className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:gap-4">
                 {client.phone ? (
@@ -98,7 +105,9 @@ export default async function ClientDetailPage({
           ))}
           {projects.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No projects for this client yet.
+              {client.source === "finance"
+                ? "Finance clients do not need a project."
+                : "No projects for this client yet."}
             </p>
           ) : null}
         </CardContent>

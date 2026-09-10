@@ -16,6 +16,7 @@ import { ProjectNotesPanel } from "@/components/project-notes-field"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
 import { ProjectDetailsSaveShell } from "@/components/project-details-save"
+import { ProjectFinanceQuickActions } from "@/components/project-finance-quick-actions"
 import { ProjectPrintButton } from "@/components/project-print-button"
 import { ProjectDeleteDialog } from "@/components/project-delete-dialog"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
@@ -179,6 +180,7 @@ export default async function AdminProjectDetailPage({
               >
                 <Wallet className="size-4" /> Project Finance
               </Link>
+              <ProjectFinanceQuickActions projectId={project.id} clientId={project.client_id} />
               <ProjectPrintButton projectId={project.id} />
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
@@ -432,6 +434,7 @@ export default async function AdminProjectDetailPage({
                 <TabsTrigger value="files">Files</TabsTrigger>
                 <TabsTrigger value="custom-fields">Custom Fields</TabsTrigger>
                 <TabsTrigger value="billing">Billing</TabsTrigger>
+                <TabsTrigger value="activity">Activity</TabsTrigger>
               </TabsList>
               <TabsContent value="checklist">
                 <ProjectChecklist
@@ -461,6 +464,15 @@ export default async function AdminProjectDetailPage({
                   payments={payments}
                   invoices={invoices}
                 />
+              </TabsContent>
+              <TabsContent value="activity">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <ProjectActivityFeed
+                    statusHistory={statusHistory}
+                    returnHistory={returnHistory}
+                  />
+                  <ApprovalHistory reviews={reviews} />
+                </div>
               </TabsContent>
             </Tabs>
           </div>

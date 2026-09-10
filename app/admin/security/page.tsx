@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessSystemSettings, ALL_ROLES, ROLE_KEYS, roleToKey } from "@/lib/constants"
+import { SuperAdminPasswordForm } from "@/components/super-admin-password-form"
 
 export default async function SecuritySettingsPage() {
   const user = await getCurrentUser()
@@ -49,12 +50,22 @@ export default async function SecuritySettingsPage() {
         </section>
 
         <section className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
+          <h3 className="font-semibold">Super Admin password</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Change your Acmmo Admin login password without editing environment variables.
+          </p>
+          <div className="mt-4">
+            <SuperAdminPasswordForm />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">
           <h3 className="font-semibold">Password policy</h3>
           <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
             <li>Staff passwords: minimum 6 characters</li>
             <li>Admin passwords: minimum 8 characters</li>
             <li>Stored with bcrypt hashing</li>
-            <li>Default Acmmo Admin / Admin credentials come from environment variables only</li>
+            <li>Office Admin bootstrap credentials still come from environment variables</li>
           </ul>
         </section>
 

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { StaffKpiGrid } from "@/components/staff-kpi-card"
 import { StaffProjectCard } from "@/components/staff-project-card"
 import { getCurrentUser } from "@/lib/auth"
 import { formatRolesLabel, rolesOf } from "@/lib/constants"
@@ -20,16 +21,16 @@ export default async function StaffHomePage() {
   ])
 
   const kpiItems = [
-    { label: "My Assigned", value: stats.assigned },
-    { label: "Awaiting Action", value: stats.awaiting_action },
-    { label: "In Review", value: stats.submitted_review },
-    { label: "Corrections", value: stats.correction },
-    { label: "Overdue", value: stats.overdue },
-    { label: "Completed", value: stats.completed },
+    { label: "My Assigned", value: stats.assigned, href: "/staff/projects?filter=assigned" },
+    { label: "Awaiting Action", value: stats.awaiting_action, href: "/staff/projects?filter=awaiting_action" },
+    { label: "In Review", value: stats.submitted_review, href: "/staff/projects?filter=submitted_review" },
+    { label: "Corrections", value: stats.correction, href: "/staff/projects?filter=correction" },
+    { label: "Overdue", value: stats.overdue, href: "/staff/projects?filter=overdue" },
+    { label: "Completed", value: stats.completed, href: "/staff/projects?filter=completed" },
   ]
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-1">
       <div>
         <h2 className="text-xl font-semibold">Welcome, {user.name.split(" ")[0]}</h2>
         <p className="text-sm text-muted-foreground">
@@ -37,16 +38,7 @@ export default async function StaffHomePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {kpiItems.map((item) => (
-          <Card key={item.label} className="shadow-none">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-semibold tabular-nums">{item.value}</p>
-              <p className="text-xs text-muted-foreground">{item.label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StaffKpiGrid items={kpiItems} />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -56,8 +48,8 @@ export default async function StaffHomePage() {
           </Link>
         </div>
         {assigned.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {assigned.slice(0, 5).map((p) => (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {assigned.slice(0, 6).map((p) => (
               <StaffProjectCard key={p.id} project={p} />
             ))}
           </div>
@@ -79,7 +71,11 @@ export default async function StaffHomePage() {
             {queue.slice(0, 3).map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
+                  <p className="truncate text-sm">
+                    <span className="font-semibold">{p.client_name}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    {p.name}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">{p.code} · awaiting assignment</p>
                 </div>
               </div>

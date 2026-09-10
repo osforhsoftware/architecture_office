@@ -41,16 +41,16 @@ export default async function LoginPage({
         <div className="relative flex flex-1 flex-col justify-center px-12 py-8">
           <div className="max-w-md">
             <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-sidebar-border bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-widest text-[var(--brass)]">
-              Architecture · Interiors · Permits · Construction
+              Architecture / Interiors / Construction
             </p>
             <h1 className="text-balance text-3xl font-semibold leading-tight">
-              Run your architecture and building permit office in one place.
+              Run your architecture and construction office in one place.
             </h1>
             <p className="mt-4 text-pretty leading-relaxed text-sidebar-foreground/70">
               Track every project from site visit to handover. Manage clients,
-              building permit drawings, 3D and interior work, estimation,
-              construction supervision, billing, and staff assignments — all
-              backed by a real database.
+              drawings, 3D and interior work, estimation, construction
+              supervision, billing, and staff assignments — all backed by a
+              real database.
             </p>
           </div>
         </div>

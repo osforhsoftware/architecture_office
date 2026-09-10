@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import Link from "next/link"
 import {
   flexRender,
   getCoreRowModel,
@@ -26,6 +27,7 @@ interface StaffDataTableProps {
   /** When false, hide edit/delete (Admin add-only mode) */
   canManageStaff?: boolean
   roleOptions?: string[]
+  selectedStaffId?: number | null
 }
 
 function StaffTableInner({
@@ -33,6 +35,7 @@ function StaffTableInner({
   search,
   canManageStaff = true,
   roleOptions,
+  selectedStaffId = null,
 }: StaffDataTableProps) {
   const columns = useMemo<ColumnDef<AppUser>[]>(
     () => {
@@ -111,6 +114,19 @@ function StaffTableInner({
       },
       ]
 
+      cols.push({
+        id: "activity",
+        header: "",
+        cell: ({ row }) => (
+          <Link
+            href={`/admin/staff?staff=${row.original.id}`}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Activity
+          </Link>
+        ),
+      })
+
       if (canManageStaff) {
         cols.push({
           id: "actions",
@@ -148,8 +164,8 @@ function StaffTableInner({
 
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-0 table-fixed text-sm">
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -171,7 +187,11 @@ function StaffTableInner({
                   table.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-b border-border/50 transition-colors hover:bg-muted/40"
+                      className={
+                        selectedStaffId === row.original.id
+                          ? "border-b border-primary/30 bg-primary/5"
+                          : "border-b border-border/50 transition-colors hover:bg-muted/40"
+                      }
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="px-4 py-3">

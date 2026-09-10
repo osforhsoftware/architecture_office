@@ -25,6 +25,7 @@ export default async function AdminProjectsPage({
     status?: string
     section?: string
     priority?: string
+    filter?: string
     page?: string
     pageSize?: string
   }>
@@ -37,6 +38,7 @@ export default async function AdminProjectsPage({
   const search = params.search ?? ""
   const status = params.status ?? "all"
   const section = billingOnly ? "Billing" : (params.section ?? "all")
+  const filter = params.filter ?? "all"
 
   const [result, clients, departmentNames, services, documentRows, requirementTemplates] =
     await Promise.all([
@@ -44,6 +46,7 @@ export default async function AdminProjectsPage({
       search,
       status,
       section,
+      filter,
       priority: params.priority,
       page: params.page,
       pageSize: params.pageSize,
@@ -100,6 +103,7 @@ export default async function AdminProjectsPage({
           search={search}
           status={status}
           section={section}
+          filter={filter}
           statusOptions={[...PROJECT_STATUSES]}
           sectionOptions={billingOnly ? ["Billing"] : departmentNames}
           hideSectionFilter={billingOnly}

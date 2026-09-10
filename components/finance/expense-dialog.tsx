@@ -34,6 +34,7 @@ type ExpenseDialogProps = ExpenseDialogOptions & {
   expense?: FinanceExpense
   scope?: LedgerScope
   requireProject?: boolean
+  defaultProjectId?: string | number
   open?: boolean
   onOpenChange?: (open: boolean) => void
   trigger?: React.ReactElement | null
@@ -43,6 +44,7 @@ export function ExpenseDialog({
   expense,
   scope = "project",
   requireProject = scope === "project",
+  defaultProjectId,
   vendors,
   projects,
   categories,
@@ -71,11 +73,17 @@ export function ExpenseDialog({
     setPaymentMethod(expense?.payment_method ?? "Cash")
     setStatus(expense?.status ?? "Draft")
     setVendorId(expense?.vendor_id ? String(expense.vendor_id) : null)
-    setProjectId(expense?.project_id ? String(expense.project_id) : null)
+    setProjectId(
+      expense?.project_id
+        ? String(expense.project_id)
+        : defaultProjectId != null
+          ? String(defaultProjectId)
+          : null,
+    )
     setCategoryId(expense?.category_id ? String(expense.category_id) : null)
     setAccountId(expense?.account_id ? String(expense.account_id) : null)
     setError(null)
-  }, [open, expense])
+  }, [open, expense, defaultProjectId])
 
   function onSubmit(formData: FormData) {
     setError(null)
@@ -83,7 +91,15 @@ export function ExpenseDialog({
     formData.set("ledger_scope", scope)
     formData.set("payment_method", paymentMethod)
     formData.set("status", status)
-    if (requireProject && !formData.get("project_id")) {
+    if (projectId) formData.set("project_id", projectId)
+    else formData.delete("project_id")
+    if (vendorId) formData.set("vendor_id", vendorId)
+    else formData.delete("vendor_id")
+    if (categoryId) formData.set("category_id", categoryId)
+    else formData.delete("category_id")
+    if (accountId) formData.set("account_id", accountId)
+    else formData.delete("account_id")
+    if (requireProject && !projectId) {
       setError("Project is required")
       return
     }
@@ -185,6 +201,7 @@ export function ExpenseDialog({
                         onValueChange={setProjectId}
                         placeholder="Select project"
                         searchable
+                        required={requireProject}
                       />
                     </FormField>
                   ) : null}

@@ -4,15 +4,18 @@ import { useEffect, useRef, useState } from "react"
 import { Loader2, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useTableParams } from "@/components/use-table-params"
+import { cn } from "@/lib/utils"
 
 const DEBOUNCE_MS = 400
 
 export function DebouncedSearchInput({
   placeholder = "Search...",
   paramKey = "search",
+  className,
 }: {
   placeholder?: string
   paramKey?: string
+  className?: string
 }) {
   const { updateParams, isPending, searchParams } = useTableParams()
   const urlValue = searchParams.get(paramKey) ?? ""
@@ -44,7 +47,7 @@ export function DebouncedSearchInput({
   }, [value, paramKey, updateParams, searchParams])
 
   return (
-    <div className="relative max-w-sm flex-1">
+    <div className={cn("relative max-w-sm flex-1", className)}>
       <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         placeholder={placeholder}

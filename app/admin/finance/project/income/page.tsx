@@ -56,7 +56,9 @@ export default async function ProjectIncomePage({
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">Project Finance</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Project Income</h2>
-        <p className="text-sm text-muted-foreground">Client payments and receipts linked to projects</p>
+        <p className="text-sm text-muted-foreground">
+          Client payments and receipts. Project is optional for finance clients.
+        </p>
       </div>
 
       <div className="rounded-xl border border-border/60 bg-card p-5 shadow-premium">

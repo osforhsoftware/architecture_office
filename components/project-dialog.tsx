@@ -30,6 +30,7 @@ import {
   showsResidentialPropertyFields,
   type ResidentialServiceKey,
 } from "@/lib/constants"
+import { PROJECT_CREATE_FLAGS } from "@/lib/project-list-filters"
 import {
   serviceByKey,
   type DocumentTemplateOption,
@@ -377,6 +378,25 @@ export function ProjectDialog({
                     selectAllByDefault
                   />
                 ) : null}
+
+                <FormSection title="Project Status Flags">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Optional markers — select all that apply.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {PROJECT_CREATE_FLAGS.map((flag) => (
+                      <label key={flag.key} className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          name="project_flags"
+                          value={flag.key}
+                          className="size-4 accent-primary"
+                        />
+                        <span className="text-sm">{flag.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </FormSection>
 
                 <FormSection title="Timeline & Budget">
                   <div

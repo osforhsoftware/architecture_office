@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { Pencil } from "lucide-react"
 import { toast } from "sonner"
@@ -29,6 +30,7 @@ import {
   showsResidentialPropertyFields,
   type ResidentialServiceKey,
 } from "@/lib/constants"
+import { PROJECT_CREATE_FLAGS } from "@/lib/project-list-filters"
 import { localDateInputValue } from "@/lib/project-dates"
 import {
   serviceByKey,
@@ -124,6 +126,7 @@ export function ProjectEditDialog({
   checklist?: ChecklistItem[]
   canSetStartDate?: boolean
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projectType, setProjectType] = useState(() => resolveTypeState(project.type).projectType)
@@ -239,6 +242,7 @@ export function ProjectEditDialog({
       }
       toast.success("Project details updated")
       setOpen(false)
+      router.refresh()
     })
   }
 
@@ -484,6 +488,27 @@ export function ProjectEditDialog({
                     />
                   </>
                 ) : null}
+
+                <FormSection title="Project Status Flags">
+                  <div className="flex flex-col gap-2">
+                    {PROJECT_CREATE_FLAGS.map((flag) => (
+                      <label key={flag.key} className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          name="project_flags"
+                          value={flag.key}
+                          defaultChecked={
+                            flag.key === "site_visit_pending"
+                              ? Boolean(project.site_visit_pending)
+                              : Boolean(project.under_construction)
+                          }
+                          className="size-4 accent-primary"
+                        />
+                        <span className="text-sm">{flag.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </FormSection>
 
                 <FormSection title="Timeline & Budget">
                   <div

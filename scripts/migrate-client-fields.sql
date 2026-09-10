@@ -7,3 +7,4 @@ ALTER TABLE clients ADD COLUMN street VARCHAR(500);
 ALTER TABLE clients ADD COLUMN district VARCHAR(100);
 ALTER TABLE clients ADD COLUMN aadhaar_numbers JSON;
 ALTER TABLE clients ADD COLUMN linked_numbers JSON;
+ALTER TABLE clients ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'office';

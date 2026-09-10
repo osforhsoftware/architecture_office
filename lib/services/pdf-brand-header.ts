@@ -13,10 +13,7 @@ const NAME_SIZE = 12
 const BODY_SIZE = 8
 
 export function formatPdfCompanyName(value: string): string {
-  const named = value
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-  return named || "Company"
+  return value.trim() || "Company"
 }
 
 function fitLogoToHeight(

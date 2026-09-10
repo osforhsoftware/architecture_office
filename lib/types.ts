@@ -28,6 +28,8 @@ export interface Client {
   district: string | null
   aadhaar_numbers: string[]
   linked_numbers: string[]
+  /** office = project directory client; finance = finance-only client (no project required) */
+  source: "office" | "finance"
   created_at: string
   project_count?: number
 }
@@ -62,6 +64,8 @@ export interface Project {
   project_package: string | null
   current_workflow_step_id: number | null
   work_completed_at: string | null
+  site_visit_pending?: boolean
+  under_construction?: boolean
   created_at: string
   updated_at: string
   client_name?: string

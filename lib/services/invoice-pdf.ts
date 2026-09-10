@@ -112,7 +112,7 @@ function addHeader(
     startY,
     margin: MARGIN,
     brandMaxX,
-    companyName: formatPdfCompanyName(pdfText(profile.companyName)),
+    companyName: pdfText(profile.companyName) || formatPdfCompanyName("Company"),
     detailLines: companyDetailLines(profile),
     tagline: pdfText(profile.tagline) || null,
     logoDataUrl: profile.logoDataUrl,

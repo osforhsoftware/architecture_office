@@ -95,7 +95,7 @@ export function RegisterClientProjectDialog({
       <DialogTrigger
         render={
           <Button variant="outline">
-            <UserPlus className="size-4" /> Register client + project
+            <UserPlus className="size-4" /> Project + Client
           </Button>
         }
       />

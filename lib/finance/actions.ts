@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { sql } from "@/lib/db"
+import { mysqlErrorCode, sql } from "@/lib/db"
 import { logAudit } from "@/lib/project-access"
 import {
   requireFinanceAccess,
@@ -93,6 +93,27 @@ async function ensureProjectMatchesClient(
   return null
 }
 
+let projectIncomeProjectNullable = false
+
+async function ensureProjectIncomeProjectNullable() {
+  if (projectIncomeProjectNullable) return
+  try {
+    await sql`ALTER TABLE project_income MODIFY COLUMN project_id INT NULL`
+  } catch (error) {
+    const code = String((error as { code?: string })?.code ?? "")
+    if (code && code !== "ER_DUP_FIELDNAME") {
+      console.warn("[finance] could not make project_income.project_id nullable:", error)
+    }
+  }
+  projectIncomeProjectNullable = true
+}
+
+function isBadNullError(error: unknown): boolean {
+  const code = mysqlErrorCode(error) ?? ""
+  const message = String((error as { message?: string })?.message ?? "")
+  return code === "ER_BAD_NULL_ERROR" || /cannot be null/i.test(message)
+}
+
 function resolveScope(formData: FormData, projectId: number | null): LedgerScope {
   const explicit = str(formData.get("ledger_scope") || formData.get("scope"))
   if (explicit === "project" || explicit === "office") return explicit
@@ -132,14 +153,17 @@ export async function createProjectIncome(formData: FormData) {
   const amount = num(formData.get("amount"))
   if (amount <= 0) return { error: "Amount must be greater than zero" }
 
+  const clientId = optId(formData.get("client_id"))
+  if (!clientId) return { error: "Client is required for project income" }
+
   const projectId = optId(formData.get("project_id"))
-  if (!projectId) return { error: "Project is required for project income" }
+  if (projectId) {
+    const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
+    if (clientMatch?.error) return clientMatch
+  }
 
   const incomeDate = str(formData.get("income_date")) || today()
   const paymentMethod = str(formData.get("payment_method")) || "Cash"
-  const clientId = optId(formData.get("client_id"))
-  const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
-  if (clientMatch?.error) return clientMatch
   const invoiceId = optId(formData.get("invoice_id"))
   const categoryId = optId(formData.get("category_id"))
   const accountId = optId(formData.get("account_id"))
@@ -154,30 +178,48 @@ export async function createProjectIncome(formData: FormData) {
       SELECT id FROM project_income
       WHERE deleted_at IS NULL AND reference_number = ${reference}
         AND income_date = ${incomeDate} AND amount = ${amount}
-        AND project_id = ${projectId}
+        AND client_id = ${clientId}
+        AND (
+          (${projectId} IS NULL AND project_id IS NULL) OR
+          project_id = ${projectId}
+        )
       LIMIT 1
     `) as { id: number }[]
     if (dup[0]) return { error: "Possible duplicate income with same reference/amount/date" }
   }
 
-  const rows = (await sql`
-    INSERT INTO project_income (
-      receipt_number, income_date, client_id, project_id, invoice_id, category_id,
-      account_id, payment_method, amount, reference_number, notes, attachment_path,
-      status, created_by, approved_by, approved_at
-    ) VALUES (
-      ${receiptNumber}, ${incomeDate}, ${clientId}, ${projectId}, ${invoiceId}, ${categoryId},
-      ${accountId}, ${paymentMethod}, ${amount}, ${reference}, ${notes}, ${attachment},
-      ${status}, ${user.id},
-      ${status === "Approved" ? user.id : null},
-      ${status === "Approved" ? new Date().toISOString().slice(0, 19).replace("T", " ") : null}
-    )
-  `) as { id: number }[]
+  async function insertRow() {
+    return (await sql`
+      INSERT INTO project_income (
+        receipt_number, income_date, client_id, project_id, invoice_id, category_id,
+        account_id, payment_method, amount, reference_number, notes, attachment_path,
+        status, created_by, approved_by, approved_at
+      ) VALUES (
+        ${receiptNumber}, ${incomeDate}, ${clientId}, ${projectId}, ${invoiceId}, ${categoryId},
+        ${accountId}, ${paymentMethod}, ${amount}, ${reference}, ${notes}, ${attachment},
+        ${status}, ${user.id},
+        ${status === "Approved" ? user.id : null},
+        ${status === "Approved" ? new Date().toISOString().slice(0, 19).replace("T", " ") : null}
+      )
+    `) as { id: number }[]
+  }
+
+  let rows: { id: number }[]
+  try {
+    rows = await insertRow()
+  } catch (error) {
+    if (!projectId && isBadNullError(error)) {
+      await ensureProjectIncomeProjectNullable()
+      rows = await insertRow()
+    } else {
+      throw error
+    }
+  }
   const id = Number(rows[0]?.id)
 
   if (status === "Approved") {
     await recordLedgerEntry({
-      scope: "project",
+      scope: projectId ? "project" : "office",
       date: incomeDate,
       amount,
       direction: "in",
@@ -190,7 +232,7 @@ export async function createProjectIncome(formData: FormData) {
       createdBy: user.id,
       txnType: "income",
     })
-    await syncProjectFinance(projectId)
+    if (projectId) await syncProjectFinance(projectId)
     await notifyFinanceManagers({
       type: "finance.payment_received",
       title: "Project payment received",
@@ -202,7 +244,11 @@ export async function createProjectIncome(formData: FormData) {
   }
 
   await logAudit(user.id, "finance.income.create", "project_income", id, { receiptNumber, amount, status })
-  revalidateFinance([`/admin/finance/project/${projectId}`, `/admin/projects/${projectId}`])
+  revalidateFinance(
+    projectId
+      ? [`/admin/finance/project/${projectId}`, `/admin/projects/${projectId}`]
+      : undefined,
+  )
   return { success: true, id, receiptNumber, scope: "project" as const }
 }
 
@@ -297,14 +343,16 @@ async function updateProjectIncome(formData: FormData) {
   const amount = num(formData.get("amount"))
   if (amount <= 0) return { error: "Amount must be greater than zero" }
 
-  const projectId = optId(formData.get("project_id"))
-  if (!projectId) return { error: "Project is required" }
+  const clientId = optId(formData.get("client_id"))
+  if (!clientId) return { error: "Client is required for project income" }
 
+  const projectId = optId(formData.get("project_id"))
+  if (projectId) {
+    const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
+    if (clientMatch?.error) return clientMatch
+  }
   const incomeDate = str(formData.get("income_date")) || today()
   const paymentMethod = str(formData.get("payment_method")) || "Cash"
-  const clientId = optId(formData.get("client_id"))
-  const clientMatch = await ensureProjectMatchesClient(projectId, clientId)
-  if (clientMatch?.error) return clientMatch
   const invoiceId = optId(formData.get("invoice_id"))
   const categoryId = optId(formData.get("category_id"))
   const accountId = optId(formData.get("account_id"))
@@ -312,6 +360,8 @@ async function updateProjectIncome(formData: FormData) {
   const notes = str(formData.get("notes")) || null
   const attachment = str(formData.get("attachment_path")) || null
   const status = str(formData.get("status")) || String(existing[0].status)
+
+  if (!projectId) await ensureProjectIncomeProjectNullable()
 
   await sql`
     UPDATE project_income SET
@@ -334,7 +384,7 @@ async function updateProjectIncome(formData: FormData) {
 
   if (status === "Approved" && existing[0].status !== "Approved") {
     await recordLedgerEntry({
-      scope: "project",
+      scope: projectId ? "project" : "office",
       date: incomeDate,
       amount,
       direction: "in",
@@ -347,11 +397,11 @@ async function updateProjectIncome(formData: FormData) {
       createdBy: user.id,
       txnType: "income",
     })
-    await syncProjectFinance(projectId)
+    if (projectId) await syncProjectFinance(projectId)
   }
 
   await logAudit(user.id, "finance.income.update", "project_income", id, { amount, status })
-  revalidateFinance([`/admin/finance/project/${projectId}`])
+  revalidateFinance(projectId ? [`/admin/finance/project/${projectId}`] : undefined)
   return { success: true }
 }
 

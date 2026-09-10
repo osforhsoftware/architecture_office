@@ -468,11 +468,11 @@ export function InvoiceEditor({
           <section className="border border-neutral-900/15 bg-white p-5">
             <div className="flex flex-col gap-4 border-b border-neutral-900/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-900">
+                <p className="text-[11px] font-bold tracking-[0.02em] text-neutral-900">
                   {profile.companyName || "Architecture Studio"}
                 </p>
                 <p className="mt-1 text-xs text-neutral-500">
-                  {profile.tagline || "Architecture • Interiors • Planning"}
+                  {profile.tagline || "Architecture / Interiors / Construction"}
                 </p>
                 {profile.phone?.trim() ? (
                   <p className="mt-1 text-xs font-medium text-neutral-700">

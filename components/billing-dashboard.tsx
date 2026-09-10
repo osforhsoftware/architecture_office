@@ -65,6 +65,9 @@ export function BillingDashboard({
     totalCollected: number
     outstanding: number
     overdueCount: number
+    paidCount: number
+    partialCount: number
+    unpaidCount: number
   }
   paymentsOnly?: boolean
 }) {
@@ -137,14 +140,31 @@ export function BillingDashboard({
           className="rounded-xl border border-border/60 bg-card p-5 shadow-premium"
         >
           <h3 className="text-sm font-semibold">Invoice Timeline</h3>
-          <p className="text-xs text-muted-foreground">Payment status breakdown</p>
+          <p className="text-xs text-muted-foreground">
+            {invoiceOverview ? "Invoice status breakdown" : "Project payment status"}
+          </p>
           <div className="mt-4 space-y-4">
             {[
-              { label: "Fully Paid", count: overview.paidProjects, color: "bg-emerald-500" },
-              { label: "Partially Paid", count: overview.partialProjects, color: "bg-amber-500" },
-              { label: "Unpaid", count: overview.unpaidProjects, color: "bg-rose-500" },
+              {
+                label: "Fully Paid",
+                count: invoiceOverview?.paidCount ?? overview.paidProjects,
+                color: "bg-emerald-500",
+              },
+              {
+                label: "Partially Paid",
+                count: invoiceOverview?.partialCount ?? overview.partialProjects,
+                color: "bg-amber-500",
+              },
+              {
+                label: "Unpaid",
+                count: invoiceOverview?.unpaidCount ?? overview.unpaidProjects,
+                color: "bg-rose-500",
+              },
             ].map((item) => {
-              const total = overview.paidProjects + overview.partialProjects + overview.unpaidProjects
+              const paid = invoiceOverview?.paidCount ?? overview.paidProjects
+              const partial = invoiceOverview?.partialCount ?? overview.partialProjects
+              const unpaid = invoiceOverview?.unpaidCount ?? overview.unpaidProjects
+              const total = paid + partial + unpaid
               const pct = total ? Math.round((item.count / total) * 100) : 0
               return (
                 <div key={item.label}>

@@ -49,6 +49,7 @@ try {
   await addColumn("district", "VARCHAR(100)", "VARCHAR(255)")
   await addColumn("aadhaar_numbers", "JSON", "TEXT")
   await addColumn("linked_numbers", "JSON", "TEXT")
+  await addColumn("source", "VARCHAR(20) NOT NULL DEFAULT 'office'", "VARCHAR(50) DEFAULT 'office'")
   console.log("Client fields migration applied successfully.")
 } catch (error) {
   console.error("Failed to apply client fields migration:", error.message)

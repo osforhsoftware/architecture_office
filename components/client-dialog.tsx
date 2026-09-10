@@ -22,11 +22,22 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { createClient, updateClient } from "@/lib/actions"
 import { KERALA_DISTRICTS } from "@/lib/constants"
+import type { ClientSource } from "@/lib/client-source"
 import type { Client } from "@/lib/types"
 
 const DISTRICT_OPTIONS = KERALA_DISTRICTS.map((d) => ({ value: d, label: d }))
 
-export function ClientDialog({ client }: { client?: Client }) {
+export function ClientDialog({
+  client,
+  onCreated,
+  triggerLabel,
+  source = "office",
+}: {
+  client?: Client
+  onCreated?: (client: { id: number; name: string }) => void
+  triggerLabel?: string
+  source?: ClientSource
+}) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -64,12 +75,18 @@ export function ClientDialog({ client }: { client?: Client }) {
     formData.set("linked_numbers", JSON.stringify(linkedNumbers))
     startTransition(async () => {
       const res = isEdit ? await updateClient(formData) : await createClient(formData)
-      if (res && "error" in res) {
-        setError(res.error)
+      if (res && "error" in res && res.error) {
+        setError(String(res.error))
         return
       }
       toast.success(isEdit ? "Client updated" : "Client added")
       setOpen(false)
+      if (!isEdit && res && "clientId" in res) {
+        const createdId = Number(res.clientId)
+        if (Number.isFinite(createdId) && createdId > 0) {
+          onCreated?.({ id: createdId, name })
+        }
+      }
     })
   }
 
@@ -82,23 +99,32 @@ export function ClientDialog({ client }: { client?: Client }) {
               <Pencil className="size-4" /> Edit
             </Button>
           ) : (
-            <Button>
-              <Plus className="size-4" /> Add Client
+            <Button size={triggerLabel ? "sm" : "default"} variant={triggerLabel ? "outline" : "default"}>
+              <Plus className="size-4" /> {triggerLabel ?? (source === "finance" ? "Add Finance Client" : "Add Client")}
             </Button>
           )
         }
       />
       <FormDialogShell
-        title={isEdit ? "Edit Client" : "Add Client"}
+        title={
+          isEdit
+            ? "Edit Client"
+            : source === "finance"
+              ? "Add Finance Client"
+              : "Add Client"
+        }
         description={
           isEdit
             ? "Update the client's contact details."
-            : "Add a new client to the office directory."
+            : source === "finance"
+              ? "Add a finance client. A project is not required — they appear on the clients page under Finance."
+              : "Add a new client to the office directory."
         }
       >
         {open ? (
           <form action={onSubmit} className="flex min-h-0 flex-1 flex-col">
             {isEdit ? <input type="hidden" name="id" value={client!.id} /> : null}
+            {!isEdit ? <input type="hidden" name="source" value={source} /> : null}
 
             <FormDialogBody>
               <div className="flex flex-col gap-5">
@@ -184,7 +210,7 @@ export function ClientDialog({ client }: { client?: Client }) {
             </FormDialogBody>
 
             <FormDialogFooter
-              submitLabel={pending ? "Saving..." : isEdit ? "Save Changes" : "Add Client"}
+              submitLabel={pending ? "Saving..." : isEdit ? "Save Changes" : source === "finance" ? "Add Finance Client" : "Add Client"}
               pending={pending}
             />
           </form>

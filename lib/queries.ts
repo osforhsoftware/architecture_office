@@ -37,6 +37,9 @@ import { listProjectServices, listProjectServiceDefs } from "./project-services"
 import { listDocumentTemplates } from "./document-templates"
 import { deriveInvoiceStatus, normalizeDateField } from "./invoice-utils"
 import { attachUserRoles, attachUserRolesMany } from "./staff-roles"
+import { ensureClientExtraColumns } from "./client-schema"
+import { parseClientSource } from "./client-source"
+import { ensureProjectAcmmoUpdates } from "./project-schema"
 
 export type { PaginatedResult } from "./pagination"
 
@@ -64,6 +67,7 @@ function normalizeClient(client: Client): Client {
     district: client.district ?? null,
     aadhaar_numbers: parseJsonStringList(client.aadhaar_numbers),
     linked_numbers: parseJsonStringList(client.linked_numbers),
+    source: parseClientSource(client.source),
     project_count: toSafeNumber(client.project_count),
   }
 }
@@ -76,6 +80,8 @@ export interface ProjectListFilters extends PaginationParams {
   status?: string
   section?: string
   priority?: string
+  /** Dashboard filter — attention, delayed, site_visit_pending, etc. */
+  filter?: string
 }
 
 export interface DepartmentRow {
@@ -313,6 +319,7 @@ export async function getAuditLogsPaginated(
 // ---------------------------------------------------------------------------
 
 export async function getClients(search?: string): Promise<Client[]> {
+  await ensureClientExtraColumns()
   if (search && search.trim()) {
     const q = `%${search.trim()}%`
     return normalizeClients(
@@ -336,6 +343,7 @@ export async function getClients(search?: string): Promise<Client[]> {
 }
 
 export async function getClient(id: number): Promise<Client | null> {
+  await ensureClientExtraColumns()
   const rows = (await sql`SELECT * FROM clients WHERE id = ${id} LIMIT 1`) as Client[]
   return rows[0] ? normalizeClient(rows[0]) : null
 }
@@ -345,12 +353,25 @@ export async function getClientCount(): Promise<number> {
   return toSafeNumber(rows[0]?.count)
 }
 
+export interface ClientListFilters extends PaginationParams {
+  district?: string
+  hasProjects?: string
+  source?: string
+}
+
 export async function getClientsPaginated(
-  params: PaginationParams = {},
+  params: ClientListFilters = {},
 ): Promise<PaginatedResult<Client>> {
+  await ensureClientExtraColumns()
   const requestedPage = parsePage(params.page)
   const pageSize = parsePageSize(params.pageSize)
   const search = buildSearchPattern(params.search)
+  const district =
+    params.district && params.district !== "all" ? params.district : null
+  const hasProjects =
+    params.hasProjects === "with" ? "with" : params.hasProjects === "without" ? "without" : null
+  const source =
+    params.source === "finance" || params.source === "office" ? params.source : null
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -360,7 +381,15 @@ export async function getClientsPaginated(
       c.phone LIKE ${search} OR
       c.email LIKE ${search} OR
       c.address LIKE ${search} OR
+      c.district LIKE ${search} OR
       CAST(c.id AS CHAR) LIKE ${search})
+      AND (${district} IS NULL OR c.district = ${district})
+      AND (
+        ${hasProjects} IS NULL OR
+        (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
+        (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
+      )
+      AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
   `) as { count: number }[]
   const total = toSafeNumber(countRows[0]?.count)
   const page = clampPage(requestedPage, total, pageSize)
@@ -377,7 +406,15 @@ export async function getClientsPaginated(
             c.phone LIKE ${search} OR
             c.email LIKE ${search} OR
             c.address LIKE ${search} OR
+            c.district LIKE ${search} OR
             CAST(c.id AS CHAR) LIKE ${search})
+            AND (${district} IS NULL OR c.district = ${district})
+            AND (
+              ${hasProjects} IS NULL OR
+              (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
+              (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
+            )
+            AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
           ORDER BY c.created_at DESC
         `) as Client[])
       : ((await sql`
@@ -389,7 +426,15 @@ export async function getClientsPaginated(
             c.phone LIKE ${search} OR
             c.email LIKE ${search} OR
             c.address LIKE ${search} OR
+            c.district LIKE ${search} OR
             CAST(c.id AS CHAR) LIKE ${search})
+            AND (${district} IS NULL OR c.district = ${district})
+            AND (
+              ${hasProjects} IS NULL OR
+              (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
+              (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
+            )
+            AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
           ORDER BY c.created_at DESC
           LIMIT ${pageSize} OFFSET ${offset}
         `) as Client[])
@@ -470,11 +515,13 @@ export async function getProjects(filters?: {
 export async function getProjectsPaginated(
   filters: ProjectListFilters = {},
 ): Promise<PaginatedResult<Project>> {
+  await ensureProjectAcmmoUpdates()
   const requestedPage = parsePage(filters.page)
   const pageSize = parsePageSize(filters.pageSize)
   const status = filters.status && filters.status !== "all" ? filters.status : null
   const section = filters.section && filters.section !== "all" ? filters.section : null
   const priority = filters.priority && filters.priority !== "all" ? filters.priority : null
+  const listFilter = filters.filter && filters.filter !== "all" ? filters.filter : null
   const search = buildSearchPattern(filters.search)
 
   const countRows = (await sql`
@@ -484,6 +531,20 @@ export async function getProjectsPaginated(
     WHERE (${status} IS NULL OR p.status = ${status})
       AND (${section} IS NULL OR p.section = ${section})
       AND (${priority} IS NULL OR p.priority = ${priority})
+      AND (
+        ${listFilter} IS NULL OR
+        (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
+        (${listFilter} = 'active' AND p.status IN ('Assigned', 'In Progress', 'Correction Required', 'Work Completed')) OR
+        (${listFilter} = 'delayed' AND p.due_date < CURDATE() AND p.status NOT IN ('Closed', 'Completed', 'Cancelled')) OR
+        (${listFilter} = 'site_visit_pending' AND p.site_visit_pending = 1) OR
+        (${listFilter} = 'under_construction' AND p.under_construction = 1) OR
+        (${listFilter} = 'plinth_inspection' AND EXISTS (
+          SELECT 1 FROM workflow_steps ws
+          WHERE ws.project_id = p.id
+            AND ws.service_key = 'plinth_level_inspection'
+            AND ws.step_status IN ('pending', 'active')
+        ))
+      )
       AND (${search} IS NULL OR
         p.name LIKE ${search} OR
         p.code LIKE ${search} OR
@@ -510,6 +571,20 @@ export async function getProjectsPaginated(
           WHERE (${status} IS NULL OR p.status = ${status})
             AND (${section} IS NULL OR p.section = ${section})
             AND (${priority} IS NULL OR p.priority = ${priority})
+            AND (
+              ${listFilter} IS NULL OR
+              (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
+              (${listFilter} = 'active' AND p.status IN ('Assigned', 'In Progress', 'Correction Required', 'Work Completed')) OR
+              (${listFilter} = 'delayed' AND p.due_date < CURDATE() AND p.status NOT IN ('Closed', 'Completed', 'Cancelled')) OR
+              (${listFilter} = 'site_visit_pending' AND p.site_visit_pending = 1) OR
+              (${listFilter} = 'under_construction' AND p.under_construction = 1) OR
+              (${listFilter} = 'plinth_inspection' AND EXISTS (
+                SELECT 1 FROM workflow_steps ws
+                WHERE ws.project_id = p.id
+                  AND ws.service_key = 'plinth_level_inspection'
+                  AND ws.step_status IN ('pending', 'active')
+              ))
+            )
             AND (${search} IS NULL OR
               p.name LIKE ${search} OR
               p.code LIKE ${search} OR
@@ -521,7 +596,10 @@ export async function getProjectsPaginated(
               c.name LIKE ${search} OR
               c.phone LIKE ${search} OR
               c.email LIKE ${search})
-          ORDER BY p.updated_at DESC
+          ORDER BY
+            CASE p.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,
+            ISNULL(p.due_date), p.due_date,
+            p.updated_at DESC
         `) as Project[])
       : ((await sql`
           SELECT p.*, c.name AS client_name, c.phone AS client_phone, u.name AS assignee_name
@@ -531,6 +609,20 @@ export async function getProjectsPaginated(
           WHERE (${status} IS NULL OR p.status = ${status})
             AND (${section} IS NULL OR p.section = ${section})
             AND (${priority} IS NULL OR p.priority = ${priority})
+            AND (
+              ${listFilter} IS NULL OR
+              (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
+              (${listFilter} = 'active' AND p.status IN ('Assigned', 'In Progress', 'Correction Required', 'Work Completed')) OR
+              (${listFilter} = 'delayed' AND p.due_date < CURDATE() AND p.status NOT IN ('Closed', 'Completed', 'Cancelled')) OR
+              (${listFilter} = 'site_visit_pending' AND p.site_visit_pending = 1) OR
+              (${listFilter} = 'under_construction' AND p.under_construction = 1) OR
+              (${listFilter} = 'plinth_inspection' AND EXISTS (
+                SELECT 1 FROM workflow_steps ws
+                WHERE ws.project_id = p.id
+                  AND ws.service_key = 'plinth_level_inspection'
+                  AND ws.step_status IN ('pending', 'active')
+              ))
+            )
             AND (${search} IS NULL OR
               p.name LIKE ${search} OR
               p.code LIKE ${search} OR
@@ -542,7 +634,10 @@ export async function getProjectsPaginated(
               c.name LIKE ${search} OR
               c.phone LIKE ${search} OR
               c.email LIKE ${search})
-          ORDER BY p.updated_at DESC
+          ORDER BY
+            CASE p.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,
+            ISNULL(p.due_date), p.due_date,
+            p.updated_at DESC
           LIMIT ${pageSize} OFFSET ${offset}
         `) as Project[])
 
@@ -550,13 +645,20 @@ export async function getProjectsPaginated(
 }
 
 export async function getReturnedProjects(): Promise<Project[]> {
+  return getAttentionProjects()
+}
+
+export async function getAttentionProjects(): Promise<Project[]> {
   return (await sql`
     SELECT p.*, c.name AS client_name, c.phone AS client_phone, u.name AS assignee_name
     FROM projects p
     JOIN clients c ON c.id = p.client_id
     LEFT JOIN app_users u ON u.id = p.assigned_to
-    WHERE p.status IN ('Returned', 'Pending Review', 'Correction Required')
-    ORDER BY p.updated_at DESC
+    WHERE p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')
+    ORDER BY
+      CASE p.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,
+      ISNULL(p.due_date), p.due_date,
+      p.updated_at DESC
   `) as Project[]
 }
 
@@ -599,59 +701,220 @@ export async function getStaffAllProjects(userId: number, userName: string): Pro
       UNION
       SELECT project_id FROM return_history WHERE created_by = ${userName}
     )
-    ORDER BY p.updated_at DESC
+    ORDER BY
+      CASE p.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,
+      CASE p.status
+        WHEN 'Correction Required' THEN 0
+        WHEN 'Assigned' THEN 1
+        WHEN 'In Progress' THEN 2
+        WHEN 'Work Completed' THEN 3
+        WHEN 'Pending Review' THEN 4
+        ELSE 5
+      END,
+      ISNULL(p.due_date), p.due_date,
+      p.updated_at DESC
   `) as Project[]
   return attachSiteAssigneesMany(rows)
+}
+
+export async function getStaffProjectsFiltered(
+  userId: number,
+  userName: string,
+  filter?: string,
+): Promise<Project[]> {
+  const listFilter = filter && filter !== "all" ? filter : null
+  const rows = (await sql`
+    SELECT p.*, c.name AS client_name, c.phone AS client_phone, u.name AS assignee_name
+    FROM projects p
+    JOIN clients c ON c.id = p.client_id
+    LEFT JOIN app_users u ON u.id = p.assigned_to
+    WHERE (
+      p.assigned_to = ${userId}
+      OR EXISTS (SELECT 1 FROM project_assignees pa WHERE pa.project_id = p.id AND pa.user_id = ${userId})
+      OR EXISTS (SELECT 1 FROM status_history sh WHERE sh.project_id = p.id AND sh.created_by = ${userName})
+      OR EXISTS (SELECT 1 FROM return_history rh WHERE rh.project_id = p.id AND rh.created_by = ${userName})
+    )
+    AND (
+      ${listFilter} IS NULL OR
+      (
+        (
+          p.assigned_to = ${userId}
+          OR EXISTS (SELECT 1 FROM project_assignees pa WHERE pa.project_id = p.id AND pa.user_id = ${userId})
+        )
+        AND (
+          (${listFilter} = 'assigned' AND p.status NOT IN ('Closed', 'Completed', 'Cancelled')) OR
+          (${listFilter} = 'awaiting_action' AND p.status IN ('Assigned', 'In Progress', 'Correction Required', 'Work Completed')) OR
+          (${listFilter} = 'submitted_review' AND p.status = 'Pending Review') OR
+          (${listFilter} = 'correction' AND p.status = 'Correction Required') OR
+          (${listFilter} = 'overdue' AND p.due_date < CURDATE() AND p.status NOT IN ('Closed', 'Completed')) OR
+          (${listFilter} = 'completed' AND p.status IN ('Closed', 'Completed'))
+        )
+      )
+    )
+    ORDER BY
+      CASE p.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,
+      CASE p.status
+        WHEN 'Correction Required' THEN 0
+        WHEN 'Assigned' THEN 1
+        WHEN 'In Progress' THEN 2
+        WHEN 'Work Completed' THEN 3
+        WHEN 'Pending Review' THEN 4
+        ELSE 5
+      END,
+      ISNULL(p.due_date), p.due_date,
+      p.updated_at DESC
+  `) as Project[]
+  return attachSiteAssigneesMany(rows)
+}
+
+export type UserActivityEvent = {
+  id: string
+  title: string
+  note: string | null
+  at: string
+  kind: "status" | "return" | "assignment" | "review"
+}
+
+export async function getUserActivity(
+  userId: number,
+  userName: string,
+  limit = 50,
+): Promise<UserActivityEvent[]> {
+  const [statusRows, returnRows, assignmentRows, reviewRows] = await Promise.all([
+    sql`
+      SELECT id, status, note, created_at
+      FROM status_history
+      WHERE created_by = ${userName}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    ` as Promise<{ id: number; status: string; note: string | null; created_at: string }[]>,
+    sql`
+      SELECT id, reason, notes, created_at
+      FROM return_history
+      WHERE created_by = ${userName}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    ` as Promise<{ id: number; reason: string; notes: string | null; created_at: string }[]>,
+    sql`
+      SELECT wa.id, p.name AS project_name, ws.label AS step_label, wa.created_at
+      FROM workflow_assignments wa
+      JOIN projects p ON p.id = wa.project_id
+      JOIN workflow_steps ws ON ws.id = wa.workflow_step_id
+      WHERE wa.user_id = ${userId}
+      ORDER BY wa.created_at DESC
+      LIMIT ${limit}
+    ` as Promise<
+      { id: number; project_name: string; step_label: string; created_at: string }[]
+    >,
+    sql`
+      SELECT wr.id, p.name AS project_name, wr.decision, wr.note, wr.created_at
+      FROM workflow_reviews wr
+      JOIN projects p ON p.id = wr.project_id
+      WHERE wr.reviewed_by = ${userId}
+      ORDER BY wr.created_at DESC
+      LIMIT ${limit}
+    ` as Promise<
+      {
+        id: number
+        project_name: string
+        decision: string
+        note: string | null
+        created_at: string
+      }[]
+    >,
+  ])
+
+  const events: UserActivityEvent[] = [
+    ...statusRows.map((row) => ({
+      id: `status-${row.id}`,
+      title: `Status → ${row.status}`,
+      note: row.note,
+      at: row.created_at,
+      kind: "status" as const,
+    })),
+    ...returnRows.map((row) => ({
+      id: `return-${row.id}`,
+      title: `Returned: ${row.reason}`,
+      note: row.notes,
+      at: row.created_at,
+      kind: "return" as const,
+    })),
+    ...assignmentRows.map((row) => ({
+      id: `assign-${row.id}`,
+      title: `Assigned to ${row.step_label} · ${row.project_name}`,
+      note: null,
+      at: row.created_at,
+      kind: "assignment" as const,
+    })),
+    ...reviewRows.map((row) => ({
+      id: `review-${row.id}`,
+      title: `${row.decision} · ${row.project_name}`,
+      note: row.note,
+      at: row.created_at,
+      kind: "review" as const,
+    })),
+  ]
+
+  return events
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, limit)
 }
 
 export async function getStaffDashboardStats(userId: number, userName: string) {
   const rows = (await sql`
     SELECT
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status NOT IN ('Closed','Completed','Cancelled') THEN 1 ELSE 0 END) AS assigned,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status IN ('Assigned','In Progress','Correction Required','Work Completed') THEN 1 ELSE 0 END) AS awaiting_action,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status = 'Pending Review' THEN 1 ELSE 0 END) AS submitted_review,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status = 'Correction Required' THEN 1 ELSE 0 END) AS correction,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status = 'Returned' THEN 1 ELSE 0 END) AS returned,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.status IN ('Closed','Completed') THEN 1 ELSE 0 END) AS completed,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND p.status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS upcoming_deadlines,
-      SUM(CASE WHEN p.assigned_to = ${userId} AND p.due_date < CURDATE() AND p.status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS overdue,
-      SUM(CASE WHEN p.status NOT IN ('Closed','Completed','Returned')
-        AND (
-          p.assigned_to = ${userId}
-          OR EXISTS (
-            SELECT 1 FROM project_assignees pa
-            WHERE pa.project_id = p.id AND pa.user_id = ${userId}
-          )
-        ) THEN 1 ELSE 0 END) AS active,
-      COUNT(DISTINCT p.id) AS total
-    FROM projects p
-    WHERE p.assigned_to = ${userId}
-      OR EXISTS (SELECT 1 FROM project_assignees pa WHERE pa.project_id = p.id AND pa.user_id = ${userId})
-      OR EXISTS (SELECT 1 FROM status_history sh WHERE sh.project_id = p.id AND sh.created_by = ${userName})
-      OR EXISTS (SELECT 1 FROM return_history rh WHERE rh.project_id = p.id AND rh.created_by = ${userName})
+      SUM(CASE WHEN on_staff = 1 AND status NOT IN ('Closed','Completed','Cancelled') THEN 1 ELSE 0 END) AS assigned,
+      SUM(CASE WHEN on_staff = 1 AND status IN ('Assigned','In Progress','Correction Required','Work Completed') THEN 1 ELSE 0 END) AS awaiting_action,
+      SUM(CASE WHEN on_staff = 1 AND status = 'Pending Review' THEN 1 ELSE 0 END) AS submitted_review,
+      SUM(CASE WHEN on_staff = 1 AND status = 'Correction Required' THEN 1 ELSE 0 END) AS correction,
+      SUM(CASE WHEN on_staff = 1 AND status = 'Returned' THEN 1 ELSE 0 END) AS returned,
+      SUM(CASE WHEN on_staff = 1 AND status IN ('Closed','Completed') THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN on_staff = 1 AND due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS upcoming_deadlines,
+      SUM(CASE WHEN on_staff = 1 AND due_date < CURDATE() AND status NOT IN ('Closed','Completed') THEN 1 ELSE 0 END) AS overdue,
+      SUM(CASE WHEN on_staff = 1 AND status NOT IN ('Closed','Completed','Returned') THEN 1 ELSE 0 END) AS active,
+      COUNT(*) AS total
+    FROM (
+      SELECT
+        p.status,
+        p.due_date,
+        CASE
+          WHEN p.assigned_to = ${userId}
+            OR EXISTS (
+              SELECT 1 FROM project_assignees pa
+              WHERE pa.project_id = p.id AND pa.user_id = ${userId}
+            )
+          THEN 1 ELSE 0
+        END AS on_staff
+      FROM projects p
+      WHERE p.assigned_to = ${userId}
+        OR EXISTS (SELECT 1 FROM project_assignees pa WHERE pa.project_id = p.id AND pa.user_id = ${userId})
+        OR EXISTS (SELECT 1 FROM status_history sh WHERE sh.project_id = p.id AND sh.created_by = ${userName})
+        OR EXISTS (SELECT 1 FROM return_history rh WHERE rh.project_id = p.id AND rh.created_by = ${userName})
+    ) staff_projects
   `) as {
-    assigned: number
-    awaiting_action: number
-    submitted_review: number
-    correction: number
-    returned: number
-    completed: number
-    upcoming_deadlines: number
-    overdue: number
-    active: number
-    total: number
+    assigned: unknown
+    awaiting_action: unknown
+    submitted_review: unknown
+    correction: unknown
+    returned: unknown
+    completed: unknown
+    upcoming_deadlines: unknown
+    overdue: unknown
+    active: unknown
+    total: unknown
   }[]
-  return rows[0] ?? {
-    assigned: 0,
-    awaiting_action: 0,
-    submitted_review: 0,
-    correction: 0,
-    returned: 0,
-    completed: 0,
-    upcoming_deadlines: 0,
-    overdue: 0,
-    active: 0,
-    total: 0,
+  const row = rows[0]
+  return {
+    assigned: toSafeNumber(row?.assigned),
+    awaiting_action: toSafeNumber(row?.awaiting_action),
+    submitted_review: toSafeNumber(row?.submitted_review),
+    correction: toSafeNumber(row?.correction),
+    returned: toSafeNumber(row?.returned),
+    completed: toSafeNumber(row?.completed),
+    upcoming_deadlines: toSafeNumber(row?.upcoming_deadlines),
+    overdue: toSafeNumber(row?.overdue),
+    active: toSafeNumber(row?.active),
+    total: toSafeNumber(row?.total),
   }
 }
 
@@ -1004,6 +1267,9 @@ export interface DashboardStats {
   waitingForGovernment: number
   waitingForPayment: number
   delayed: number
+  siteVisitPending: number
+  underConstruction: number
+  plinthInspection: number
   completedToday: number
   completedThisMonth: number
   closed: number
@@ -1019,6 +1285,7 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
+  await ensureProjectAcmmoUpdates()
   const totals = (await sql`
     SELECT
       COUNT(*) AS total,
@@ -1032,6 +1299,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       COALESCE(SUM(CASE WHEN status = 'Waiting for Government Approval' THEN 1 ELSE 0 END), 0) AS waiting_for_government,
       COALESCE(SUM(CASE WHEN status = 'Waiting for Payment' THEN 1 ELSE 0 END), 0) AS waiting_for_payment,
       COALESCE(SUM(CASE WHEN due_date < CURDATE() AND status NOT IN ('Closed','Completed','Cancelled') THEN 1 ELSE 0 END), 0) AS \`delayed\`,
+      COALESCE(SUM(CASE WHEN site_visit_pending = 1 THEN 1 ELSE 0 END), 0) AS site_visit_pending,
+      COALESCE(SUM(CASE WHEN under_construction = 1 THEN 1 ELSE 0 END), 0) AS under_construction,
+      COALESCE(SUM((
+        SELECT COUNT(*) FROM workflow_steps ws
+        WHERE ws.project_id = projects.id
+          AND ws.service_key = 'plinth_level_inspection'
+          AND ws.step_status IN ('pending', 'active')
+      )), 0) AS plinth_inspection,
       COALESCE(SUM(CASE WHEN status IN ('Completed','Closed') AND DATE(updated_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS completed_today,
       COALESCE(SUM(CASE WHEN status IN ('Completed','Closed') AND updated_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS completed_this_month,
       COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed,
@@ -1076,6 +1351,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     waitingForGovernment: toSafeNumber(t.waiting_for_government),
     waitingForPayment: toSafeNumber(t.waiting_for_payment),
     delayed: toSafeNumber(t.delayed),
+    siteVisitPending: toSafeNumber(t.site_visit_pending),
+    underConstruction: toSafeNumber(t.under_construction),
+    plinthInspection: toSafeNumber(t.plinth_inspection),
     completedToday: toSafeNumber(t.completed_today),
     completedThisMonth: toSafeNumber(t.completed_this_month),
     closed: toSafeNumber(t.closed),
@@ -1397,7 +1675,7 @@ const DEFAULT_OFFICE_PROFILE: OfficeProfile = {
   gstNumber: "",
   logoDataUrl: null,
   termsAndConditions: DEFAULT_INVOICE_TERMS,
-  tagline: "Architecture • Interiors • Planning",
+  tagline: "Architecture / Interiors / Construction",
   bankName: "",
   accountName: "",
   accountNumber: "",
@@ -1634,6 +1912,9 @@ export async function getInvoiceOverview(): Promise<{
   totalCollected: number
   outstanding: number
   overdueCount: number
+  paidCount: number
+  partialCount: number
+  unpaidCount: number
 }> {
   const rows = (await sql`
     SELECT
@@ -1644,8 +1925,12 @@ export async function getInvoiceOverview(): Promise<{
       SUM(CASE
         WHEN status NOT IN ('Paid','Cancelled','Draft') AND due_date < CURDATE() AND balance > 0
         THEN 1 ELSE 0
-      END) AS overdue_count
+      END) AS overdue_count,
+      SUM(CASE WHEN status = 'Paid' THEN 1 ELSE 0 END) AS paid_count,
+      SUM(CASE WHEN status IN ('Partially Paid') THEN 1 ELSE 0 END) AS partial_count,
+      SUM(CASE WHEN status IN ('Unpaid','Pending','Sent','Overdue') OR (status NOT IN ('Paid','Cancelled','Draft') AND balance > 0) THEN 1 ELSE 0 END) AS unpaid_count
     FROM invoices
+    WHERE status != 'Cancelled'
   `) as Record<string, number>[]
   const r = rows[0] ?? {}
   return {
@@ -1654,6 +1939,9 @@ export async function getInvoiceOverview(): Promise<{
     totalCollected: toSafeNumber(r.total_collected),
     outstanding: toSafeNumber(r.outstanding),
     overdueCount: toSafeNumber(r.overdue_count),
+    paidCount: toSafeNumber(r.paid_count),
+    partialCount: toSafeNumber(r.partial_count),
+    unpaidCount: toSafeNumber(r.unpaid_count),
   }
 }
 

@@ -675,7 +675,7 @@ export function statusColor(status: string): string {
 export function priorityColor(priority: string): string {
   switch (priority) {
     case "High":
-      return "bg-red-100 text-red-700 border-red-200"
+      return "bg-red-600 text-white border-red-700"
     case "Medium":
       return "bg-amber-100 text-amber-800 border-amber-200"
     case "Low":

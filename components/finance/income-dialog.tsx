@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Pencil, Plus } from "lucide-react"
+import { Pencil, Plus, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger } from "@/components/ui/dialog"
 import {
@@ -21,6 +21,7 @@ import {
   FINANCE_PAYMENT_METHODS,
 } from "@/lib/finance/constants"
 import { createIncome, updateIncome } from "@/lib/finance/actions"
+import { createClient } from "@/lib/actions"
 import type { FinanceIncome } from "@/lib/finance/types"
 
 export type IncomeDialogOptions = {
@@ -34,6 +35,8 @@ type IncomeDialogProps = IncomeDialogOptions & {
   income?: FinanceIncome
   scope?: LedgerScope
   requireProject?: boolean
+  defaultClientId?: string | number
+  defaultProjectId?: string | number
   open?: boolean
   onOpenChange?: (open: boolean) => void
   trigger?: React.ReactElement | null
@@ -42,7 +45,9 @@ type IncomeDialogProps = IncomeDialogOptions & {
 export function IncomeDialog({
   income,
   scope = "project",
-  requireProject = scope === "project",
+  requireProject = false,
+  defaultClientId,
+  defaultProjectId,
   clients,
   projects,
   categories,
@@ -56,6 +61,11 @@ export function IncomeDialog({
   const setOpen = onOpenChange ?? setInternalOpen
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [creatingClient, setCreatingClient] = useState(false)
+  const [newClientName, setNewClientName] = useState("")
+  const [newClientPhone, setNewClientPhone] = useState("")
+  const [newClientAddress, setNewClientAddress] = useState("")
+  const [clientOptions, setClientOptions] = useState(clients)
   const isEdit = Boolean(income)
   const fieldId = income ? `income-${income.id}` : "income-new"
 
@@ -68,19 +78,46 @@ export function IncomeDialog({
 
   const clientProjects = useMemo(() => {
     if (!clientId) return []
-    return projects.filter((project) => project.clientId === clientId)
+    const matched = projects.filter(
+      (project) => String(project.clientId ?? "") === String(clientId),
+    )
+    if (matched.length > 0) return matched
+    const hasClientMeta = projects.some(
+      (project) => project.clientId != null && String(project.clientId) !== "",
+    )
+    return hasClientMeta ? [] : projects
   }, [projects, clientId])
+
+  useEffect(() => {
+    setClientOptions(clients)
+  }, [clients])
 
   useEffect(() => {
     if (!open) return
     setPaymentMethod(income?.payment_method ?? "Cash")
     setStatus(income?.status ?? "Approved")
-    setClientId(income?.client_id ? String(income.client_id) : null)
-    setProjectId(income?.project_id ? String(income.project_id) : null)
+    setClientId(
+      income?.client_id
+        ? String(income.client_id)
+        : defaultClientId != null
+          ? String(defaultClientId)
+          : null,
+    )
+    setProjectId(
+      income?.project_id
+        ? String(income.project_id)
+        : defaultProjectId != null
+          ? String(defaultProjectId)
+          : null,
+    )
     setCategoryId(income?.category_id ? String(income.category_id) : null)
     setAccountId(income?.account_id ? String(income.account_id) : null)
+    setCreatingClient(false)
+    setNewClientName("")
+    setNewClientPhone("")
+    setNewClientAddress("")
     setError(null)
-  }, [open, income])
+  }, [open, income, defaultClientId, defaultProjectId])
 
   function handleClientChange(nextClientId: string | null) {
     setClientId(nextClientId)
@@ -88,10 +125,51 @@ export function IncomeDialog({
       setProjectId(null)
       return
     }
-    const nextProjects = projects.filter((project) => project.clientId === nextClientId)
-    const projectStillValid = Boolean(projectId && nextProjects.some((project) => project.value === projectId))
+    const nextProjects = projects.filter(
+      (project) => String(project.clientId ?? "") === String(nextClientId),
+    )
+    const projectStillValid = Boolean(
+      projectId && nextProjects.some((project) => project.value === projectId),
+    )
     if (projectStillValid) return
     setProjectId(nextProjects.length === 1 ? nextProjects[0].value : null)
+  }
+
+  function handleCreateClient() {
+    const name = newClientName.trim()
+    if (!name) {
+      setError("Client name is required.")
+      return
+    }
+    setError(null)
+    const fd = new FormData()
+    fd.set("name", name)
+    fd.set("phone", newClientPhone.trim())
+    fd.set("address", newClientAddress.trim())
+    fd.set("source", "finance")
+    startTransition(async () => {
+      const res = await createClient(fd)
+      if (res && "error" in res && res.error) {
+        setError(res.error)
+        return
+      }
+      if (!res || !("clientId" in res) || !res.clientId) {
+        setError("Client was not created.")
+        return
+      }
+      const id = String(res.clientId)
+      setClientOptions((prev) =>
+        prev.some((option) => option.value === id)
+          ? prev
+          : [...prev, { value: id, label: name }],
+      )
+      handleClientChange(id)
+      setCreatingClient(false)
+      setNewClientName("")
+      setNewClientPhone("")
+      setNewClientAddress("")
+      toast.success("Client created")
+    })
   }
 
   function onSubmit(formData: FormData) {
@@ -100,11 +178,19 @@ export function IncomeDialog({
     formData.set("ledger_scope", scope)
     formData.set("payment_method", paymentMethod)
     formData.set("status", status)
-    if (requireProject && !formData.get("client_id")) {
+    if (clientId) formData.set("client_id", clientId)
+    else formData.delete("client_id")
+    if (projectId) formData.set("project_id", projectId)
+    else formData.delete("project_id")
+    if (categoryId) formData.set("category_id", categoryId)
+    else formData.delete("category_id")
+    if (accountId) formData.set("account_id", accountId)
+    else formData.delete("account_id")
+    if (scope === "project" && !clientId) {
       setError("Client is required")
       return
     }
-    if (requireProject && !formData.get("project_id")) {
+    if (requireProject && !projectId) {
       setError("Project is required")
       return
     }
@@ -139,6 +225,7 @@ export function IncomeDialog({
       <FormDialogShell
         title={isEdit ? "Edit Income" : "Record Income"}
         description={isEdit ? `Update ${income?.receipt_number}` : "Add a new income receipt."}
+        className="sm:max-w-xl"
       >
         {open ? (
           <form action={onSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -150,7 +237,7 @@ export function IncomeDialog({
                 </p>
               ) : null}
               <FormSection title="Receipt details">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
                   <FormField label="Date" htmlFor={`${fieldId}-date`}>
                     <Input
                       id={`${fieldId}-date`}
@@ -178,19 +265,30 @@ export function IncomeDialog({
                   </FormField>
                   {scope === "project" ? (
                     <>
-                      <FormField label="Client">
+                      <FormField label="Client" className="min-w-0">
                         <FormSelect
                           name="client_id"
-                          options={clients}
+                          options={clientOptions}
                           value={clientId}
                           onValueChange={handleClientChange}
                           placeholder="Select client"
                           searchable
-                          required={requireProject}
+                          required={scope === "project"}
                           searchPlaceholder="Search client..."
                         />
+                        <button
+                          type="button"
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          onClick={() => {
+                            setCreatingClient((openForm) => !openForm)
+                            setError(null)
+                          }}
+                        >
+                          <UserPlus className="size-3.5" />
+                          {creatingClient ? "Cancel new client" : "Create new client"}
+                        </button>
                       </FormField>
-                      <FormField label="Project" htmlFor={`${fieldId}-project`}>
+                      <FormField label="Project" htmlFor={`${fieldId}-project`} className="min-w-0">
                         <FormSelect
                           name="project_id"
                           options={clientProjects}
@@ -200,23 +298,60 @@ export function IncomeDialog({
                             !clientId
                               ? "Select client first"
                               : clientProjects.length === 0
-                                ? "No projects for this client"
-                                : "Select project"
+                                ? "No project (optional)"
+                                : "Select project (optional)"
                           }
                           searchable
                           required={requireProject}
-                          disabled={!clientId || clientProjects.length === 0}
+                          disabled={!clientId}
                           emptyMessage="No projects for this client"
                           searchPlaceholder="Search project..."
                         />
                         <p className="text-xs text-muted-foreground">
                           {!clientId
-                            ? "Choose a client to load their projects."
+                            ? "Choose a client. Project is optional."
                             : clientProjects.length === 0
-                              ? "This client has no projects yet."
-                              : `${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} for this client`}
+                              ? "This client has no project yet — you can record income without one."
+                              : `${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} for this client. Leave empty if this payment is not tied to a project.`}
                         </p>
                       </FormField>
+                      {creatingClient ? (
+                        <div className="col-span-full flex w-full flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3">
+                          <FormField label="Name" htmlFor={`${fieldId}-new-client-name`} className="w-full">
+                            <Input
+                              id={`${fieldId}-new-client-name`}
+                              value={newClientName}
+                              onChange={(e) => setNewClientName(e.target.value)}
+                              className={formControlClass}
+                            />
+                          </FormField>
+                          <FormField label="Phone" htmlFor={`${fieldId}-new-client-phone`} className="w-full">
+                            <Input
+                              id={`${fieldId}-new-client-phone`}
+                              value={newClientPhone}
+                              onChange={(e) => setNewClientPhone(e.target.value)}
+                              className={formControlClass}
+                            />
+                          </FormField>
+                          <FormField label="Address" htmlFor={`${fieldId}-new-client-address`} className="w-full">
+                            <Textarea
+                              id={`${fieldId}-new-client-address`}
+                              value={newClientAddress}
+                              onChange={(e) => setNewClientAddress(e.target.value)}
+                              className={formTextareaClass}
+                            />
+                          </FormField>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="w-full"
+                            disabled={pending}
+                            onClick={handleCreateClient}
+                          >
+                            Save client
+                          </Button>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <FormField label="Category">
@@ -255,7 +390,7 @@ export function IncomeDialog({
                       onValueChange={(v) => setStatus(v ?? "Approved")}
                     />
                   </FormField>
-                  <FormField label="Reference #" htmlFor={`${fieldId}-ref`} className="sm:col-span-2">
+                  <FormField label="Reference #" htmlFor={`${fieldId}-ref`} className="col-span-full">
                     <Input
                       id={`${fieldId}-ref`}
                       name="reference_number"
@@ -263,7 +398,7 @@ export function IncomeDialog({
                       className={formControlClass}
                     />
                   </FormField>
-                  <FormField label="Notes" htmlFor={`${fieldId}-notes`} className="sm:col-span-2">
+                  <FormField label="Notes" htmlFor={`${fieldId}-notes`} className="col-span-full">
                     <Textarea
                       id={`${fieldId}-notes`}
                       name="notes"

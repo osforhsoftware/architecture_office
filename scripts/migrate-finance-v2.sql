@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS project_income (
   receipt_number    VARCHAR(50)  NOT NULL,
   income_date       DATE         NOT NULL,
   client_id         INT,
-  project_id        INT NOT NULL,
+  project_id        INT,
   invoice_id        INT,
   category_id       INT,
   account_id        INT,
@@ -338,5 +338,8 @@ CREATE INDEX IF NOT EXISTS idx_salary_staff ON salary_payroll(staff_id);
 CREATE INDEX IF NOT EXISTS idx_salary_period ON salary_payroll(pay_period);
 CREATE INDEX IF NOT EXISTS idx_ft_scope ON finance_transactions(ledger_scope);
 CREATE INDEX IF NOT EXISTS idx_cb_scope ON cash_book(ledger_scope);
+
+-- Finance clients can record project income without a linked project.
+ALTER TABLE project_income MODIFY COLUMN project_id INT NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;

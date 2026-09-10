@@ -25,6 +25,7 @@ import { TableQueryProvider, useTableParams } from "@/components/use-table-param
 import { buttonVariants } from "@/components/ui/button"
 import { projectPrintUrl } from "@/components/project-print-button"
 import { formatCurrency, projectProgressPercent, WORKFLOW_STAGES } from "@/lib/constants"
+import { isOverdueDueDate, PROJECT_LIST_FILTERS } from "@/lib/project-list-filters"
 import { cn } from "@/lib/utils"
 import type { PaginatedResult } from "@/lib/pagination"
 import type { Project } from "@/lib/types"
@@ -34,9 +35,19 @@ interface ProjectsDataTableProps {
   search: string
   status: string
   section: string
+  filter?: string
   statusOptions: string[]
   sectionOptions: string[]
   hideSectionFilter?: boolean
+}
+
+const FILTER_LABELS: Record<string, string> = {
+  attention: "Needs attention",
+  active: "Active projects",
+  delayed: "Delayed",
+  site_visit_pending: "Site visit pending",
+  under_construction: "Under construction",
+  plinth_inspection: "Plinth inspection",
 }
 
 function ProjectsTableInner({
@@ -44,6 +55,7 @@ function ProjectsTableInner({
   search,
   status,
   section,
+  filter = "all",
   statusOptions,
   sectionOptions,
   hideSectionFilter = false,
@@ -60,21 +72,25 @@ function ProjectsTableInner({
         ),
       },
       {
+        accessorKey: "client_name",
+        header: "Client",
+        cell: ({ getValue }) => (
+          <span className="block max-w-[160px] truncate text-sm font-semibold md:max-w-none">
+            {(getValue() as string) || "—"}
+          </span>
+        ),
+      },
+      {
         accessorKey: "name",
-        header: "Project Name",
+        header: "Project",
         cell: ({ row }) => (
           <Link
             href={`/admin/projects/${row.original.id}`}
-            className="font-medium hover:text-primary hover:underline"
+            className="block max-w-[180px] truncate text-sm hover:text-primary hover:underline md:max-w-none"
           >
             {row.original.name}
           </Link>
         ),
-      },
-      {
-        accessorKey: "client_name",
-        header: "Client",
-        cell: ({ getValue }) => <span className="text-sm">{getValue() as string}</span>,
       },
       {
         accessorKey: "section",
@@ -99,10 +115,16 @@ function ProjectsTableInner({
       {
         accessorKey: "due_date",
         header: "Due Date",
-        cell: ({ getValue }) => {
+        cell: ({ row, getValue }) => {
           const v = getValue() as string | null
+          const overdue = isOverdueDueDate(v, row.original.status)
           return (
-            <span className="text-sm tabular-nums">
+            <span
+              className={cn(
+                "text-sm tabular-nums",
+                overdue && "font-medium text-red-600",
+              )}
+            >
               {v ? new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
             </span>
           )
@@ -168,6 +190,25 @@ function ProjectsTableInner({
         <DebouncedSearchInput placeholder="Search projects, clients, IDs, phone, email..." />
         <div className="flex flex-wrap gap-2">
           <Select
+            value={filter}
+            onValueChange={(value) => {
+              if (!value) return
+              updateParams({ filter: value === "all" ? null : value }, { resetPage: true })
+            }}
+          >
+            <SelectTrigger className="w-full min-w-0 sm:w-[170px]">
+              <SelectValue placeholder="Dashboard filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              {PROJECT_LIST_FILTERS.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {FILTER_LABELS[f] ?? f}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
             value={status}
             onValueChange={(value) => {
               if (!value) return
@@ -212,8 +253,8 @@ function ProjectsTableInner({
 
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-0 table-fixed text-sm">
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -235,7 +276,10 @@ function ProjectsTableInner({
                   table.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-b border-border/50 transition-colors hover:bg-muted/40"
+                      className={cn(
+                        "border-b border-border/50 transition-colors hover:bg-muted/40",
+                        row.original.priority === "High" && "bg-red-50/80",
+                      )}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td

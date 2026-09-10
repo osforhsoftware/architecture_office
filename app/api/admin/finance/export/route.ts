@@ -44,13 +44,43 @@ export async function GET(request: Request) {
       scopeParam === "office" || scopeParam === "project" ? scopeParam : "project"
     const projectId = searchParams.get("projectId") ?? undefined
     const dateFiltered = Boolean(from || to)
-    const isFullReport = type !== "income" && type !== "expense"
+    const isProfitReport = type === "profit"
+    const isFullReport = type !== "income" && type !== "expense" && !isProfitReport
 
     const fetchParams = {
       from: from ?? undefined,
       to: to ?? undefined,
       pageSize: "all" as const,
       projectId,
+    }
+
+    if (isProfitReport) {
+      const projects = (await getProjectFinanceList({ pageSize: "all" })).rows
+      const buffer = await buildFinanceExcelBuffer([], [], {
+        title: "Project Income / Expense / Profit",
+        from: from ?? undefined,
+        to: to ?? undefined,
+        projects,
+        dateFiltered,
+      })
+      const fileName = getFinanceExportFileName("project_profit")
+      await logAudit(user.id, "finance.export", "finance", 0, {
+        type: "profit",
+        scope: scopeParam,
+        from,
+        to,
+      })
+      return withApiCors(
+        new NextResponse(new Uint8Array(buffer), {
+          status: 200,
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": `attachment; filename="${fileName}"`,
+            "Cache-Control": "no-store",
+          },
+        }),
+      )
     }
 
     // Full report always includes both ledgers so a date range is not limited

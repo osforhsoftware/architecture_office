@@ -7,6 +7,7 @@ import { ProjectChecklist } from "@/components/project-checklist"
 import { ProjectDrawingNumberPanel } from "@/components/project-drawing-number-panel"
 import { ProjectKmapPanel } from "@/components/project-kmap-panel"
 import { ProjectFilesPanel } from "@/components/project-files-panel"
+import { ProjectActivityFeed } from "@/components/project-activity-feed"
 import { ProjectHistoryPanel } from "@/components/project-history-panel"
 import { ProjectWorkflowPanel } from "@/components/project-workflow-panel"
 import { PriorityBadge, StatusBadge } from "@/components/status-badges"
@@ -213,10 +214,11 @@ export default async function StaffProjectDetailPage({
       </Card>
 
       <Tabs defaultValue="checklist" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="checklist">Checklist</TabsTrigger>
           <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="checklist" className="mt-4">
           <Card className="shadow-none">
@@ -242,6 +244,16 @@ export default async function StaffProjectDetailPage({
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <ProjectHistoryPanel statusHistory={statusHistory} returnHistory={returnHistory} />
+        </TabsContent>
+        <TabsContent value="activity" className="mt-4">
+          <Card className="shadow-none">
+            <CardContent className="p-4 md:p-6">
+              <ProjectActivityFeed
+                statusHistory={statusHistory}
+                returnHistory={returnHistory}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
