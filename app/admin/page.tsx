@@ -146,7 +146,7 @@ export default async function AdminDashboard({
           delay={0.16}
         />
         <KpiCard
-          label="Plinth Inspection"
+          label="Plinth level Inspection"
           value={stats.plinthInspection}
           icon="clock"
           href="/admin/projects?filter=plinth_inspection"

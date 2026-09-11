@@ -48,7 +48,7 @@ const FILTER_LABELS: Record<string, string> = {
   delayed: "Delayed",
   site_visit_pending: "Site visit pending",
   under_construction: "Under construction",
-  plinth_inspection: "Plinth inspection",
+  plinth_inspection: "Plinth level Inspection",
 }
 
 const COLUMN_CLASS: Record<string, string> = {

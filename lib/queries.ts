@@ -1301,12 +1301,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       COALESCE(SUM(CASE WHEN due_date < CURDATE() AND status NOT IN ('Closed','Completed','Cancelled') THEN 1 ELSE 0 END), 0) AS \`delayed\`,
       COALESCE(SUM(CASE WHEN site_visit_pending = 1 THEN 1 ELSE 0 END), 0) AS site_visit_pending,
       COALESCE(SUM(CASE WHEN under_construction = 1 THEN 1 ELSE 0 END), 0) AS under_construction,
-      COALESCE(SUM((
-        SELECT COUNT(*) FROM workflow_steps ws
+      COALESCE(SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM workflow_steps ws
         WHERE ws.project_id = projects.id
           AND ws.service_key = 'plinth_level_inspection'
           AND ws.step_status IN ('pending', 'active')
-      )), 0) AS plinth_inspection,
+      ) THEN 1 ELSE 0 END), 0) AS plinth_inspection,
       COALESCE(SUM(CASE WHEN status IN ('Completed','Closed') AND DATE(updated_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS completed_today,
       COALESCE(SUM(CASE WHEN status IN ('Completed','Closed') AND updated_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS completed_this_month,
       COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed,
