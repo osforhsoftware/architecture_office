@@ -9,7 +9,6 @@ import {
   useReactTable,
   type ColumnDef,
 } from "@tanstack/react-table"
-import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -25,7 +24,6 @@ import { TableQueryProvider, useTableParams } from "@/components/use-table-param
 import { StatusBadge } from "@/components/status-badges"
 import { buttonVariants } from "@/components/ui/button"
 import { projectPrintUrl } from "@/components/project-print-button"
-import { formatCurrency, projectProgressPercent, WORKFLOW_STAGES } from "@/lib/constants"
 import { isOverdueDueDate, PROJECT_LIST_FILTERS } from "@/lib/project-list-filters"
 import { cn } from "@/lib/utils"
 import type { PaginatedResult } from "@/lib/pagination"
@@ -52,15 +50,13 @@ const FILTER_LABELS: Record<string, string> = {
 }
 
 const COLUMN_CLASS: Record<string, string> = {
-  code: "w-[8.75rem] min-w-[8.75rem]",
-  client_name: "min-w-[8rem] max-w-[11rem]",
-  name: "min-w-[8.5rem] max-w-[13rem]",
-  section: "min-w-[7.5rem] max-w-[9.5rem]",
-  stage: "min-w-[15rem] w-[15rem]",
+  code: "w-[9rem] min-w-[8.5rem]",
+  client_name: "min-w-[12rem] w-[22%]",
+  name: "min-w-[10rem] w-[20%]",
+  section: "min-w-[8rem] w-[14%]",
+  assignee: "min-w-[10rem] w-[16%]",
   status: "min-w-[8.25rem] w-[8.5rem]",
   due_date: "min-w-[5.25rem] w-[5.5rem]",
-  progress: "min-w-[5.75rem] w-[6.5rem]",
-  project_amount: "min-w-[5.75rem] w-[6.5rem]",
   actions: "w-10 min-w-10",
 }
 
@@ -70,8 +66,15 @@ function cellPad(columnId: string) {
     : "px-2 py-2.5 lg:px-3"
 }
 
-function cellOverflow(columnId: string) {
-  return columnId === "stage" ? "overflow-visible" : "overflow-hidden"
+function wrapNameClass() {
+  return "block whitespace-normal break-words [overflow-wrap:anywhere] leading-snug"
+}
+
+function assignedStaffLabel(project: Project) {
+  const names = [project.assignee_name, ...(project.site_assignee_names ?? [])]
+    .map((name) => name?.trim())
+    .filter((name): name is string => Boolean(name))
+  return [...new Set(names)]
 }
 
 function ProjectsTableInner({
@@ -103,7 +106,7 @@ function ProjectsTableInner({
         cell: ({ getValue }) => {
           const name = (getValue() as string) || "—"
           return (
-            <span className="block truncate text-sm font-semibold" title={name}>
+            <span className={cn(wrapNameClass(), "text-sm font-semibold")}>
               {name}
             </span>
           )
@@ -115,8 +118,7 @@ function ProjectsTableInner({
         cell: ({ row }) => (
           <Link
             href={`/admin/projects/${row.original.id}`}
-            className="block truncate text-sm hover:text-primary hover:underline"
-            title={row.original.name}
+            className={cn(wrapNameClass(), "text-sm hover:text-primary hover:underline")}
           >
             {row.original.name}
           </Link>
@@ -126,19 +128,26 @@ function ProjectsTableInner({
         accessorKey: "section",
         header: "Department",
         cell: ({ getValue }) => (
-          <span className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+          <span className={cn(wrapNameClass(), "text-sm text-muted-foreground")}>
             {getValue() as string}
           </span>
         ),
       },
       {
-        id: "stage",
-        header: "Current Stage",
-        accessorFn: (row) => WORKFLOW_STAGES[row.current_stage]?.label ?? "—",
-        cell: ({ getValue }) => {
-          const label = getValue() as string
+        id: "assignee",
+        header: "Assigned Staff",
+        accessorFn: (row) => assignedStaffLabel(row).join(", "),
+        cell: ({ row }) => {
+          const names = assignedStaffLabel(row.original)
+          if (!names.length) {
+            return (
+              <span className="text-sm text-muted-foreground">Unassigned</span>
+            )
+          }
           return (
-            <span className="block text-xs leading-snug lg:text-sm">{label}</span>
+            <span className={cn(wrapNameClass(), "text-sm")}>
+              {names.join(", ")}
+            </span>
           )
         },
       },
@@ -174,31 +183,6 @@ function ProjectsTableInner({
             </span>
           )
         },
-      },
-      {
-        id: "progress",
-        header: "Progress",
-        accessorFn: (row) => projectProgressPercent(row.current_stage),
-        cell: ({ getValue }) => {
-          const pct = getValue() as number
-          return (
-            <div className="flex min-w-0 items-center gap-1.5">
-              <Progress value={pct} className="h-1.5 min-w-0 flex-1" />
-              <span className="w-7 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {pct}%
-              </span>
-            </div>
-          )
-        },
-      },
-      {
-        accessorKey: "project_amount",
-        header: "Amount",
-        cell: ({ getValue }) => (
-          <span className="whitespace-nowrap text-sm font-medium tabular-nums">
-            {formatCurrency(getValue() as string)}
-          </span>
-        ),
       },
       {
         id: "actions",
@@ -301,17 +285,15 @@ function ProjectsTableInner({
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
           <HorizontalScrollArea showScrollbar>
-            <table className="w-full min-w-[68rem] text-sm">
+            <table className="w-full min-w-[52rem] table-fixed text-sm sm:min-w-[56rem]">
               <colgroup>
-                <col className="w-[8.75rem]" />
-                <col />
-                <col />
-                <col className="w-[9.5rem]" />
-                <col className="w-[15rem]" />
+                <col className="w-[9rem]" />
+                <col className="w-[22%]" />
+                <col className="w-[20%]" />
+                <col className="w-[14%]" />
+                <col className="w-[16%]" />
                 <col className="w-[8.5rem]" />
                 <col className="w-[5.5rem]" />
-                <col className="w-[6.5rem]" />
-                <col className="w-[6.5rem]" />
                 <col className="w-10" />
               </colgroup>
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
@@ -349,8 +331,7 @@ function ProjectsTableInner({
                         <td
                           key={cell.id}
                           className={cn(
-                            "align-middle",
-                            cellOverflow(cell.column.id),
+                            "align-top",
                             cellPad(cell.column.id),
                             COLUMN_CLASS[cell.column.id],
                           )}
