@@ -11,14 +11,13 @@ export default async function OfficeReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary">Office Finance</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Office Reports</h2>
-          <p className="text-sm text-muted-foreground">Operating income, expenses, and cash flow from office ledgers only</p>
-        </div>
-        <FinanceReportDownload scope="office" />
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Office Finance</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Office Reports</h2>
+        <p className="text-sm text-muted-foreground">Operating income, expenses, and cash flow from office ledgers only</p>
       </div>
+
+      <FinanceReportDownload scope="office" />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[

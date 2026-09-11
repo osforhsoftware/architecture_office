@@ -42,7 +42,8 @@ export async function GET(request: Request) {
     const scopeParam = searchParams.get("scope")
     const scope: LedgerScope =
       scopeParam === "office" || scopeParam === "project" ? scopeParam : "project"
-    const projectId = searchParams.get("projectId") ?? undefined
+    const projectId = searchParams.get("projectId") || undefined
+    const clientId = searchParams.get("clientId") || undefined
     const dateFiltered = Boolean(from || to)
     const isProfitReport = type === "profit"
     const isFullReport = type !== "income" && type !== "expense" && !isProfitReport
@@ -52,10 +53,15 @@ export async function GET(request: Request) {
       to: to ?? undefined,
       pageSize: "all" as const,
       projectId,
+      clientId,
     }
 
     if (isProfitReport) {
-      const projects = (await getProjectFinanceList({ pageSize: "all" })).rows
+      const projects = (await getProjectFinanceList({
+        pageSize: "all",
+        clientId,
+        projectId,
+      })).rows
       const buffer = await buildFinanceExcelBuffer([], [], {
         title: "Project Income / Expense / Profit",
         from: from ?? undefined,
@@ -83,15 +89,27 @@ export async function GET(request: Request) {
       )
     }
 
-    // Full report always includes both ledgers so a date range is not limited
-    // to an empty office/project table when the other ledger has activity.
     if (isFullReport) {
+      const includeProject = scopeParam !== "office"
+      const includeOffice = scopeParam !== "project" && !clientId && !projectId
       const [projInc, projExp, offInc, offExp, projects] = await Promise.all([
-        getIncomePaginated({ ...fetchParams, scope: "project" }),
-        getExpensesPaginated({ ...fetchParams, scope: "project" }),
-        getIncomePaginated({ ...fetchParams, scope: "office" }),
-        getExpensesPaginated({ ...fetchParams, scope: "office" }),
-        getProjectFinanceList({ pageSize: "all" }).then((result) => result.rows),
+        includeProject
+          ? getIncomePaginated({ ...fetchParams, scope: "project" })
+          : Promise.resolve({ rows: [] as never[] }),
+        includeProject
+          ? getExpensesPaginated({ ...fetchParams, scope: "project" })
+          : Promise.resolve({ rows: [] as never[] }),
+        includeOffice
+          ? getIncomePaginated({ ...fetchParams, scope: "office" })
+          : Promise.resolve({ rows: [] as never[] }),
+        includeOffice
+          ? getExpensesPaginated({ ...fetchParams, scope: "office" })
+          : Promise.resolve({ rows: [] as never[] }),
+        includeProject
+          ? getProjectFinanceList({ pageSize: "all", clientId, projectId }).then(
+              (result) => result.rows,
+            )
+          : Promise.resolve([]),
       ])
       const income = [...projInc.rows, ...offInc.rows]
       const expenses = [...projExp.rows, ...offExp.rows]

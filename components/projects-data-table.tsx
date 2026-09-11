@@ -17,11 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { StatusBadge } from "@/components/status-badges"
 import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
+import { HorizontalScrollArea } from "@/components/horizontal-scroll-area"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider, useTableParams } from "@/components/use-table-params"
+import { StatusBadge } from "@/components/status-badges"
 import { buttonVariants } from "@/components/ui/button"
 import { projectPrintUrl } from "@/components/project-print-button"
 import { formatCurrency, projectProgressPercent, WORKFLOW_STAGES } from "@/lib/constants"
@@ -50,6 +51,29 @@ const FILTER_LABELS: Record<string, string> = {
   plinth_inspection: "Plinth inspection",
 }
 
+const COLUMN_CLASS: Record<string, string> = {
+  code: "w-[8.75rem] min-w-[8.75rem]",
+  client_name: "min-w-[8rem] max-w-[11rem]",
+  name: "min-w-[8.5rem] max-w-[13rem]",
+  section: "min-w-[7.5rem] max-w-[9.5rem]",
+  stage: "min-w-[15rem] w-[15rem]",
+  status: "min-w-[8.25rem] w-[8.5rem]",
+  due_date: "min-w-[5.25rem] w-[5.5rem]",
+  progress: "min-w-[5.75rem] w-[6.5rem]",
+  project_amount: "min-w-[5.75rem] w-[6.5rem]",
+  actions: "w-10 min-w-10",
+}
+
+function cellPad(columnId: string) {
+  return columnId === "actions"
+    ? "px-1 py-2.5 text-center"
+    : "px-2 py-2.5 lg:px-3"
+}
+
+function cellOverflow(columnId: string) {
+  return columnId === "stage" ? "overflow-visible" : "overflow-hidden"
+}
+
 function ProjectsTableInner({
   result,
   search,
@@ -68,17 +92,22 @@ function ProjectsTableInner({
         accessorKey: "code",
         header: "Project ID",
         cell: ({ row }) => (
-          <span className="font-mono text-xs text-muted-foreground">{row.original.code}</span>
+          <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+            {row.original.code}
+          </span>
         ),
       },
       {
         accessorKey: "client_name",
         header: "Client",
-        cell: ({ getValue }) => (
-          <span className="block max-w-[160px] truncate text-sm font-semibold md:max-w-none">
-            {(getValue() as string) || "—"}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const name = (getValue() as string) || "—"
+          return (
+            <span className="block truncate text-sm font-semibold" title={name}>
+              {name}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "name",
@@ -86,7 +115,8 @@ function ProjectsTableInner({
         cell: ({ row }) => (
           <Link
             href={`/admin/projects/${row.original.id}`}
-            className="block max-w-[180px] truncate text-sm hover:text-primary hover:underline md:max-w-none"
+            className="block truncate text-sm hover:text-primary hover:underline"
+            title={row.original.name}
           >
             {row.original.name}
           </Link>
@@ -96,21 +126,36 @@ function ProjectsTableInner({
         accessorKey: "section",
         header: "Department",
         cell: ({ getValue }) => (
-          <span className="text-sm text-muted-foreground">{getValue() as string}</span>
+          <span className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+            {getValue() as string}
+          </span>
         ),
       },
       {
         id: "stage",
         header: "Current Stage",
         accessorFn: (row) => WORKFLOW_STAGES[row.current_stage]?.label ?? "—",
-        cell: ({ getValue }) => (
-          <span className="max-w-[140px] truncate text-xs">{getValue() as string}</span>
-        ),
+        cell: ({ getValue }) => {
+          const label = getValue() as string
+          return (
+            <span className="block text-xs leading-snug lg:text-sm">{label}</span>
+          )
+        },
       },
       {
         accessorKey: "status",
         header: "Status",
-        cell: ({ getValue }) => <StatusBadge status={getValue() as string} />,
+        cell: ({ getValue }) => {
+          const value = getValue() as string
+          return (
+            <div className="min-w-0 max-w-full" title={value}>
+              <StatusBadge
+                status={value}
+                className="max-w-full min-w-0 shrink truncate"
+              />
+            </div>
+          )
+        },
       },
       {
         accessorKey: "due_date",
@@ -121,7 +166,7 @@ function ProjectsTableInner({
           return (
             <span
               className={cn(
-                "text-sm tabular-nums",
+                "whitespace-nowrap text-sm tabular-nums",
                 overdue && "font-medium text-red-600",
               )}
             >
@@ -137,9 +182,11 @@ function ProjectsTableInner({
         cell: ({ getValue }) => {
           const pct = getValue() as number
           return (
-            <div className="flex min-w-[100px] items-center gap-2">
-              <Progress value={pct} className="h-1.5 flex-1" />
-              <span className="text-xs tabular-nums text-muted-foreground">{pct}%</span>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Progress value={pct} className="h-1.5 min-w-0 flex-1" />
+              <span className="w-7 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {pct}%
+              </span>
             </div>
           )
         },
@@ -148,7 +195,7 @@ function ProjectsTableInner({
         accessorKey: "project_amount",
         header: "Amount",
         cell: ({ getValue }) => (
-          <span className="text-sm font-medium tabular-nums">
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums">
             {formatCurrency(getValue() as string)}
           </span>
         ),
@@ -161,7 +208,7 @@ function ProjectsTableInner({
             href={projectPrintUrl(row.original.id)}
             target="_blank"
             rel="noreferrer"
-            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "mx-auto")}
             title="Print project & client details"
             onClick={(e) => e.stopPropagation()}
           >
@@ -253,15 +300,32 @@ function ProjectsTableInner({
 
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
-          <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-0 table-fixed text-sm">
+          <HorizontalScrollArea showScrollbar>
+            <table className="w-full min-w-[68rem] text-sm">
+              <colgroup>
+                <col className="w-[8.75rem]" />
+                <col />
+                <col />
+                <col className="w-[9.5rem]" />
+                <col className="w-[15rem]" />
+                <col className="w-[8.5rem]" />
+                <col className="w-[5.5rem]" />
+                <col className="w-[6.5rem]" />
+                <col className="w-[6.5rem]" />
+                <col className="w-10" />
+              </colgroup>
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        className={cn(
+                          "text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                          header.column.id !== "actions" && "whitespace-nowrap",
+                          cellPad(header.column.id),
+                          COLUMN_CLASS[header.column.id],
+                        )}
                       >
                         {header.isPlaceholder
                           ? null
@@ -285,8 +349,10 @@ function ProjectsTableInner({
                         <td
                           key={cell.id}
                           className={cn(
-                            "px-4 py-3 align-middle",
-                            cell.column.id === "status" && "whitespace-nowrap",
+                            "align-middle",
+                            cellOverflow(cell.column.id),
+                            cellPad(cell.column.id),
+                            COLUMN_CLASS[cell.column.id],
                           )}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -296,14 +362,14 @@ function ProjectsTableInner({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 py-16 text-center text-muted-foreground">
+                    <td colSpan={columns.length} className="px-3 py-16 text-center text-muted-foreground">
                       {emptyMessage}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
-          </div>
+          </HorizontalScrollArea>
 
           <DataTablePagination
             total={result.total}

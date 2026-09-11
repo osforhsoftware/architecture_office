@@ -21,17 +21,23 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const { from, to } = financeDateRange(searchParams.get("from"), searchParams.get("to"))
+    const clientId = searchParams.get("clientId") ? Number(searchParams.get("clientId")) : null
+    const projectId = searchParams.get("projectId") ? Number(searchParams.get("projectId")) : null
     const rows = (await sql`
-      SELECT pay.*, p.name AS project_name, p.code AS project_code
+      SELECT pay.*, p.name AS project_name, p.code AS project_code, c.name AS client_name
       FROM payments pay
       JOIN projects p ON p.id = pay.project_id
+      LEFT JOIN clients c ON c.id = p.client_id
       WHERE (${from} IS NULL OR pay.created_at >= ${from})
         AND (${to} IS NULL OR pay.created_at < DATE_ADD(${to}, INTERVAL 1 DAY))
+        AND (${clientId} IS NULL OR p.client_id = ${clientId})
+        AND (${projectId} IS NULL OR pay.project_id = ${projectId})
       ORDER BY pay.created_at DESC
     `) as {
       created_at: string
       project_code: string
       project_name: string
+      client_name: string | null
       amount: string
       method: string | null
       note: string | null
@@ -41,6 +47,7 @@ export async function GET(request: Request) {
     const sheet = workbook.addWorksheet("Payment History")
     sheet.columns = [
       { header: "Date", key: "date", width: 14 },
+      { header: "Client", key: "client", width: 24 },
       { header: "Project Code", key: "code", width: 16 },
       { header: "Project", key: "project", width: 28 },
       { header: "Amount", key: "amount", width: 14 },
@@ -51,6 +58,7 @@ export async function GET(request: Request) {
     for (const row of rows) {
       sheet.addRow({
         date: row.created_at?.slice(0, 10) ?? "",
+        client: row.client_name ?? "",
         code: row.project_code ?? "",
         project: row.project_name ?? "",
         amount: Number(row.amount),

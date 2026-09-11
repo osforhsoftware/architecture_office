@@ -1,19 +1,28 @@
 import Link from "next/link"
 import { FolderKanban, Building2 } from "lucide-react"
 import { FinanceReportDownload } from "@/components/finance/finance-report-download"
+import { clientsToOptions, projectsToOptions } from "@/components/finance/finance-options"
 import { PROJECT_FINANCE_BASE, OFFICE_FINANCE_BASE } from "@/lib/finance/constants"
+import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
-export default function LegacyFinanceReportsPage() {
+export default async function LegacyFinanceReportsPage() {
+  const [clients, projects] = await Promise.all([
+    getClients(),
+    getProjectsForInvoiceSelect(),
+  ])
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary">Finance</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Reports</h2>
-          <p className="text-sm text-muted-foreground">Choose which ledger to report on</p>
-        </div>
-        <FinanceReportDownload />
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Finance</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Reports</h2>
+        <p className="text-sm text-muted-foreground">Choose which ledger to report on</p>
       </div>
+
+      <FinanceReportDownload
+        clients={clientsToOptions(clients)}
+        projects={projectsToOptions(projects)}
+      />
       <div className="grid gap-4 md:grid-cols-2">
         <Link
           href={`${PROJECT_FINANCE_BASE}/reports`}

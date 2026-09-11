@@ -14,8 +14,8 @@ function Pill({ className, children }: { className: string; children: React.Reac
   )
 }
 
-export function StatusBadge({ status }: { status: string }) {
-  return <Pill className={statusColor(status)}>{status}</Pill>
+export function StatusBadge({ status, className }: { status: string; className?: string }) {
+  return <Pill className={cn(statusColor(status), className)}>{status}</Pill>
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {

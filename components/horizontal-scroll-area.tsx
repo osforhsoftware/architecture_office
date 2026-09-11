@@ -13,9 +13,11 @@ import { cn } from "@/lib/utils"
 export function HorizontalScrollArea({
   children,
   className,
+  showScrollbar = false,
 }: {
   children: ReactNode
   className?: string
+  showScrollbar?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -78,7 +80,8 @@ export function HorizontalScrollArea({
       onMouseUp={endDrag}
       onMouseLeave={endDrag}
       className={cn(
-        "no-scrollbar overflow-x-auto",
+        "overflow-x-auto overscroll-x-contain",
+        !showScrollbar && "no-scrollbar",
         canScroll && !isDragging && "cursor-grab",
         isDragging && "cursor-grabbing select-none",
         className,

@@ -423,6 +423,7 @@ type ExpenseQueryParams = PaginationParams & {
   status?: string
   categoryId?: string
   vendorId?: string
+  clientId?: string
   projectId?: string
   method?: string
   from?: string
@@ -446,6 +447,7 @@ async function getProjectExpensesPaginated(
   const status = params.status?.trim() || null
   const categoryId = params.categoryId ? Number(params.categoryId) : null
   const vendorId = params.vendorId ? Number(params.vendorId) : null
+  const clientId = params.clientId ? Number(params.clientId) : null
   const projectId = params.projectId ? Number(params.projectId) : null
   const method = params.method?.trim() || null
   const { from, toExclusive } = financeDateRange(params.from, params.to)
@@ -463,6 +465,7 @@ async function getProjectExpensesPaginated(
     AND (${status} IS NULL OR e.status = ${status})
     AND (${categoryId} IS NULL OR e.category_id = ${categoryId})
     AND (${vendorId} IS NULL OR e.vendor_id = ${vendorId})
+    AND (${clientId} IS NULL OR p.client_id = ${clientId})
     AND (${projectId} IS NULL OR e.project_id = ${projectId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
@@ -504,6 +507,7 @@ async function getProjectExpensesPaginated(
     AND (${status} IS NULL OR e.status = ${status})
     AND (${categoryId} IS NULL OR e.category_id = ${categoryId})
     AND (${vendorId} IS NULL OR e.vendor_id = ${vendorId})
+    AND (${clientId} IS NULL OR p.client_id = ${clientId})
     AND (${projectId} IS NULL OR e.project_id = ${projectId})
     AND (${method} IS NULL OR e.payment_method = ${method})
     AND (${from} IS NULL OR e.expense_date >= ${from})
@@ -910,17 +914,21 @@ export async function getApprovalLogs(
 // ---------------------------------------------------------------------------
 
 export async function getProjectFinanceList(
-  params: PaginationParams = {},
+  params: PaginationParams & { clientId?: string; projectId?: string } = {},
 ): Promise<PaginatedResult<ProjectFinanceSummary>> {
   const requestedPage = parsePage(params.page)
   const pageSize = parsePageSize(params.pageSize)
   const search = buildSearchPattern(params.search)
+  const clientId = params.clientId ? Number(params.clientId) : null
+  const projectId = params.projectId ? Number(params.projectId) : null
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count FROM projects p
     LEFT JOIN clients c ON c.id = p.client_id
     WHERE (${search} IS NULL OR
       p.name LIKE ${search} OR p.code LIKE ${search} OR c.name LIKE ${search})
+    AND (${clientId} IS NULL OR p.client_id = ${clientId})
+    AND (${projectId} IS NULL OR p.id = ${projectId})
   `) as { count: number }[]
   const total = toNum(countRows[0]?.count)
   const page = clampPage(requestedPage, total, pageSize)
@@ -952,6 +960,8 @@ export async function getProjectFinanceList(
     LEFT JOIN project_finance pf ON pf.project_id = p.id
     WHERE (${search} IS NULL OR
       p.name LIKE ${search} OR p.code LIKE ${search} OR c.name LIKE ${search})
+    AND (${clientId} IS NULL OR p.client_id = ${clientId})
+    AND (${projectId} IS NULL OR p.id = ${projectId})
     ORDER BY p.updated_at DESC
     LIMIT ${pageSize === -1 ? 10000 : pageSize} OFFSET ${offset}
   `) as ProjectFinanceSummary[]
