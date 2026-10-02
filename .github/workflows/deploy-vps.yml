@@ -101,6 +101,14 @@ jobs:
             npm run db:migrate-additional-requirements || echo "WARN: db:migrate-additional-requirements failed; app can create tables on next deploy"
             npm run db:migrate-acmmo || echo "WARN: db:migrate-acmmo failed; app can add ACMMO columns on first dashboard load"
 
+            echo "== stop architecture_office before replacing .next =="
+            # The live process serves files from .next. Deleting that folder while it
+            # is running makes pages load without CSS and with missing JS chunks.
+            # Stop only this app. Do not stop casebox-api, mesms-api, or nextjs-app.
+            if pm2 describe architecture_office >/dev/null 2>&1; then
+              pm2 stop architecture_office || true
+            fi
+
             echo "== build (clean .next to avoid partial builds) =="
             rm -rf .next
             NODE_ENV=production npm run build
