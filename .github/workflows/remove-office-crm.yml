@@ -1,0 +1,55 @@
+name: Remove office_crm from VPS
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: remove-office-crm
+  cancel-in-progress: false
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Delete office_crm only (keep acmm.mooo.com)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            echo "== before =="
+            pm2 list || true
+            ls /var/www || true
+            ls /etc/nginx/sites-enabled || true
+
+            if pm2 describe office_crm >/dev/null 2>&1; then
+              pm2 delete office_crm || true
+              pm2 save || true
+            fi
+
+            rm -f /etc/nginx/sites-enabled/office_crm /etc/nginx/sites-available/office_crm
+            if command -v nginx >/dev/null 2>&1; then
+              nginx -t
+              systemctl reload nginx
+            fi
+            certbot delete --cert-name office-crm.mooo.com --non-interactive || true
+
+            if [ -d /var/www/office_crm ]; then
+              rm -rf /var/www/office_crm
+            fi
+
+            mysql --protocol=socket -u root -e "DROP DATABASE IF EXISTS office_crm; DROP USER IF EXISTS 'office_crm'@'localhost'; FLUSH PRIVILEGES;" || true
+
+            echo "== after (ArchOffice must remain) =="
+            ls /var/www || true
+            ls /etc/nginx/sites-enabled || true
+            pm2 list || true
+            test -d /var/www/architecture_office
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 -H "Host: acmm.mooo.com" http://127.0.0.1/ || true)
+            echo "acmm.mooo.com_local_http=$CODE"
+            echo "REMOVE_OK"
