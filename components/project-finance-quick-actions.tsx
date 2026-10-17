@@ -16,7 +16,7 @@ import {
   getFinanceAccounts,
   getIncomeCategories,
 } from "@/lib/finance/server"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export async function ProjectFinanceQuickActions({
   projectId,
@@ -25,9 +25,9 @@ export async function ProjectFinanceQuickActions({
   projectId: number
   clientId: number
 }) {
-  const [clients, projects, incomeCategories, expenseCategories, accounts, vendors] =
+  const [financeClients, projects, incomeCategories, expenseCategories, accounts, vendors] =
     await Promise.all([
-      getClients(),
+      getFinanceClients(),
       getProjectsForInvoiceSelect(),
       getIncomeCategories(true, "project"),
       getExpenseCategories(true, "project"),
@@ -35,8 +35,10 @@ export async function ProjectFinanceQuickActions({
       getAllVendors(),
     ])
 
+  const clientInFinance = financeClients.some((client) => client.id === clientId)
+
   const incomeOptions = {
-    clients: clientsToOptions(clients),
+    clients: clientsToOptions(financeClients),
     projects: projectsToOptions(projects),
     categories: categoriesToOptions(incomeCategories),
     accounts: accountsToOptions(accounts),
@@ -53,7 +55,7 @@ export async function ProjectFinanceQuickActions({
       <IncomeDialog
         {...incomeOptions}
         scope="project"
-        defaultClientId={clientId}
+        defaultClientId={clientInFinance ? clientId : undefined}
         defaultProjectId={projectId}
         trigger={
           <button type="button" className={cn(buttonVariants({ variant: "default", size: "sm" }))}>

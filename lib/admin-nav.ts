@@ -51,6 +51,7 @@ export type AdminNavItem = {
 
 const PROJECT_FINANCE_CHILDREN: AdminNavItem[] = [
   { href: "/admin/finance/project", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/admin/finance/project/clients", label: "Clients", icon: Users },
   { href: "/admin/finance/project/income", label: "Income", icon: ArrowDownLeft },
   { href: "/admin/finance/project/expenses", label: "Expenses", icon: ArrowUpRight },
   { href: "/admin/finance/project/budget", label: "Budget", icon: Calculator },
@@ -103,6 +104,7 @@ const BILLING_FINANCE_NAV: AdminNavItem = {
       icon: FolderKanban,
       children: [
         { href: "/admin/finance/project", label: "Dashboard", icon: LayoutDashboard, exact: true },
+        { href: "/admin/finance/project/clients", label: "Clients", icon: Users },
         { href: "/admin/finance/project/income", label: "Income", icon: ArrowDownLeft },
         { href: "/admin/finance/project/expenses", label: "Expenses", icon: ArrowUpRight },
         { href: "/admin/finance/project/reports", label: "Reports", icon: BarChart3 },

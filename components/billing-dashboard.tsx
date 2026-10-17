@@ -57,7 +57,12 @@ export function BillingDashboard({
 }: {
   overview: BillingOverview
   paymentsResult: PaginatedResult<PaymentWithProject>
-  recentPayments: (Payment & { project_name: string; project_code: string })[]
+  recentPayments: (Payment & {
+    project_name: string
+    project_code: string
+    invoice_id?: number | null
+    source?: "project" | "invoice"
+  })[]
   search: string
   invoiceOverview?: {
     totalInvoices: number
@@ -126,7 +131,7 @@ export function BillingDashboard({
         >
           <h3 className="text-sm font-semibold">Revenue Records</h3>
           <p className="text-xs text-muted-foreground">
-            {paymentsResult.total} payment record{paymentsResult.total === 1 ? "" : "s"} in the database
+            {paymentsResult.total} payment record{paymentsResult.total === 1 ? "" : "s"} from invoices and projects
           </p>
           <div className="mt-4">
             <PaymentsDataTable result={paymentsResult} search={search} />
@@ -182,9 +187,11 @@ export function BillingDashboard({
           <div className="mt-6 rounded-lg bg-muted/50 p-3">
             <p className="text-xs text-muted-foreground">Collection rate</p>
             <p className="text-lg font-semibold">
-              {overview.totalAmount
-                ? Math.round((overview.advanceReceived / overview.totalAmount) * 100)
-                : 0}
+              {(() => {
+                const billed = invoiceOverview?.totalBilled ?? overview.totalAmount
+                const collected = invoiceOverview?.totalCollected ?? overview.advanceReceived
+                return billed ? Math.round((collected / billed) * 100) : 0
+              })()}
               %
             </p>
           </div>
@@ -212,7 +219,7 @@ export function BillingDashboard({
         <div className="mt-4 space-y-2">
           {recentPayments.map((p) => (
             <div
-              key={p.id}
+              key={`${p.source ?? "project"}-${p.id}`}
               className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5 transition-colors hover:bg-muted/30"
             >
               <div>

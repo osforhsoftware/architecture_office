@@ -1,6 +1,11 @@
 import type { InvoiceLineItem, InvoiceStatus } from "./types"
 import { PROJECT_SERVICES, type ProjectServiceDef } from "./workflow"
 
+/** Confirmation phrase typed to hard-delete an invoice. */
+export function invoiceDeleteConfirmationPhrase(invoiceId: number): string {
+  return `delete_invoice_${invoiceId}`
+}
+
 /** Bounds for invoice line items, totals, and form fields (prevents overflow / DB errors). */
 export const INVOICE_LIMITS = {
   maxLineItems: 50,
@@ -65,6 +70,18 @@ export interface InvoiceFormFields {
   projectLocation: string
   notes: string
   terms: string
+}
+
+/** Prefill a new invoice with the same person/project details. */
+export interface InvoiceReuseClient {
+  clientName: string
+  clientAddress?: string | null
+  clientEmail?: string | null
+  clientPhone?: string | null
+  clientTaxId?: string | null
+  projectId?: number | null
+  projectName?: string | null
+  projectLocation?: string | null
 }
 
 export interface LineItemInput {

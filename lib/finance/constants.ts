@@ -66,6 +66,7 @@ export const OFFICE_FINANCE_BASE = "/admin/finance/office"
 export const BILLING_FINANCE_ALLOWED = [
   "/admin/finance",
   "/admin/finance/project",
+  "/admin/finance/project/clients",
   "/admin/finance/project/income",
   "/admin/finance/project/expenses",
   "/admin/finance/project/reports",

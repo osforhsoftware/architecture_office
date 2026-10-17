@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react"
 import { flushSync } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Download, Mail, Printer, Save } from "lucide-react"
+import { Download, Mail, Plus, Printer, Save } from "lucide-react"
 import { toast } from "sonner"
 import { InvoiceLineItemsTable } from "@/components/invoice/invoice-line-items-table"
 import { InvoiceNumberInput } from "@/components/invoice/invoice-number-input"
@@ -15,6 +15,7 @@ import {
   InvoiceTermsSection,
 } from "@/components/invoice/invoice-sections"
 import { InvoiceTotalsPanel } from "@/components/invoice/invoice-totals-panel"
+import { InvoiceDeleteDialog } from "@/components/invoice-delete-dialog"
 import { InvoicePaymentDeleteDialog } from "@/components/invoice-payment-delete-dialog"
 import { InvoiceStatusBadge } from "@/components/status-badges"
 import { FormSelect } from "@/components/form-select"
@@ -46,6 +47,7 @@ import {
   sanitizeInvoiceText,
   sanitizeLineItemInput,
   toDateInputValue,
+  type InvoiceReuseClient,
   type InvoiceServicePreset,
   type LineItemInput,
 } from "@/lib/invoice-utils"
@@ -110,11 +112,41 @@ interface InvoiceFormState {
   projectId: number | null
 }
 
+function applyReuseClient(reuse: InvoiceReuseClient): Pick<
+  InvoiceFormState,
+  | "projectId"
+  | "projectName"
+  | "projectLocation"
+  | "clientName"
+  | "clientPhone"
+  | "clientEmail"
+  | "clientAddress"
+  | "clientTaxId"
+> {
+  return {
+    projectId: reuse.projectId ?? null,
+    projectName: sanitizeInvoiceText(reuse.projectName ?? "", INVOICE_LIMITS.maxProjectNameLength),
+    projectLocation: sanitizeInvoiceText(
+      reuse.projectLocation ?? "",
+      INVOICE_LIMITS.maxProjectLocationLength,
+    ),
+    clientName: sanitizeInvoiceText(reuse.clientName, INVOICE_LIMITS.maxClientNameLength),
+    clientPhone: sanitizeInvoiceText(reuse.clientPhone ?? "", INVOICE_LIMITS.maxClientPhoneLength),
+    clientEmail: sanitizeInvoiceText(reuse.clientEmail ?? "", INVOICE_LIMITS.maxClientEmailLength),
+    clientAddress: sanitizeInvoiceText(
+      reuse.clientAddress ?? "",
+      INVOICE_LIMITS.maxClientAddressLength,
+    ),
+    clientTaxId: sanitizeInvoiceText(reuse.clientTaxId ?? "", INVOICE_LIMITS.maxClientTaxIdLength),
+  }
+}
+
 function buildInitialForm(
   invoice: InvoiceWithDetails | undefined,
   profile: OfficeProfile,
   suggestedInvoiceNumber: string | undefined,
   preselectedProject: InvoiceProjectOption | null | undefined,
+  reuseClient?: InvoiceReuseClient | null,
 ): InvoiceFormState {
   if (invoice) {
     const fields = sanitizeInvoiceFormFields({
@@ -171,6 +203,30 @@ function buildInitialForm(
       projectId: preselectedProject.id,
     }
   }
+  if (reuseClient?.clientName) {
+    const fields = sanitizeInvoiceFormFields({
+      ...applyReuseClient(reuseClient),
+      notes: "",
+      terms: profile.termsAndConditions,
+    })
+    return {
+      invoiceNumber: suggestedInvoiceNumber ?? "",
+      invoiceDate: new Date().toISOString().slice(0, 10),
+      dueDate: "",
+      notes: fields.notes,
+      terms: fields.terms,
+      taxPercent: 18,
+      status: "Draft",
+      clientName: fields.clientName,
+      clientAddress: fields.clientAddress,
+      clientEmail: fields.clientEmail,
+      clientPhone: fields.clientPhone,
+      clientTaxId: fields.clientTaxId,
+      projectName: fields.projectName,
+      projectLocation: fields.projectLocation,
+      projectId: reuseClient.projectId ?? null,
+    }
+  }
   const emptyFields = sanitizeInvoiceFormFields({})
   return {
     invoiceNumber: suggestedInvoiceNumber ?? "",
@@ -197,6 +253,7 @@ export function InvoiceEditor({
   suggestedInvoiceNumber,
   projects = [],
   initialProjectId,
+  reuseClient,
   servicePresets,
 }: {
   invoice?: InvoiceWithDetails
@@ -204,6 +261,7 @@ export function InvoiceEditor({
   suggestedInvoiceNumber?: string
   projects?: InvoiceProjectOption[]
   initialProjectId?: number
+  reuseClient?: InvoiceReuseClient | null
   servicePresets?: InvoiceServicePreset[]
 }) {
   const router = useRouter()
@@ -243,7 +301,7 @@ export function InvoiceEditor({
   })
 
   const [form, setForm] = useState<InvoiceFormState>(() =>
-    buildInitialForm(invoice, profile, suggestedInvoiceNumber, preselectedProject),
+    buildInitialForm(invoice, profile, suggestedInvoiceNumber, preselectedProject, reuseClient),
   )
   const [pdfNonce, setPdfNonce] = useState(0)
   const lineItemsRef = useRef(lineItems)
@@ -405,7 +463,9 @@ export function InvoiceEditor({
             </p>
           ) : isNew ? (
             <p className="mt-1 text-sm text-muted-foreground">
-              Premium architecture invoice — live totals update as you edit.
+              {reuseClient?.clientName
+                ? `Client details copied from ${reuseClient.clientName}. New invoice number — add line items and save.`
+                : "Premium architecture invoice — live totals update as you edit."}
             </p>
           ) : null}
         </div>
@@ -454,6 +514,24 @@ export function InvoiceEditor({
                 <Mail className="size-4" /> Send Email
               </Button>
             </>
+          ) : null}
+          {invoice?.id ? (
+            <Link
+              href={`/admin/invoices/new?fromInvoice=${invoice.id}`}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              <Plus className="size-4" /> Add Invoice
+            </Link>
+          ) : null}
+          {invoice?.id ? (
+            <InvoiceDeleteDialog
+              invoiceId={invoice.id}
+              invoiceNumber={invoice.invoice_number}
+              clientName={invoice.client_name}
+              total={invoice.total}
+              amountPaid={invoice.amount_paid}
+              paymentCount={invoice.payments?.length ?? 0}
+            />
           ) : null}
           <Button type="button" onClick={handleSave} disabled={pending} size="sm">
             <Save className="size-4" />

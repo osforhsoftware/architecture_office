@@ -3,13 +3,13 @@ import { FinanceReportDownload } from "@/components/finance/finance-report-downl
 import { clientsToOptions, projectsToOptions } from "@/components/finance/finance-options"
 import { formatCurrency } from "@/lib/constants"
 import { getProjectChartData, getProjectFinanceList } from "@/lib/finance/server"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export default async function ProjectReportsPage() {
   const [charts, financeList, clients, projects] = await Promise.all([
     getProjectChartData(),
     getProjectFinanceList({ pageSize: "5" }),
-    getClients(),
+    getFinanceClients(),
     getProjectsForInvoiceSelect(),
   ])
 

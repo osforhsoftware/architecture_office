@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VPS Website Guide — എങ്ങനെ site add ചെയ്യാം</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --bg: #fafaf9;
+      --card: #ffffff;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+      --warn-bg: #ffedd5;
+      --ok: #14532d;
+      --ok-bg: #dcfce7;
+      --navy: #134e4a;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.6;
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+    }
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 1.8rem 1rem 1.4rem;
+    }
+    .wrap, main { max-width: 880px; margin: 0 auto; }
+    main { padding: 1.25rem 1rem 3.5rem; }
+    h1 { margin: 0 0 0.45rem; font-size: 1.55rem; line-height: 1.3; }
+    h2 {
+      margin: 2.1rem 0 0.65rem;
+      font-size: 1.2rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid var(--line);
+    }
+    h2:first-of-type { border-top: 0; padding-top: 0; }
+    h3 { margin: 1.15rem 0 0.4rem; font-size: 1.02rem; }
+    p, li { font-size: 1rem; }
+    .lead { margin: 0; color: #d6d3d1; max-width: 40rem; }
+    .kicker {
+      display: inline-block;
+      background: #0f766e;
+      color: #fff;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      margin-bottom: 0.6rem;
+    }
+    nav.toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 1rem 0 0.2rem;
+    }
+    nav.toc a {
+      display: inline-block;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.38rem 0.72rem;
+      font-size: 0.86rem;
+      text-decoration: none;
+      color: var(--ink);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.05rem;
+      margin: 0.8rem 0;
+    }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.55rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+    th { background: #f5f5f4; font-size: 0.8rem; }
+    .scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0.6rem 0 1rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.88rem;
+    }
+    code {
+      background: #f5f5f4;
+      padding: 0.08rem 0.32rem;
+      border-radius: 4px;
+      word-break: break-word;
+    }
+    pre {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 0.85rem 0.95rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: pre;
+    }
+    .step {
+      display: flex;
+      gap: 0.75rem;
+      margin: 0.95rem 0;
+    }
+    .num {
+      flex: 0 0 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      margin-top: 0.15rem;
+    }
+    .step > div { min-width: 0; flex: 1; }
+    .warn, .ok {
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      margin: 0.8rem 0;
+    }
+    .warn {
+      background: var(--warn-bg);
+      border: 1px solid #fdba74;
+      color: var(--warn);
+    }
+    .ok {
+      background: var(--ok-bg);
+      border: 1px solid #86efac;
+      color: var(--ok);
+    }
+    a { color: var(--accent); }
+    ol.flow { padding-left: 1.2rem; }
+    ol.flow li { margin: 0.35rem 0; }
+    .muted { color: var(--muted); }
+    footer {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 2rem;
+    }
+    @media (max-width: 640px) {
+      h1 { font-size: 1.38rem; }
+      th, td { font-size: 0.84rem; padding: 0.48rem 0.4rem; }
+      pre { font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <span class="kicker">VPS manual guide</span>
+      <h1>VPS-ൽ website എത്ര ഉണ്ട്, പുതിയത് എങ്ങനെ add ചെയ്യാം</h1>
+      <p class="lead">AI വേണ്ട. SSH-ൽ കയറി, folder, Nginx, domain — ഈ ക്രമം പിന്തുടർന്നാൽ മതി. Next.js / Node.js, static HTML, WordPress.</p>
+    </div>
+  </header>
+
+  <main>
+    <nav class="toc" aria-label="Contents">
+      <a href="#now">ഇപ്പോൾ ഉള്ളത്</a>
+      <a href="#check">എണ്ണം കാണുക</a>
+      <a href="#idea">എങ്ങനെ work ആകും</a>
+      <a href="#dns">Domain / IP</a>
+      <a href="#next">Next.js</a>
+      <a href="#static">Static</a>
+      <a href="#wp">WordPress</a>
+      <a href="#https">HTTPS</a>
+      <a href="#errors">Error</a>
+    </nav>
+
+    <h2 id="now">1. ഈ project-ൽ അറിയുന്ന websites</h2>
+    <p>ഈ repo-യിൽ രേഖപ്പെടുത്തിയ <strong>VPS sites</strong> രണ്ടെണ്ണം. WordPress main site VPS-ൽ അല്ല — Hostinger-ൽ ആണ്.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Site</th>
+            <th>Type</th>
+            <th>Folder / run</th>
+            <th>Domain</th>
+            <th>എങ്ങനെ add ചെയ്തത്</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ArchOffice (live ACMMO)</td>
+            <td>Next.js + Node backend</td>
+            <td><code>/var/www/architecture_office</code><br>PM2: <code>architecture_office</code><br>port <strong>3001</strong></td>
+            <td><code>acmm.mooo.com</code> (existing ACMMO vhost)</td>
+            <td>മുമ്പ് VPS-ൽ install ചെയ്ത live site. Office CRM deploy ഈ folder touch ചെയ്യരുത്.</td>
+          </tr>
+          <tr>
+            <td>Office CRM (demo)</td>
+            <td>Next.js + Node backend</td>
+            <td><code>/var/www/office_crm</code><br>PM2: <code>office_crm</code><br>port <strong>3011</strong></td>
+            <td><code>office-crm.mooo.com</code> (secret-ൽ മാറ്റാം)</td>
+            <td>GitHub Action <code>deploy-vps.yml</code> + <code>deploy/provision-office-crm.sh</code>. Own Nginx file: <code>/etc/nginx/sites-available/office_crm</code></td>
+          </tr>
+          <tr>
+            <td>musthakahammed.com</td>
+            <td>WordPress</td>
+            <td>Hostinger-ൽ. VPS folder ഇല്ല</td>
+            <td><code>musthakahammed.com</code> / <code>www</code></td>
+            <td>VPS site അല്ല. Local PC-യിൽ Cloudflare Tunnel വെച്ച് താൽക്കാലികം CRM കാണിക്കാം. Restore ചെയ്താൽ WordPress തിരികെ വരും.</td>
+          </tr>
+          <tr>
+            <td>app.musthakahammed.com</td>
+            <td>Local Next.js tunnel</td>
+            <td>നിങ്ങളുടെ PC, port 3000</td>
+            <td>subdomain → Cloudflare Tunnel</td>
+            <td>VPS-ൽ അല്ല. Laptop ഓഫ് ആയാൽ site പോകും.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ok">
+      <strong>Short answer:</strong> VPS-ൽ ഈ project പ്രകാരം <strong>2 Next.js apps</strong> (ArchOffice + Office CRM). WordPress public site Hostinger-ൽ. Exact count ഇപ്പോൾ server-ൽ നോക്കണം — ചിലപ്പോൾ മറ്റ് sites-ഉം ഉണ്ടാകാം.
+    </div>
+
+    <div class="warn">
+      <strong>ചെയ്യരുത്:</strong> ArchOffice folder, PM2 name, database, Nginx vhost മാറ്റരുത്. Office CRM add ചെയ്തത് <em>separate</em> path / port / DB ആയിട്ടാണ്. പുതിയ site-ഉം അങ്ങനെ തന്നെ — പഴയത് തൊടാതെ.
+    </div>
+
+    <h2 id="check">2. VPS-ൽ ഇപ്പോൾ എത്ര site ഉണ്ട് — അത് കാണാൻ</h2>
+    <p>SSH കയറി ഈ commands. Output-ലെ ഒരു file = ഒരു Nginx site (ചിലത് default ആകാം).</p>
+    <pre>ls /etc/nginx/sites-enabled
+ls /var/www
+pm2 list
+ss -tlnp | grep -E 'nginx|node|php'</pre>
+    <p class="muted">Nginx enabled list = visitor-ന് തുറന്നിരിക്കുന്ന hostnames. <code>/var/www</code> = files. <code>pm2 list</code> = Node/Next apps.</p>
+    <p>ഒരു site-ന്റെ domain കാണാൻ:</p>
+    <pre>grep -R "server_name" /etc/nginx/sites-enabled</pre>
+
+    <h2 id="idea">3. ഒരു VPS-ൽ പല websites — simple idea</h2>
+    <ol class="flow">
+      <li>Visitor browser-ൽ address type ചെയ്യുന്നു — domain അല്ലെങ്കിൽ VPS IP.</li>
+      <li>DNS ആ address-നെ VPS IP-ലേക്ക് കൊണ്ടുപോകുന്നു.</li>
+      <li>Nginx port 80/443-ൽ കേൾക്കുന്നു. <code>server_name</code> നോക്കി ഏത് site എന്ന് തീരുമാനിക്കുന്നു.</li>
+      <li><strong>Static / WordPress:</strong> files folder-ൽ നിന്ന് അയക്കും.</li>
+      <li><strong>Next.js / Node:</strong> Nginx അകത്തുള്ള port-ലേക്ക് (3001, 3011, …) proxy ചെയ്യും. App PM2 run ചെയ്യണം.</li>
+    </ol>
+    <div class="card">
+      <strong>ഒരു site-ന് 4 കാര്യം വേണം</strong>
+      <ol>
+        <li>Files — <code>/var/www/your_site</code></li>
+        <li>Run method — static = Nginx മാത്രം. Next.js = PM2 + port. WordPress = PHP + MySQL.</li>
+        <li>Nginx config — <code>sites-available</code> → <code>sites-enabled</code></li>
+        <li>Address — domain A record, അല്ലെങ്കിൽ IP മാത്രം test-ന്</li>
+      </ol>
+    </div>
+
+    <h2 id="dns">4. Domain, subdomain, VPS IP — എങ്ങനെ connect ചെയ്യാം</h2>
+    <p>ആദ്യം VPS-ന്റെ public IP എടുക്കുക (dashboard-ൽ കാണാം, അല്ലെങ്കിൽ SSH-ൽ):</p>
+    <pre>curl -4 ifconfig.me</pre>
+
+    <h3>A) VPS IP മാത്രം (test)</h3>
+    <p>Browser-ൽ <code>http://YOUR_VPS_IP</code>. Nginx-ൽ <strong>default</strong> site ആണ് കാണുക. പല sites ഉണ്ടെങ്കിൽ IP മാത്രം കൊണ്ട് ശരിയായ site തിരഞ്ഞെടുക്കാൻ ബുദ്ധിമുട്ടാണ്. Production-ന് domain വേണം.</p>
+
+    <h3>B) Main domain (example: <code>musthakahammed.com</code>)</h3>
+    <p>DNS-ൽ <strong>A record</strong>:</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Name / Host</th><th>Value</th><th>Proxy</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>A</td><td><code>@</code> (apex)</td><td>VPS IP</td><td>Cloudflare ആണെങ്കിൽ DNS only / orange cloud നിങ്ങളുടെ setup അനുസരിച്ച്</td></tr>
+          <tr><td>A</td><td><code>www</code></td><td>അതേ VPS IP</td><td>same</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="warn">
+      <code>musthakahammed.com</code> ഇപ്പോൾ Hostinger WordPress ആണ്. Apex DNS VPS-ലേക്ക് മാറ്റിയാൽ WordPress public-ൽ പോകും. Main domain VPS-ലേക്ക് മാറ്റുന്നത് മനസ്സിലായിട്ട് മാത്രം.
+    </div>
+
+    <h3>C) Subdomain (safe way — പുതിയ site-ന് ഇത് നല്ലത്)</h3>
+    <p>Main domain Hostinger-ൽ നിർത്താം. പുതിയ app-ന് subdomain:</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>ഉദാഹരണം</th><th>DNS</th><th>VPS-ൽ</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>office-crm.mooo.com</code></td>
+            <td>A → VPS IP</td>
+            <td>Nginx <code>server_name office-crm.mooo.com</code> + PM2 3011</td>
+          </tr>
+          <tr>
+            <td><code>acmm.mooo.com</code></td>
+            <td>A → VPS IP</td>
+            <td>ArchOffice. <strong>Reuse ചെയ്യരുത്</strong> പുതിയ app-ന്</td>
+          </tr>
+          <tr>
+            <td><code>app.musthakahammed.com</code></td>
+            <td>Cloudflare Tunnel CNAME (local PC)</td>
+            <td>VPS അല്ല</td>
+          </tr>
+          <tr>
+            <td>പുതിയത്: <code>blog.yourdomain.com</code></td>
+            <td>A record Name=<code>blog</code> Value=VPS IP</td>
+            <td>പുതിയ folder + പുതിയ Nginx file</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Cloudflare / Hostinger DNS-ൽ:</p>
+    <ol class="flow">
+      <li>DNS → Add record</li>
+      <li>Type: <strong>A</strong></li>
+      <li>Name: <code>blog</code> (subdomain) അല്ലെങ്കിൽ <code>@</code> (main)</li>
+      <li>IPv4: VPS IP</li>
+      <li>Save. 2–30 മിനിറ്റ് wait. Check: <code>ping blog.yourdomain.com</code></li>
+    </ol>
+    <p>Nginx-ൽ ആ hostname എഴുതണം. DNS മാത്രം മതിയാവില്ല.</p>
+
+    <h2>5. പുതിയ site add — common first steps (എല്ലാ type-നും)</h2>
+    <div class="step"><div class="num">1</div><div>
+      <p>SSH: <code>ssh user@YOUR_VPS_IP</code></p>
+    </div></div>
+    <div class="step"><div class="num">2</div><div>
+      <p>പേര് തീരുമാനിക്കുക. ഉദാഹരണം: folder <code>mysite</code>, domain <code>mysite.yourdomain.com</code>, port <code>3012</code> (Next.js ആണെങ്കിൽ). Port 80, 443, 3306, 3001, 3011 ഉപയോഗിക്കരുത്.</p>
+    </div></div>
+    <div class="step"><div class="num">3</div><div>
+      <p>DNS A record ആദ്യം വെക്കുക. Certbot-ന് domain ഇപ്പോൾ ഈ IP-യിലേക്ക് വരണം.</p>
+    </div></div>
+
+    <h2 id="next">6. Next.js / Node.js backend — manual add (AI ഇല്ലാതെ)</h2>
+    <p>Office CRM ഇങ്ങനെയാണ് VPS-ൽ വെച്ചത്. പുതിയ Next.js-ഉം same pattern. WordPress ഇവിടെ വേണ്ട.</p>
+
+    <h3>6.1 Files</h3>
+    <pre>sudo mkdir -p /var/www/mysite
+sudo chown -R $USER:$USER /var/www/mysite
+cd /var/www/mysite
+git clone https://github.com/YOU/YOUR_REPO.git .</pre>
+    <p>Git ഇല്ലെങ്കിൽ laptop-ൽ zip ചെയ്ത് <code>scp</code> കൊണ്ട് copy ചെയ്യാം.</p>
+
+    <h3>6.2 .env</h3>
+    <p>ഈ app-ന് <strong>own database</strong>. ArchOffice DB / <code>office_crm</code> DB reuse ചെയ്യരുത്.</p>
+    <pre>mysql -u root -p
+CREATE DATABASE mysite CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mysite'@'localhost' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT ALL PRIVILEGES ON mysite.* TO 'mysite'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;</pre>
+    <p><code>/var/www/mysite/.env</code> — <code>FRONTEND_URL=https://mysite.yourdomain.com</code>, own MySQL user, <code>COOKIE_SECURE=true</code>.</p>
+
+    <h3>6.3 Build + PM2</h3>
+    <pre>cd /var/www/mysite
+npm ci
+npm run build
+# tables വേണമെങ്കിൽ ഈ project-ൽ: npm run db:setup  (ഒരിക്കൽ മാത്രം, പുതിയ DB-യിൽ)
+
+PORT=3012 HOSTNAME=127.0.0.1 pm2 start ./node_modules/next/dist/bin/next \
+  --name mysite -- start
+pm2 save
+pm2 startup</pre>
+    <p>Express API ആണെങ്കിൽ: <code>pm2 start server.js --name mysite</code>. App <code>127.0.0.1</code>-ൽ മാത്രം listen ചെയ്യുക. Public-ലേക്ക് Nginx മാത്രം.</p>
+
+    <h3>6.4 Nginx reverse proxy</h3>
+    <p>File: <code>/etc/nginx/sites-available/mysite</code></p>
+    <pre>server {
+    listen 80;
+    listen [::]:80;
+    server_name mysite.yourdomain.com;
+
+    client_max_body_size 32m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3012;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}</pre>
+    <pre>sudo ln -sfn /etc/nginx/sites-available/mysite /etc/nginx/sites-enabled/mysite
+sudo nginx -t
+sudo systemctl reload nginx</pre>
+    <p>Office CRM-ന്റെ ready file: project-ൽ <code>deploy/office_crm.nginx.conf</code>. Copy ചെയ്ത് <code>server_name</code> ഉം port ഉം മാറ്റുക. <code>architecture_office</code> Nginx file overwrite ചെയ്യരുത്.</p>
+
+    <h3>6.5 Update later</h3>
+    <pre>cd /var/www/mysite
+git pull
+npm ci
+npm run build
+pm2 restart mysite</pre>
+
+    <h2 id="static">7. Static website (HTML / CSS / JS only)</h2>
+    <p>Node വേണ്ട. Files Nginx നേരെ serve ചെയ്യും.</p>
+    <pre>sudo mkdir -p /var/www/mysite
+sudo chown -R $USER:$USER /var/www/mysite
+# index.html ഇവിടെ വെക്കുക</pre>
+    <p>Nginx:</p>
+    <pre>server {
+    listen 80;
+    listen [::]:80;
+    server_name static.yourdomain.com;
+
+    root /var/www/mysite;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}</pre>
+    <pre>sudo ln -sfn /etc/nginx/sites-available/mysite /etc/nginx/sites-enabled/mysite
+sudo nginx -t
+sudo systemctl reload nginx</pre>
+    <p>Phone-ൽ നന്നായി കാണണമെങ്കിൽ HTML-ൽ ഇത് വേണം:</p>
+    <pre>&lt;meta name="viewport" content="width=device-width, initial-scale=1" /&gt;</pre>
+
+    <h2 id="wp">8. WordPress VPS-ൽ വേണമെങ്കിൽ</h2>
+    <p>Main <code>musthakahammed.com</code> ഇപ്പോൾ Hostinger-ൽ ആണ്. അത് നിലനിർത്താൻ WordPress <strong>subdomain</strong>-ൽ വെക്കുക, ഉദാ. <code>wp.yourdomain.com</code>. PHP + MySQL വേണം. Next.js-മായി ഒരേ folder ഉപയോഗിക്കരുത്.</p>
+    <pre>sudo apt update
+sudo apt install nginx mysql-server php-fpm php-mysql php-xml php-mbstring php-curl unzip -y</pre>
+    <p>DB (പേര് മാറ്റുക):</p>
+    <pre>mysql -u root -p
+CREATE DATABASE wp_mysite CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'wp_mysite'@'localhost' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT ALL ON wp_mysite.* TO 'wp_mysite'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;</pre>
+    <pre>cd /tmp
+wget https://wordpress.org/latest.tar.gz
+tar -xzf latest.tar.gz
+sudo mkdir -p /var/www/wp_mysite
+sudo rsync -a wordpress/ /var/www/wp_mysite/
+sudo chown -R www-data:www-data /var/www/wp_mysite</pre>
+    <p>Nginx PHP example (PHP version number server-ൽ നോക്കുക: <code>ls /run/php</code>):</p>
+    <pre>server {
+    listen 80;
+    server_name wp.yourdomain.com;
+    root /var/www/wp_mysite;
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+    }
+}</pre>
+    <p>Browser-ൽ domain തുറന്ന് WordPress installer. DB name / user / password കൊടുക്കുക. SSL ശേഷം Admin → Settings → Site URL HTTPS ആക്കുക.</p>
+    <div class="warn">
+      Hostinger WordPress files VPS copy ചെയ്യാതെ DNS മാത്രം മാറ്റിയാൽ പഴയ site കാണില്ല. Full move = files + database export/import. അത് പ്രത്യേക migration ആണ്.
+    </div>
+
+    <h2 id="https">9. HTTPS (Let’s Encrypt)</h2>
+    <p>DNS A record ഈ VPS-ലേക്ക് വന്നതിന് ശേഷം:</p>
+    <pre>sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d mysite.yourdomain.com</pre>
+    <p>Email, agree. Nginx-ൽ 443 automatically വരും. Fail ആയാൽ: domain IP തെറ്റ്, Cloudflare orange proxy, അല്ലെങ്കിൽ port 80 block.</p>
+
+    <h2>10. ഒരു പുതിയ site — copy-paste checklist</h2>
+    <ol class="flow">
+      <li>Name, folder, domain (subdomain നല്ലത്), type (Next / static / WordPress), port (Next മാത്രം).</li>
+      <li>DNS A → VPS IP. Ping കൊണ്ട് verify.</li>
+      <li><code>/var/www/...</code> files. Own DB ആണെങ്കിൽ create.</li>
+      <li>Next: <code>npm ci</code>, build, PM2. Static: <code>index.html</code>. WP: PHP + installer.</li>
+      <li>New file in <code>sites-available</code>, symlink <code>sites-enabled</code>.</li>
+      <li><code>nginx -t</code> പിന്നെ reload. മറ്റ് site files തൊടരുത്.</li>
+      <li><code>certbot --nginx -d your.domain</code></li>
+      <li>Browser-ൽ HTTPS തുറക്കുക. ArchOffice / office_crm ഇപ്പോഴും ജോലി ചെയ്യുന്നോ check.</li>
+    </ol>
+
+    <h2>11. Port map (collision വരാതിരിക്കാൻ)</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Port</th><th>ആര് ഉപയോഗിക്കുന്നു</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>80 / 443</td><td>Nginx — എല്ലാ public sites</td></tr>
+          <tr><td>3306</td><td>MySQL — localhost മാത്രം. പുറത്ത് തുറക്കരുത്</td></tr>
+          <tr><td>3001</td><td>PM2 <code>architecture_office</code></td></tr>
+          <tr><td>3011</td><td>PM2 <code>office_crm</code></td></tr>
+          <tr><td>3012, 3013, …</td><td>പുതിയ Node/Next apps-ന്</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="errors">12. സാധാരണ തെറ്റുകൾ</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>കാണുന്നത്</th><th>കാരണം</th><th>ചെയ്യേണ്ടത്</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Wrong website / default Nginx page</td>
+            <td><code>server_name</code> match ആകുന്നില്ല, DNS വേറെ IP</td>
+            <td>DNS A check. Nginx hostname exact match. <code>nginx -T | grep server_name</code></td>
+          </tr>
+          <tr>
+            <td>502 Bad Gateway</td>
+            <td>PM2 app down, തെറ്റായ port</td>
+            <td><code>pm2 list</code>, <code>pm2 logs mysite</code>. proxy_pass port = app port</td>
+          </tr>
+          <tr>
+            <td>Certbot failed</td>
+            <td>Domain ഈ VPS-ലേക്ക് വരുന്നില്ല</td>
+            <td>A record, wait DNS, port 80 open</td>
+          </tr>
+          <tr>
+            <td>WordPress / CRM മാറിപ്പോയി</td>
+            <td>ഒരേ domain രണ്ട് ഇടത്തേക്ക്</td>
+            <td>ഒരു hostname = ഒരു origin. Subdomain ഉപയോഗിക്കുക</td>
+          </tr>
+          <tr>
+            <td>Login cookie / redirect തെറ്റ്</td>
+            <td><code>FRONTEND_URL</code> പഴയ domain</td>
+            <td>.env-ൽ ശരിയായ HTTPS URL, PM2 restart</td>
+          </tr>
+          <tr>
+            <td>Old site broke after new site</td>
+            <td>തെറ്റായ Nginx file overwrite, same port</td>
+            <td>Own vhost file only. <code>pm2 list</code>-ൽ architecture_office / office_crm online ആണോ നോക്കുക</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>13. Local PC vs VPS — തിരിച്ചറിയുക</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th></th><th>Laptop (ഈ project local)</th><th>VPS</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Start</td>
+            <td><code>npm run dev</code> port 3000</td>
+            <td>PM2 production, 3001 / 3011</td>
+          </tr>
+          <tr>
+            <td>Public URL</td>
+            <td>Cloudflare Tunnel — PC ഓണായിരിക്കണം</td>
+            <td>DNS A → VPS. Server 24/7</td>
+          </tr>
+          <tr>
+            <td>musthakahammed.com</td>
+            <td>Tunnel DNS മാറ്റിയാൽ താൽക്കാലിക CRM</td>
+            <td>Normally Hostinger WordPress. VPS-ലേക്ക് മാറ്റരുത് casual-ായി</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Local tunnel steps: <a href="connection-guide.html">Office CRM connection guide</a>.</p>
+
+    <h2>ചെയ്യരുത്</h2>
+    <ul>
+      <li><code>/var/www/architecture_office</code> delete / overwrite.</li>
+      <li>PM2 <code>architecture_office</code> stop ചെയ്ത് പുതിയ app അതേ name/port-ൽ വെക്കുക.</li>
+      <li>MySQL 3306 internet-ലേക്ക് open.</li>
+      <li><code>.env</code>, passwords, SSH key git / WhatsApp-ൽ ഇടുക.</li>
+      <li>ഒരേ domain ഒരേ സമയം Hostinger-ലും VPS-ലും.</li>
+    </ul>
+
+    <footer>
+      <p>Manual VPS guide. Sites listed here = ഈ repo-യിൽ documented ആയവ. Live count-ന് section 2 commands VPS-ൽ ഓടിക്കുക.</p>
+    </footer>
+  </main>
+</body>
+</html>

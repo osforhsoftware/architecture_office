@@ -28,8 +28,10 @@ export interface Client {
   district: string | null
   aadhaar_numbers: string[]
   linked_numbers: string[]
-  /** office = project directory client; finance = finance-only client (no project required) */
+  /** office = project directory client; finance = finance-only client (hidden from the Clients list) */
   source: "office" | "finance"
+  /** Office client explicitly imported into Finance. Finance-only clients use source instead. */
+  finance_linked?: boolean
   created_at: string
   project_count?: number
 }

@@ -36,17 +36,25 @@ function PaymentsTableInner({ result, search }: PaymentsDataTableProps) {
       {
         accessorKey: "project_code",
         header: "Project",
-        cell: ({ row }) => (
-          <div>
-            <Link
-              href={`/admin/projects/${row.original.project_id}`}
-              className="font-medium hover:text-primary hover:underline"
-            >
-              {row.original.project_code}
-            </Link>
-            <p className="text-xs text-muted-foreground">{row.original.project_name}</p>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const href = row.original.project_id
+            ? `/admin/projects/${row.original.project_id}`
+            : row.original.invoice_id
+              ? `/admin/invoices/${row.original.invoice_id}`
+              : null
+          return (
+            <div>
+              {href ? (
+                <Link href={href} className="font-medium hover:text-primary hover:underline">
+                  {row.original.project_code}
+                </Link>
+              ) : (
+                <span className="font-medium">{row.original.project_code}</span>
+              )}
+              <p className="text-xs text-muted-foreground">{row.original.project_name}</p>
+            </div>
+          )
+        },
       },
       {
         accessorKey: "client_name",

@@ -8,3 +8,4 @@ ALTER TABLE clients ADD COLUMN district VARCHAR(100);
 ALTER TABLE clients ADD COLUMN aadhaar_numbers JSON;
 ALTER TABLE clients ADD COLUMN linked_numbers JSON;
 ALTER TABLE clients ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'office';
+ALTER TABLE clients ADD COLUMN finance_linked TINYINT(1) NOT NULL DEFAULT 0;

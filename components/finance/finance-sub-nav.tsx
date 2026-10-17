@@ -12,6 +12,7 @@ import {
 
 const PROJECT_NAV = [
   { href: `${PROJECT_FINANCE_BASE}`, label: "Dashboard", exact: true },
+  { href: `${PROJECT_FINANCE_BASE}/clients`, label: "Clients" },
   { href: `${PROJECT_FINANCE_BASE}/income`, label: "Income" },
   { href: `${PROJECT_FINANCE_BASE}/expenses`, label: "Expenses" },
   { href: `${PROJECT_FINANCE_BASE}/budget`, label: "Budget" },

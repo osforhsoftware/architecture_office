@@ -3,8 +3,10 @@ import Link from "next/link"
 import { FileText, Plus } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 import { BillingDashboard } from "@/components/billing-dashboard"
+import { BillingProjectsTable } from "@/components/billing-projects-table"
+import { BillingTabs } from "@/components/billing-tabs"
 import { InvoicesDataTable } from "@/components/invoices-data-table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCurrency, userIsBillingStaff } from "@/lib/constants"
@@ -13,6 +15,7 @@ import {
   getInvoiceOverview,
   getInvoicesPaginated,
   getPaymentsPaginated,
+  getProjectsPaginated,
   getRecentPayments,
 } from "@/lib/queries"
 
@@ -24,6 +27,7 @@ export default async function AdminBillingPage({
     page?: string
     pageSize?: string
     status?: string
+    payment?: string
     tab?: string
   }>
 }) {
@@ -33,15 +37,22 @@ export default async function AdminBillingPage({
   const params = await searchParams
   const search = params.search ?? ""
   const status = params.status ?? ""
+  const payment = params.payment ?? "all"
   const tab = params.tab ?? "overview"
 
-  const [overview, paymentsResult, recentPayments, invoiceOverview, invoicesResult] =
+  const [overview, paymentsResult, recentPayments, invoiceOverview, invoicesResult, projectsResult] =
     await Promise.all([
       getBillingOverview(),
       getPaymentsPaginated({ search, page: params.page, pageSize: params.pageSize }),
       getRecentPayments(8),
       getInvoiceOverview(),
       getInvoicesPaginated({ search, status, page: params.page, pageSize: params.pageSize }),
+      getProjectsPaginated({
+        search,
+        paymentStatus: payment,
+        page: params.page,
+        pageSize: params.pageSize,
+      }),
     ])
 
   return (
@@ -55,7 +66,7 @@ export default async function AdminBillingPage({
           <p className="text-sm text-muted-foreground">
             {billingStaff
               ? `Welcome, ${user?.name ?? "Billing Staff"}. Manage invoices, payments, and collections.`
-              : "Payments, invoices, and revenue across all projects"}
+              : "Project amounts, collections, invoices, and payments — same records as the dashboard"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -74,7 +85,7 @@ export default async function AdminBillingPage({
         </div>
       </div>
 
-      <Tabs defaultValue={tab}>
+      <BillingTabs defaultTab={tab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
@@ -91,6 +102,21 @@ export default async function AdminBillingPage({
               invoiceOverview={invoiceOverview}
             />
           </Suspense>
+          <div className="mt-6 rounded-xl border border-border/60 bg-card p-5 shadow-premium">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold">Projects</h3>
+              <p className="text-xs text-muted-foreground">
+                Amounts and payment status from the same project records as the dashboard
+              </p>
+            </div>
+            <Suspense>
+              <BillingProjectsTable
+                result={projectsResult}
+                search={search}
+                paymentStatus={payment}
+              />
+            </Suspense>
+          </div>
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">
@@ -122,11 +148,12 @@ export default async function AdminBillingPage({
               paymentsResult={paymentsResult}
               recentPayments={recentPayments}
               search={search}
+              invoiceOverview={invoiceOverview}
               paymentsOnly
             />
           </Suspense>
         </TabsContent>
-      </Tabs>
+      </BillingTabs>
     </div>
   )
 }

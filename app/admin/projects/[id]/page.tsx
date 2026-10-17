@@ -164,7 +164,11 @@ export default async function AdminProjectDetailPage({
               {!detailsReadOnly ? (
                 <ProjectEditDialog
                   project={project}
-                  clients={clients}
+                  clients={
+                    client && !clients.some((row) => row.id === client.id)
+                      ? [client, ...clients]
+                      : clients
+                  }
                   services={visibleServices}
                   documentTemplates={documentTemplates}
                   additionalRequirementOptions={customFieldOptions}

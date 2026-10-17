@@ -76,6 +76,7 @@ import {
 import { hashPassword, verifyPassword } from "./password"
 import {
   calculateInvoiceTotals,
+  invoiceDeleteConfirmationPhrase,
   INVOICE_LIMITS,
   parseLineItemsJson,
   sanitizeInvoiceFormFields,
@@ -246,9 +247,8 @@ function revalidateClientPaths(clientId?: number) {
   revalidatePath("/admin/clients")
   revalidatePath("/admin")
   revalidatePath("/admin/reports")
-  revalidatePath("/admin/finance")
-  revalidatePath("/admin/finance/project")
-  revalidatePath("/admin/finance/project/income")
+  revalidatePath("/admin/projects", "layout")
+  revalidatePath("/admin/finance", "layout")
   if (clientId) revalidatePath(`/admin/clients/${clientId}`)
 }
 
@@ -300,10 +300,11 @@ async function insertClientRow(input: {
   const source = parseClientSource(input.source)
   try {
     return (await sql`
-      INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source)
+      INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source, finance_linked)
       VALUES (
         ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
-        ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source}
+        ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source},
+        ${source === "finance" ? 1 : 0}
       )
     `) as { id: number }[]
   } catch (error) {
@@ -313,10 +314,11 @@ async function insertClientRow(input: {
     await ensureClientExtraColumns()
     try {
       return (await sql`
-        INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source)
+        INSERT INTO clients (name, phone, email, address, street, district, aadhaar_numbers, linked_numbers, source, finance_linked)
         VALUES (
           ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.street}, ${input.district},
-          ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source}
+          ${sql.json(input.aadhaarNumbers)}, ${sql.json(input.linkedNumbers)}, ${source},
+          ${source === "finance" ? 1 : 0}
         )
       `) as { id: number }[]
     } catch (retryError) {
@@ -355,7 +357,14 @@ export async function createClient(formData: FormData) {
       const existing = (await sql`SELECT id FROM clients WHERE phone = ${phone} LIMIT 1`) as {
         id: number
       }[]
-      if (existing.length) return { error: "A client with this phone already exists." }
+      if (existing.length) {
+        return {
+          error:
+            source === "finance"
+              ? "A client with this phone already exists. Link that client into Finance instead of creating a new one."
+              : "A client with this phone already exists.",
+        }
+      }
     }
 
     const rows = await insertClientRow({
@@ -458,6 +467,42 @@ export async function updateClient(formData: FormData) {
       return { error: "You do not have permission to update clients." }
     }
     return clientActionFailure(error, "Could not update client.")
+  }
+}
+
+export async function linkClientToFinance(formData: FormData) {
+  try {
+    const user = await requireUser()
+    const canLink = isOfficeAdmin(user.role) || userCanAccessBilling(user)
+    if (!canLink) throw new ForbiddenError("Forbidden")
+
+    const clientId = Number(formData.get("client_id"))
+    if (!clientId) return { error: "Select a client to link." }
+
+    await ensureClientExtraColumns()
+    const rows = (await sql`
+      SELECT id, name, source, finance_linked
+      FROM clients
+      WHERE id = ${clientId}
+      LIMIT 1
+    `) as { id: number; name: string; source: string | null; finance_linked: boolean | number }[]
+    const client = rows[0]
+    if (!client) return { error: "Client not found." }
+
+    if (parseClientSource(client.source) === "finance" || Boolean(client.finance_linked)) {
+      revalidateClientPaths(clientId)
+      return { success: true }
+    }
+
+    await sql`UPDATE clients SET finance_linked = 1 WHERE id = ${clientId}`
+    await logAudit(user.id, "client.link_finance", "client", clientId, { name: client.name })
+    revalidateClientPaths(clientId)
+    return { success: true }
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return { error: "You do not have permission to link clients into Finance." }
+    }
+    return clientActionFailure(error, "Could not link client into Finance.")
   }
 }
 
@@ -2794,7 +2839,14 @@ export async function deleteProjectFile(formData: FormData) {
 
 async function syncProjectPaymentTotals(projectId: number) {
   const sumRows = (await sql`
-    SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE project_id = ${projectId}
+    SELECT COALESCE(SUM(amount), 0) AS total FROM (
+      SELECT amount FROM payments WHERE project_id = ${projectId}
+      UNION ALL
+      SELECT ip.amount
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      WHERE i.project_id = ${projectId} AND i.status != 'Cancelled'
+    ) t
   `) as { total: string }[]
   const paid = Number(sumRows[0]?.total ?? 0)
 
@@ -3229,6 +3281,7 @@ export async function recordInvoicePayment(formData: FormData) {
   `
 
   await logAudit(user.id, "invoice.payment", "invoice", invoiceId, { amount, method })
+  if (inv.project_id) await syncProjectPaymentTotals(inv.project_id)
   revalidateBillingPaths(invoiceId)
   if (inv.project_id) revalidateProjectPaths(inv.project_id)
   return { success: true }
@@ -3313,7 +3366,68 @@ export async function deleteInvoicePayment(formData: FormData) {
     paymentDate: payment.payment_date,
   })
   revalidateBillingPaths(invoiceId)
-  if (inv.project_id) revalidateProjectPaths(inv.project_id)
+  if (inv.project_id) {
+    await syncProjectPaymentTotals(inv.project_id)
+    revalidateProjectPaths(inv.project_id)
+  }
+  return { success: true }
+}
+
+export async function deleteInvoice(formData: FormData) {
+  const user = await requireBillingAccess()
+  const id = Number(formData.get("id"))
+  const confirmation = String(formData.get("confirmation") || "").trim()
+
+  if (!id) return { error: "Invoice is required." }
+
+  const existing = (await sql`
+    SELECT id, invoice_number, client_name, total, amount_paid, project_id, status
+    FROM invoices
+    WHERE id = ${id}
+    LIMIT 1
+  `) as {
+    id: number
+    invoice_number: string
+    client_name: string
+    total: string
+    amount_paid: string
+    project_id: number | null
+    status: InvoiceStatus
+  }[]
+  if (!existing.length) return { error: "Invoice not found." }
+
+  const expected = invoiceDeleteConfirmationPhrase(id)
+  if (confirmation !== expected) {
+    return { error: `Type ${expected} exactly to confirm deletion.` }
+  }
+
+  const invoice = existing[0]
+
+  try {
+    await sql`DELETE FROM invoices WHERE id = ${id}`
+  } catch (error) {
+    const code = mysqlErrorCode(error)
+    if (code === "ER_ROW_IS_REFERENCED_2" || code === "ER_ROW_IS_REFERENCED") {
+      return {
+        error:
+          "This invoice could not be deleted because related records are still linked. Try again or contact support if it continues.",
+      }
+    }
+    console.error("[invoices] delete failed:", error)
+    return { error: "Could not delete this invoice." }
+  }
+
+  await logAudit(user.id, "invoice.delete", "invoice", id, {
+    invoiceNumber: invoice.invoice_number,
+    clientName: invoice.client_name,
+    total: invoice.total,
+    amountPaid: invoice.amount_paid,
+    status: invoice.status,
+    projectId: invoice.project_id,
+  })
+  revalidateBillingPaths()
+  revalidatePath("/admin/finance", "layout")
+  if (invoice.project_id) revalidateProjectPaths(invoice.project_id)
   return { success: true }
 }
 

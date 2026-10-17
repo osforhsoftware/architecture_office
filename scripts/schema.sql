@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS clients (
   aadhaar_numbers  JSON,
   linked_numbers   JSON,
   source           VARCHAR(20) NOT NULL DEFAULT 'office',
+  finance_linked   TINYINT(1) NOT NULL DEFAULT 0,
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

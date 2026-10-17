@@ -38,12 +38,26 @@ function envPublicHosts() {
 }
 
 const localHosts = localDevHosts()
-const publicHosts = [...new Set([...localHosts, ...envPublicHosts()])]
+const publicHosts = [...new Set([...localHosts, ...envPublicHosts()].flatMap((host) => {
+  const name = host.split(":")[0]
+  if (
+    !name ||
+    name === "localhost" ||
+    name === "127.0.0.1" ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(name) ||
+    name.startsWith("www.")
+  ) {
+    return [host]
+  }
+  return [host, `www.${name}`]
+}))]
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  allowedDevOrigins: localHosts,
+  allowedDevOrigins: [
+    ...new Set(publicHosts.map((host) => host.split(":")[0]).filter(Boolean)),
+  ],
   experimental: {
     serverActions: {
       allowedOrigins: publicHosts.flatMap((host) =>

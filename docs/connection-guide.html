@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Office CRM — കണക്ഷൻ ഗൈഡ്</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --bg: #fafaf9;
+      --card: #ffffff;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+      --warn-bg: #ffedd5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      background: #134e4a;
+      color: #fff;
+      padding: 2.2rem 1.25rem 1.6rem;
+    }
+    header, main { max-width: 880px; margin: 0 auto; }
+    header { max-width: none; }
+    header .wrap, main { max-width: 880px; margin: 0 auto; }
+    main { padding: 1.5rem 1.25rem 3rem; }
+    h1 { margin: 0 0 0.4rem; font-size: 1.8rem; }
+    h2 { margin: 2rem 0 0.6rem; font-size: 1.25rem; }
+    h3 { margin: 1.2rem 0 0.4rem; font-size: 1.05rem; }
+    p, li { font-size: 1rem; }
+    .lead { margin: 0; color: #d6d3d1; max-width: 40rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      margin: 0.8rem 0;
+    }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { text-align: left; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: #f5f5f4; font-size: 0.85rem; }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92rem;
+    }
+    code { background: #f5f5f4; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    pre {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 0.9rem 1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+    }
+    .step {
+      display: flex;
+      gap: 0.8rem;
+      margin: 0.9rem 0;
+    }
+    .num {
+      flex: 0 0 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+    .warn {
+      background: var(--warn-bg);
+      border: 1px solid #fdba74;
+      color: var(--warn);
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+    }
+    a { color: var(--accent); }
+    ol.flow { padding-left: 1.2rem; }
+    ol.flow li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Office CRM കണക്ഷൻ ഗൈഡ്</h1>
+      <p class="lead">ലോക്കൽ സൈറ്റ്, MySQL, Cloudflare Tunnel, പബ്ലിക് ഡൊമെയ്ൻ. ഏത് പ്രോഗ്രാം, ഏത് ഘട്ടം, എങ്ങനെ തുടങ്ങാം, എങ്ങനെ നിർത്താം.</p>
+    </div>
+  </header>
+  <main>
+    <h2>ഉപയോഗിക്കുന്ന പ്രോഗ്രാമുകൾ</h2>
+    <table>
+      <thead>
+        <tr><th>പ്രോഗ്രാം</th><th>എന്തിന്</th><th>എവിടെ</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Node.js, npm</td>
+          <td>Office CRM (Next.js) പ്രവർത്തിപ്പിക്കാൻ</td>
+          <td>പ്രോജക്റ്റ് ഫോൾഡർ</td>
+        </tr>
+        <tr>
+          <td>Next.js</td>
+          <td>വെബ്‌സൈറ്റ്. പോർട്ട് 3000 മാത്രം</td>
+          <td><code>npm run dev</code></td>
+        </tr>
+        <tr>
+          <td>MySQL</td>
+          <td>ലോഗിൻ, ക്ലയന്റുകൾ, പ്രോജക്റ്റുകൾ</td>
+          <td><code>localhost:3306</code> മാത്രം. പുറത്തേക്ക് തുറക്കരുത്</td>
+        </tr>
+        <tr>
+          <td>PowerShell</td>
+          <td>കമാൻഡുകൾ ഓടിക്കാൻ</td>
+          <td>Windows Terminal</td>
+        </tr>
+        <tr>
+          <td>cloudflared</td>
+          <td>ഈ കമ്പ്യൂട്ടറിലെ സൈറ്റ് ഇന്റർനെറ്റിലേക്ക് കൊണ്ടുപോകാൻ</td>
+          <td><code>C:\Users\USER\AppData\Local\cloudflared\cloudflared.exe</code></td>
+        </tr>
+        <tr>
+          <td>Cloudflare</td>
+          <td>ഡൊമെയ്ൻ DNS, HTTPS</td>
+          <td><a href="https://dash.cloudflare.com/">dash.cloudflare.com</a></td>
+        </tr>
+        <tr>
+          <td>WordPress (Hostinger)</td>
+          <td>യഥാർത്ഥ പബ്ലിക് സൈറ്റ്. ഫയലുകൾ അവിടെ തന്നെ നിൽക്കും</td>
+          <td>Hostinger. DNS മാറ്റം താൽക്കാലികം മാത്രം</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>എന്താണ് ബന്ധിപ്പിച്ചിരിക്കുന്നത്</h2>
+    <ol class="flow">
+      <li>ബ്രൗസർ <code>http://localhost:3000/login</code> തുറക്കുന്നു.</li>
+      <li>Next.js ആപ്പ് പോർട്ട് 3000-ൽ മറുപടി നൽകുന്നു.</li>
+      <li>ലോഗിൻ MySQL-നോട് (<code>localhost:3306</code>, ഡാറ്റാബേസ് <code>acmmo_arch</code>) ചോദിക്കുന്നു.</li>
+      <li>പബ്ലിക് ഡൊമെയ്ൻ വേണമെങ്കിൽ മാത്രം cloudflared പോർട്ട് 3000 Cloudflare-ലേക്ക് അയക്കുന്നു.</li>
+      <li>MySQL പോർട്ട് ടണലിൽ ഇല്ല. അത് ഈ കമ്പ്യൂട്ടറിനുള്ളിൽ മാത്രം.</li>
+    </ol>
+
+    <div class="card">
+      <strong>ലോക്കൽ ലോഗിൻ വിലാസം</strong>
+      <p><a href="http://localhost:3000/login">http://localhost:3000/login</a></p>
+      <p><code>.env</code> ഫയലിൽ <code>FRONTEND_URL=http://localhost:3000</code> ആയിരിക്കണം. ലോക്കലായി ലോഗിൻ ചെയ്യുമ്പോൾ ഈ വിലാസം ഉപയോഗിക്കുക.</p>
+    </div>
+
+    <h2>1. ലോക്കൽ സൈറ്റ് തുടങ്ങുക</h2>
+    <div class="step"><div class="num">1</div><div>
+      <h3>പ്രോഗ്രാം: Node.js, npm</h3>
+      <p>പ്രോജക്റ്റ് ഫോൾഡറിൽ PowerShell തുറക്കുക.</p>
+      <pre>cd C:\Users\USER\Documents\shabeeb\architecture_office
+npm install
+npm run dev</pre>
+      <p>തയ്യാറായാൽ ബ്രൗസറിൽ തുറക്കുക: <a href="http://localhost:3000/login">http://localhost:3000/login</a></p>
+      <p>നിർത്താൻ ആ ടെർമിനലിൽ <strong>Ctrl+C</strong>.</p>
+    </div></div>
+
+    <h2>2. ഡാറ്റാബേസ്</h2>
+    <div class="step"><div class="num">2</div><div>
+      <h3>പ്രോഗ്രാം: MySQL</h3>
+      <p><code>.env</code> ഫയലിലെ കണക്ഷൻ ഇതാണ്. പാസ്‌വേഡ് ഈ ഡോക്യുമെന്റിൽ എഴുതരുത്.</p>
+      <pre>MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=acmmo_arch</pre>
+      <div class="warn">
+        <strong>Database is unavailable. Please try again.</strong>
+        ഈ സന്ദേശം ലോഗിനിൽ മാത്രം വരും. MySQL <code>localhost:3306</code>-ൽ പ്രവർത്തിക്കുന്നില്ലെങ്കിൽ ആപ്പിന് യൂസർ പരിശോധിക്കാൻ കഴിയില്ല. ഈ കമ്പ്യൂട്ടറിൽ MySQL സർവീസ് ഇപ്പോൾ ഓണല്ല. MySQL സ്റ്റാർട്ട് ചെയ്ത ശേഷം ലോഗിൻ വീണ്ടും ശ്രമിക്കുക.
+      </div>
+    </div></div>
+
+    <h2>3. Cloudflare Tunnel — ഒരിക്കൽ മാത്രം</h2>
+    <div class="step"><div class="num">3</div><div>
+      <h3>പ്രോഗ്രാം: cloudflared, Cloudflare ഡാഷ്‌ബോർഡ്</h3>
+      <p>ഇത് ഇതിനകം ഈ കമ്പ്യൂട്ടറിൽ ചെയ്തിട്ടുണ്ട്. പുതിയ കമ്പ്യൂട്ടറിലാണെങ്കിൽ ഈ ക്രമം പിന്തുടരുക.</p>
+      <pre>winget install --id Cloudflare.cloudflared --source winget
+cloudflared tunnel login
+cloudflared tunnel create architecture-office
+cloudflared tunnel route dns architecture-office app.musthakahammed.com</pre>
+      <p><code>tunnel login</code> ബ്രൗസർ തുറക്കും. <code>musthakahammed.com</code> സോൺ തിരഞ്ഞെടുത്ത് Authorize അമർത്തുക. സർട്ടിഫിക്കറ്റ് ഇവിടെ സേവ് ആകും:</p>
+      <p><code>C:\Users\USER\.cloudflared\cert.pem</code></p>
+      <p>ടണൽ കീ ഇവിടെയാണ്. ഈ ഫയൽ ആരുമായും പങ്കിടരുത്, git-ൽ ഇടരുത്:</p>
+      <p><code>C:\Users\USER\.cloudflared\&lt;tunnel-uuid&gt;.json</code></p>
+      <p>കോൺഫിഗ് ഫയൽ: <code>cloudflared\config.yml</code>. അതിൽ പോർട്ട് 3000 മാത്രമേ ഉള്ളൂ. അവസാന നിയമം മറ്റെല്ലാം 404 ആക്കും. <code>warp-routing</code> ഓഫ് ആണ്.</p>
+    </div></div>
+
+    <h2>4. പബ്ലിക് ഡൊമെയ്ൻ താൽക്കാലികമായി ലോക്കൽ സൈറ്റിലേക്ക്</h2>
+    <div class="step"><div class="num">4</div><div>
+      <h3>പ്രോഗ്രാം: Cloudflare DNS + cloudflared</h3>
+      <p><a href="https://musthakahammed.com/">https://musthakahammed.com/</a> സാധാരണ WordPress സൈറ്റാണ്. താൽക്കാലികമായി ഈ കമ്പ്യൂട്ടറിലെ Office CRM കാണിക്കാൻ apex DNS ടണലിലേക്ക് മാറ്റി. WordPress ഫയലുകൾ Hostinger-ൽ നിലനിൽക്കും.</p>
+      <p>ടണൽ കോൺഫിഗിൽ ഈ ഹോസ്റ്റുകൾ പോർട്ട് 3000-ലേക്ക് പോകുന്നു:</p>
+      <ul>
+        <li>musthakahammed.com</li>
+        <li>www.musthakahammed.com</li>
+        <li>app.musthakahammed.com</li>
+      </ul>
+      <p><code>crm.musthakahammed.com</code> മാറ്റിയിട്ടില്ല.</p>
+      <p>ഈ മോഡ് പ്രവർത്തിക്കണമെങ്കിൽ മൂന്നും ഓണായിരിക്കണം: കമ്പ്യൂട്ടർ, <code>npm run dev</code>, ടണൽ.</p>
+    </div></div>
+
+    <h2>5. ടണൽ തുടങ്ങുക</h2>
+    <div class="step"><div class="num">5</div><div>
+      <p>ആദ്യം ആപ്പ്. പിന്നെ ടണൽ. രണ്ട് ടെർമിനൽ.</p>
+      <pre>npm run dev</pre>
+      <pre>npm run tunnel:start</pre>
+      <p>പശ്ചാത്തലത്തിൽ വേണമെങ്കിൽ:</p>
+      <pre>npm run tunnel:start:bg</pre>
+      <p>ലോഗ്: <code>cloudflared\tunnel.log</code> ഉം <code>cloudflared\tunnel.err.log</code> ഉം.</p>
+    </div></div>
+
+    <h2>6. ടണൽ നിർത്തുക</h2>
+    <div class="step"><div class="num">6</div><div>
+      <p>മുന്നിൽ തുറന്ന ടണൽ ആണെങ്കിൽ ആ വിൻഡോയിൽ <strong>Ctrl+C</strong>. അത് ടണൽ മാത്രം നിർത്തും. Next.js നിർത്തില്ല.</p>
+      <p>പശ്ചാത്തല ടണൽ ആണെങ്കിൽ:</p>
+      <pre>npm run tunnel:stop</pre>
+    </div></div>
+
+    <h2>7. WordPress തിരികെ കൊണ്ടുവരിക</h2>
+    <div class="step"><div class="num">7</div><div>
+      <h3>പ്രോഗ്രാം: PowerShell, Cloudflare API</h3>
+      <p>പബ്ലിക് ഡൊമെയ്ൻ വീണ്ടും Hostinger WordPress ആക്കാൻ:</p>
+      <pre>powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-wordpress-dns.ps1
+npm run tunnel:stop</pre>
+      <p>ഇത് apex A, AAAA റെക്കോർഡുകൾ പഴയ Hostinger വിലാസത്തിലേക്ക് തിരികെ വെക്കും. ടണൽ നിർത്തിയാൽ <code>app.musthakahammed.com</code> ലോഡ് ആകില്ല. അത് സാധാരണമാണ്.</p>
+    </div></div>
+
+    <h2>സാധാരണ പിശകുകൾ</h2>
+    <table>
+      <thead>
+        <tr><th>കാണുന്നത്</th><th>കാരണം</th><th>ചെയ്യേണ്ടത്</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Database is unavailable</td>
+          <td>MySQL ഓഫ് ആണ്</td>
+          <td>MySQL സ്റ്റാർട്ട് ചെയ്ത് <a href="http://localhost:3000/login">localhost ലോഗിൻ</a> വീണ്ടും തുറക്കുക</td>
+        </tr>
+        <tr>
+          <td>Cloudflare 530, app സൈറ്റ് തുറക്കുന്നില്ല</td>
+          <td>ടണൽ ഓഫ് ആണ്</td>
+          <td><code>npm run dev</code> ശേഷം <code>npm run tunnel:start</code></td>
+        </tr>
+        <tr>
+          <td>പബ്ലിക് സൈറ്റ് WordPress അല്ല</td>
+          <td>DNS താൽക്കാലികമായി ടണലിലാണ്</td>
+          <td>മുകളിലെ restore കമാൻഡ്</td>
+        </tr>
+        <tr>
+          <td>ലോഗിൻ localhost-ന് പകരം ഡൊമെയ്നിലേക്ക് പോകുന്നു</td>
+          <td><code>FRONTEND_URL</code> പബ്ലിക് ആണ്</td>
+          <td><code>FRONTEND_URL=http://localhost:3000</code> ആക്കി ആപ്പ് വീണ്ടും തുടങ്ങുക</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="card">
+      <strong>VPS-ൽ site add ചെയ്യാൻ</strong>
+      <p>ഈ ഗൈഡ് local PC + tunnel ആണ്. Server-ൽ Next.js / static / WordPress എങ്ങനെ വെക്കാം: <a href="vps-website-guide.html">VPS website guide</a>.</p>
+    </div>
+
+    <h2>ചെയ്യരുത്</h2>
+    <ul>
+      <li>MySQL പോർട്ട് 3306 ടണൽ കോൺഫിഗിൽ ചേർക്കരുത്.</li>
+      <li><code>.env</code>, <code>cert.pem</code>, ടണൽ JSON ഫയൽ പങ്കിടരുത്.</li>
+      <li>WordPress സൈറ്റ് സ്ഥിരമായി മാറ്റണമെങ്കിൽ ഈ താൽക്കാലിക DNS മാറ്റം മതിയാകില്ല. Hostinger-ൽ ആപ്പ് പ്രത്യേകം ഹോസ്റ്റ് ചെയ്യണം.</li>
+    </ul>
+  </main>
+</body>
+</html>

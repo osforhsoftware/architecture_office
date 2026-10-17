@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "dev:lan": "node scripts/dev-lan.mjs",
+    "tunnel:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel-start.ps1",
+    "tunnel:start:bg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel-start.ps1 -Background",
+    "tunnel:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tunnel-stop.ps1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

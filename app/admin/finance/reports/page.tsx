@@ -3,11 +3,11 @@ import { FolderKanban, Building2 } from "lucide-react"
 import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { clientsToOptions, projectsToOptions } from "@/components/finance/finance-options"
 import { PROJECT_FINANCE_BASE, OFFICE_FINANCE_BASE } from "@/lib/finance/constants"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export default async function LegacyFinanceReportsPage() {
   const [clients, projects] = await Promise.all([
-    getClients(),
+    getFinanceClients(),
     getProjectsForInvoiceSelect(),
   ])
 

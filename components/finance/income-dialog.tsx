@@ -76,6 +76,13 @@ export function IncomeDialog({
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
 
+  const visibleClientOptions = useMemo(() => {
+    if (!income?.client_id || !clientId) return clientOptions
+    if (clientOptions.some((option) => option.value === clientId)) return clientOptions
+    const label = income.client_name?.trim() || "Current client"
+    return [...clientOptions, { value: clientId, label }]
+  }, [clientOptions, clientId, income?.client_id, income?.client_name])
+
   const clientProjects = useMemo(() => {
     if (!clientId) return []
     const matched = projects.filter(
@@ -268,13 +275,14 @@ export function IncomeDialog({
                       <FormField label="Client" className="min-w-0">
                         <FormSelect
                           name="client_id"
-                          options={clientOptions}
+                          options={visibleClientOptions}
                           value={clientId}
                           onValueChange={handleClientChange}
                           placeholder="Select client"
                           searchable
                           required={scope === "project"}
                           searchPlaceholder="Search client..."
+                          emptyMessage="No Finance clients yet. Add a new client or link an existing one."
                         />
                         <button
                           type="button"

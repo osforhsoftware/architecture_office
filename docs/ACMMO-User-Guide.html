@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ACMMO Architects — Office System User Guide</title>
+<style>
+  :root { --navy:#1f4e79; --ink:#1a2332; --muted:#5b6573; --line:#d7dee8; --paper:#f7f5f0; --brass:#b08d57; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Calibri, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--paper); line-height:1.5; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 48px 40px 80px; background:#fff; box-shadow: 0 0 0 1px var(--line); }
+  .brand { color: var(--brass); letter-spacing: .18em; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+  h1 { color: var(--navy); font-size: 32px; margin: 8px 0 10px; }
+  h2 { color: var(--navy); font-size: 22px; margin: 40px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); page-break-after: avoid; }
+  h3 { color: var(--navy); font-size: 16px; margin: 22px 0 8px; page-break-after: avoid; }
+  p { margin: 8px 0; }
+  a { color: var(--navy); }
+  table { width:100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 14px; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #e8eef5; color: var(--navy); }
+  tr:nth-child(even) td { background: #fafbfd; }
+  ul, ol { margin: 8px 0 14px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  li.nested { margin-left: 18px; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 0.92em; background: #eef2f6; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #f4f1ea; border: 1px solid var(--line); padding: 14px 16px; overflow: auto; font-family: Consolas, "Courier New", monospace; font-size: 13px; white-space: pre-wrap; page-break-inside: avoid; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 2px solid var(--navy); font-size: 12px; color: var(--muted); }
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 0; max-width: none; box-shadow: none; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="brand">ACMMO Architects</p>
+<h1>ACMMO Architects — Office System User Guide</h1>
+<p><strong>Architecture / Interiors / Construction</strong></p>
+<p>Complete how-to-use manual for the ACMMO office management website: login, roles, daily work, project workflow, billing, finance, attendance, and settings.</p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody>
+<tr><td><strong>Product</strong></td><td>ACMMO Office Management System</td></tr>
+<tr><td><strong>Audience</strong></td><td>Acmmo Admin, Office Admin, Billing Staff, Department Staff</td></tr>
+<tr><td><strong>Version</strong></td><td>Current production (September 2026)</td></tr>
+<tr><td><strong>Currency</strong></td><td>Indian Rupees (INR)</td></tr>
+</tbody></table>
+<hr/>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#1-what-this-system-does">What this system does</a></li>
+<li><a href="#2-how-to-sign-in">How to sign in</a></li>
+<li><a href="#3-who-can-do-what">Who can do what</a></li>
+<li><a href="#4-menus-by-role">Menus by role</a></li>
+<li><a href="#5-quick-start-first-day">Quick start (first day)</a></li>
+<li><a href="#6-dashboard">Dashboard</a></li>
+<li><a href="#7-clients">Clients</a></li>
+<li><a href="#8-create-a-project">Create a project</a></li>
+<li><a href="#9-project-list">Project list</a></li>
+<li><a href="#10-project-detail-page">Project detail page</a></li>
+<li><a href="#11-full-project-workflow">Full project workflow</a></li>
+<li><a href="#12-staff-portal">Staff portal</a></li>
+<li><a href="#13-plinth-level-inspection">Plinth-level inspection</a></li>
+<li><a href="#14-documents-files-kmap-drawing-numbers">Documents, files, KMAP, drawing numbers</a></li>
+<li><a href="#15-billing-and-invoices">Billing and invoices</a></li>
+<li><a href="#16-finance">Finance</a></li>
+<li><a href="#17-attendance">Attendance</a></li>
+<li><a href="#18-departments-services-documents-custom-fields">Departments, services, documents, custom fields</a></li>
+<li><a href="#19-staff-admins-and-users">Staff, admins, and users</a></li>
+<li><a href="#20-notifications">Notifications</a></li>
+<li><a href="#21-reports-settings-security-audit">Reports, settings, security, audit</a></li>
+<li><a href="#22-status-dictionary">Status dictionary</a></li>
+<li><a href="#23-daily-checklists">Daily checklists</a></li>
+<li><a href="#24-tips-and-common-questions">Tips and common questions</a></li>
+</ol>
+<hr/>
+<h2 id="1-what-this-system-does">1. What this system does</h2>
+<p>ACMMO Office is the single place to run the architecture office from first client call to handover and payment.</p>
+<p>You can:</p>
+<ul>
+<li>Keep a client directory (name, phone, Aadhaar, district, linked projects)</li>
+<li>Create projects with a <strong>full package</strong> or <strong>custom services</strong></li>
+<li>Move each project through Planning → selected services → Admin Review → Billing → Closed</li>
+<li>Assign work to Planning, Permit, 3D, Estimation, and Billing staff</li>
+<li>Track documents, drawings, floor areas (KMAP), files, and notes</li>
+<li>Record invoices, payments, project income/expense, and office cash</li>
+<li>Mark GPS attendance and submit expense claims</li>
+<li>Print project sheets and invoices with the company name exactly as typed in Settings</li>
+</ul>
+<p><strong>Home pages after login</strong></p>
+<table><thead><tr><th>Role</th><th>Opens at</th></tr></thead><tbody>
+<tr><td>Acmmo Admin (Super Admin)</td><td><code>/admin</code> Dashboard</td></tr>
+<tr><td>Admin (office manager)</td><td><code>/admin/projects</code></td></tr>
+<tr><td>Billing Staff</td><td><code>/admin/billing</code></td></tr>
+<tr><td>Planning / Permit / 3D / Estimation / other staff</td><td><code>/staff</code></td></tr>
+</tbody></table>
+<hr/>
+<h2 id="2-how-to-sign-in">2. How to sign in</h2>
+<ol>
+<li>Open the office website.</li>
+<li>Enter your <strong>username</strong> and <strong>password</strong>.</li>
+<li>Click <strong>Sign in</strong>.</li>
+<li>You land on the home page for your role (table above).</li>
+</ol>
+<p><strong>Session</strong></p>
+<ul>
+<li>You stay signed in for <strong>7 days</strong> (secure cookie).</li>
+<li>Sign out from y  a shared computer.</li>
+</ul>
+<p><strong>If login fails</strong></p>
+<ul>
+<li>Check Caps Lock and username spelling.</li>
+<li>Ask Acmmo Admin to reset the password (Security / User Management).</li>
+<li>Inactive users cannot sign in.</li>
+</ul>
+<p>The login tagline is <strong>Architecture / Interiors / Construction</strong>.</p>
+<hr/>
+<h2 id="3-who-can-do-what">3. Who can do what</h2>
+<p>The system uses four kinds of accounts.</p>
+<h3>3.1 Acmmo Admin (also stored as “Super Admin” on older accounts)</h3>
+<p>Full control of the office:</p>
+<ul>
+<li>Dashboard, clients, projects, departments, services, documents, custom fields</li>
+<li>Staff, attendance reports, admin accounts, billing, invoices, finance</li>
+<li>Reports, notifications, company settings, security, audit logs, user management</li>
+<li>Assign staff, approve or reject work, reassign, move department, override status, close projects</li>
+<li>Edit <strong>closed</strong> projects</li>
+<li>Change Super Admin password from Security</li>
+</ul>
+<h3>3.2 Admin (office manager)</h3>
+<p>Day-to-day office work, not system setup:</p>
+<ul>
+<li>Clients and projects (create, edit, search, print)</li>
+<li>Project finance and office finance (full)</li>
+<li><strong>Cannot</strong> assign / approve / reject workflow (view only)</li>
+<li><strong>Cannot</strong> open Settings, Security, Audit, User Management, Admin Management, Attendance reports, Departments, Services catalog, Staff directory, Billing dashboard, or Reports</li>
+</ul>
+<p>Home page is <strong>Projects</strong>.</p>
+<h3>3.3 Billing Staff</h3>
+<p>Money and billing projects:</p>
+<ul>
+<li>Billing dashboard, invoices, billing-stage projects</li>
+<li>Project and office finance: dashboards, income, expenses, reports</li>
+<li>Notifications</li>
+<li><strong>Cannot</strong> manage accounts, vendors, salary, cash book, or finance settings</li>
+</ul>
+<h3>3.4 Department staff (Planning, Permit, 3D, Estimation, custom departments)</h3>
+<p>Work on assigned projects:</p>
+<ul>
+<li>Staff home, My Projects, Attendance, Expenses, Profile</li>
+<li>Start work, mark complete, submit for review, return to office</li>
+<li>Fill checklist, files, KMAP; Planning Staff can edit drawing number in Planning &amp; Design</li>
+<li><strong>Cannot</strong> see billing amounts or office finance</li>
+</ul>
+<p>A person can have <strong>more than one staff role</strong> (for example Planning + Permit). Their queues follow all of those roles.</p>
+<hr/>
+<h2 id="4-menus-by-role">4. Menus by role</h2>
+<h3>Acmmo Admin sidebar</h3>
+<p>Dashboard · Clients · Projects · Departments · Services · Documents · Custom Fields · Staff · Attendance · Admin Management · Billing · Invoices · Finance (Project + Office) · Reports · Notifications · Settings · Security · Audit Logs · User Management</p>
+<h3>Office Admin sidebar</h3>
+<p>Clients · Projects · Finance (Project + Office)</p>
+<h3>Billing Staff sidebar</h3>
+<p>Billing Dashboard · Invoices · Billing Projects · Finance (limited) · Notifications</p>
+<h3>Staff sidebar</h3>
+<p>Home · My Projects · Attendance · Expenses · Profile</p>
+<hr/>
+<h2 id="5-quick-start-first-day">5. Quick start (first day)</h2>
+<p><strong>Office Admin / Acmmo Admin</strong></p>
+<ol>
+<li>Confirm the client exists (Clients → New Client), or use <strong>Project + Client</strong>.</li>
+<li>Create the project and pick <strong>Full Project</strong> or <strong>Custom Services</strong>.</li>
+<li>Optionally mark <strong>Site visit pending</strong> and/or <strong>Under construction</strong>.</li>
+<li>Print the project sheet if needed.</li>
+<li>Acmmo Admin assigns staff on the project page.</li>
+<li>Staff complete the step and submit for review.</li>
+<li>Acmmo Admin approves (or rejects for correction).</li>
+<li>Repeat until <strong>Billing</strong>.</li>
+<li>Record invoices and payments.</li>
+<li>When the project is <strong>Paid</strong>, Acmmo Admin <strong>closes</strong> it.</li>
+</ol>
+<p><strong>Staff</strong></p>
+<ol>
+<li>Check in on <strong>Attendance</strong> (inside the office GPS area).</li>
+<li>Open <strong>Home</strong> — pending and in-progress work is first.</li>
+<li>Open a project → <strong>Start work</strong> → fill documents / files / areas → <strong>Mark work completed</strong> → <strong>Submit for admin review</strong>.</li>
+<li>If something is missing, <strong>Return project</strong> with a reason.</li>
+</ol>
+<hr/>
+<h2 id="6-dashboard">6. Dashboard</h2>
+<p><strong>Who:</strong> Acmmo Admin only (<code>/admin</code>). Office Admin is sent to Projects.</p>
+<p>KPI cards are <strong>clickable</strong>. Each card opens the matching filtered project list (or Clients / Billing).</p>
+<table><thead><tr><th>Card</th><th>What it shows</th><th>Where it goes</th></tr></thead><tbody>
+<tr><td>Total Clients</td><td>All clients</td><td><code>/admin/clients</code></td></tr>
+<tr><td>Active Projects</td><td>Work in progress</td><td>Projects, filter <strong>active</strong></td></tr>
+<tr><td>Awaiting Assignment</td><td>Created, no staff yet</td><td>Status = Awaiting Assignment</td></tr>
+<tr><td>Pending Review</td><td>Waiting for Acmmo Admin</td><td>Status = Pending Review</td></tr>
+<tr><td>Correction Required</td><td>Rejected work</td><td>Status = Correction Required</td></tr>
+<tr><td>Needs Attention</td><td>Review + correction + awaiting + returned</td><td>Filter <strong>attention</strong></td></tr>
+<tr><td>Plinth level Inspection</td><td>Projects on that service</td><td>Filter <strong>plinth_inspection</strong></td></tr>
+<tr><td>Under Construction</td><td>Flag at create/edit</td><td>Filter <strong>under_construction</strong></td></tr>
+<tr><td>Site Visit Pending</td><td>Flag at create/edit</td><td>Filter <strong>site_visit_pending</strong></td></tr>
+<tr><td>Completed / Closed</td><td>Finished work</td><td>Matching status</td></tr>
+<tr><td>Payments Pending</td><td>Unpaid / partial</td><td>Billing</td></tr>
+<tr><td>Delayed</td><td>Past due date</td><td>Filter <strong>delayed</strong></td></tr>
+<tr><td>Completed Today</td><td>Closed/completed today</td><td>(count only)</td></tr>
+</tbody></table>
+<p>Also on the dashboard:</p>
+<ul>
+<li>Department analytics</li>
+<li>Status pie chart</li>
+<li>6-month revenue trend</li>
+<li><strong>Needs Attention</strong> list</li>
+<li>Recent payments</li>
+<li>Staff performance</li>
+</ul>
+<p><strong>Needs Attention</strong> uses the same filter as the card. Click the title, <strong>View all</strong>, or the card itself.</p>
+<hr/>
+<h2 id="7-clients">7. Clients</h2>
+<p><strong>Path:</strong> <code>/admin/clients</code>  </p>
+<p><strong>Who:</strong> Acmmo Admin and Office Admin</p>
+<h3>Add a client only</h3>
+<p>Click <strong>New Client</strong> (or the client dialog button). Fill:</p>
+<ul>
+<li>Name (required)</li>
+<li>Phone (unique — duplicate numbers are blocked)</li>
+<li>Email, address, street</li>
+<li>District (Kerala list)</li>
+<li>Aadhaar and linked numbers (you can add several pairs)</li>
+</ul>
+<h3>Add client and project together</h3>
+<p>Click <strong>Project + Client</strong>. This creates the client, then the project, in one flow. Use this for walk-in registrations.</p>
+<h3>Find clients</h3>
+<p>Filters:</p>
+<ul>
+<li>Search (name, phone, email)</li>
+<li>District</li>
+<li>Has projects / no projects</li>
+<li>Source (office vs other)</li>
+</ul>
+<p>Open a client to see linked projects.</p>
+<hr/>
+<h2 id="8-create-a-project">8. Create a project</h2>
+<p><strong>Paths</strong></p>
+<ul>
+<li>Projects → <strong>New Project</strong></li>
+<li>Clients → <strong>Project + Client</strong></li>
+</ul>
+<p><strong>Who:</strong> Acmmo Admin, Office Admin  </p>
+<p>At least one client must exist for <strong>New Project</strong>.</p>
+<h3>Step-by-step</h3>
+<ol>
+<li><strong>Project name</strong> (required).</li>
+<li><strong>Refer name</strong> — who referred the job (optional).</li>
+<li><strong>MBook Number</strong> — measurement book number (optional).</li>
+<li><strong>Client</strong> — required.</li>
+<li><strong>Location</strong> and <strong>Type</strong> (Residential, Commercial, Industrial, Institutional, Renovation, Other).  </li>
+</ol>
+<p>   If Type is Other, enter a custom type.  </p>
+<p>   For Residential + Architectural Plan / Building Permit, building number and permit number can appear.</p>
+<ol>
+<li><strong>Drawing number</strong> (optional; unique when used).</li>
+<li><strong>Package</strong></li>
+</ol>
+<ul>
+<li class="nested"><strong>Full Project</strong> — every active core service in the catalog.</li>
+<li class="nested"><strong>Custom Services</strong> — pick only what this client bought. Only those services appear in the timeline and staff queues.</li>
+</ul>
+<ol>
+<li><strong>Required documents</strong> — suggested from the selected services; you can change the list.</li>
+<li><strong>Custom fields</strong> — extra office fields, if configured (selected by default).</li>
+<li><strong>Project status flags</strong> (multi-select, optional):</li>
+</ol>
+<ul>
+<li class="nested">Site visit pending</li>
+<li class="nested">Under construction</li>
+</ul>
+<ol>
+<li><strong>Priority</strong> — Low / Medium / High (High shows <strong>red background, white text</strong>).</li>
+<li><strong>Start date</strong> (when your role is allowed) and <strong>Due date</strong>.</li>
+<li><strong>Amount (₹)</strong>.</li>
+<li><strong>Notes</strong>.</li>
+<li>Click <strong>Create project</strong>.</li>
+</ol>
+<h3>What the system does on create</h3>
+<ul>
+<li>Code: <code>PROJECT-YYYY-####</code></li>
+<li>Invoice number reserved: <code>INV-YYYY-####</code></li>
+<li>Status: <strong>Awaiting Assignment</strong></li>
+<li>Section: <strong>Planning &amp; Design</strong></li>
+<li>Workflow seeded:</li>
+<li class="nested">Planning</li>
+<li class="nested">For each selected service: <strong>service work</strong> + <strong>Admin Review</strong></li>
+<li class="nested">Billing</li>
+<li>Document checklist for those services</li>
+<li>Empty KMAP floors (Floor 1, Floor 2)</li>
+<li>Status history: New → Awaiting Assignment</li>
+<li>Project print / PDF opens after success</li>
+</ul>
+<p>Add-on services after create: use <strong>Edit project</strong> and assign extra services (for example Plinth-Level Inspection). That service then follows the normal assign → work → submit → review path.</p>
+<hr/>
+<h2 id="9-project-list">9. Project list</h2>
+<p><strong>Path:</strong> <code>/admin/projects</code></p>
+<p>Each row shows <strong>client name in bold</strong>, then the project name.</p>
+<p><strong>Priority:</strong> High-priority rows use a red background, white text, and a red status dot.</p>
+<p><strong>Overdue due dates</strong> show in red (not for Closed / Completed / Cancelled).</p>
+<h3>Filters and search</h3>
+<ul>
+<li>Text search (project, client, code)</li>
+<li>Status</li>
+<li>Department / section</li>
+<li>Dashboard filters via URL (<code>?filter=attention</code>, <code>active</code>, <code>delayed</code>, <code>site_visit_pending</code>, <code>under_construction</code>, <code>plinth_inspection</code>)</li>
+<li>Page size: 10, 25, 50, 100, or all</li>
+</ul>
+<h3>Actions</h3>
+<ul>
+<li>Open a project</li>
+<li>Create <strong>New Project</strong></li>
+<li>Export (where available)</li>
+<li>Print from the project page</li>
+</ul>
+<hr/>
+<h2 id="10-project-detail-page">10. Project detail page</h2>
+<p><strong>Admin path:</strong> <code>/admin/projects/[id]</code>  </p>
+<p><strong>Staff path:</strong> <code>/staff/projects/[id]</code></p>
+<h3>Header</h3>
+<p>Name, code, status / priority / payment badges, amount, progress bar, due date, invoice number, print button.</p>
+<p>Acmmo Admin also sees <strong>Edit</strong>, <strong>Delete</strong>, and finance shortcuts (<strong>Add Income</strong> / <strong>Add Expense</strong>) when permitted.</p>
+<h3>Layout (admin)</h3>
+<ol>
+<li>Client information (name, phone, email, address)</li>
+<li><strong>Workflow Timeline</strong> — the pipeline for *this* project’s services</li>
+<li>Sidebar: type, location, department, stage, drawing / MBook / refer, assigned staff, status</li>
+<li><strong>Department Progress</strong> — assign, approve, reject, close (Acmmo Admin); Admin sees this as view-only</li>
+<li>Drawing number and MBook</li>
+<li>KMAP floor areas</li>
+<li>Tabs:</li>
+</ol>
+<ul>
+<li class="nested"><strong>Documents</strong> — checklist</li>
+<li class="nested"><strong>Files</strong> — drawings, photos, PDFs</li>
+<li class="nested"><strong>Custom Fields</strong></li>
+<li class="nested"><strong>Billing</strong> — invoices and payments</li>
+<li class="nested"><strong>Activity</strong> — status history, returns, and approval history (on the same page, not a popup)</li>
+</ul>
+<h3>Who can edit</h3>
+<table><thead><tr><th>Role</th><th>Workflow buttons</th><th>Documents / files / KMAP / drawing</th><th>Billing</th></tr></thead><tbody>
+<tr><td>Acmmo Admin</td><td>Assign, approve, reject, reassign, move dept, status override, close</td><td>Yes, including Closed</td><td>Yes</td></tr>
+<tr><td>Admin</td><td>View only</td><td>Yes until Closed</td><td>Yes</td></tr>
+<tr><td>Staff</td><td>Start / complete / submit / return when assigned</td><td>Only while assigned and status is editable</td><td>No</td></tr>
+<tr><td>Billing Staff</td><td>Billing-stage projects only</td><td>Billing view</td><td>Yes</td></tr>
+</tbody></table>
+<h3>Closed projects</h3>
+<ul>
+<li>Admin and Staff: read-only details</li>
+<li>Acmmo Admin: can still edit and override</li>
+<li>Billing tab stays available for office billing roles</li>
+<li>Delete (Acmmo Admin) also removes payments, invoices, assignments, and related records (blocked if the system still needs them)</li>
+</ul>
+<h3>Print</h3>
+<p>Use <strong>Print</strong>. The company name on billing / PDF headers is printed <strong>exactly as typed</strong> in Settings (letter case is not changed).</p>
+<hr/>
+<h2 id="11-full-project-workflow">11. Full project workflow</h2>
+<p>Work is <strong>service-based</strong>. A full package gets every active service. A custom package gets only the services you selected.</p>
+<h3>Pipeline (typical)</h3>
+<pre>
+Create project
+    → Awaiting Assignment
+    → Acmmo Admin assigns staff
+    → Assigned
+    → Staff: Start work → In Progress
+    → Staff: Mark work completed → Work Completed
+    → Staff: Submit for admin review → Pending Review
+         ├─ Approve &amp; assign next  → next service / department
+         └─ Reject                 → Correction Required → staff starts again
+    → … repeat for each selected service …
+    → Billing
+    → Payments until Paid
+    → Acmmo Admin: Close project → Closed
+</pre>
+<p>Staff can <strong>Return</strong> at any editable moment. Acmmo Admin <strong>reassigns</strong> a returned project.</p>
+<pre>
+                    ┌──────────────────────┐
+                    │  Correction Required │
+                    └──────────▲───────────┘
+                               │ reject
+Create → Assign → Work → Submit → Review ──approve──► Next step
+                     │                      │
+                     │ return               │ last service + Paid
+                     ▼                      ▼
+                 Returned              Billing → Close
+                     │
+                     └── reassign ──► Assign
+</pre>
+<h3>Default services (catalog)</h3>
+<p>Acmmo Admin can add, rename, or deactivate services under <strong>Services</strong>. Defaults:</p>
+<table><thead><tr><th>Service</th><th>Department</th><th>Typical staff</th></tr></thead><tbody>
+<tr><td>Site Survey / Measurement</td><td>Planning &amp; Design</td><td>Planning Staff</td></tr>
+<tr><td>Plinth-Level Inspection</td><td>Planning &amp; Design</td><td>Planning Staff</td></tr>
+<tr><td>Architecture Design</td><td>Planning &amp; Design</td><td>Planning Staff</td></tr>
+<tr><td>Concept Design</td><td>Planning &amp; Design</td><td>Planning Staff</td></tr>
+<tr><td>Plot Sketch</td><td>Planning &amp; Design</td><td>Planning Staff</td></tr>
+<tr><td>Building Permit</td><td>Building Permit</td><td>Permit Staff</td></tr>
+<tr><td>Permit Renewal</td><td>Building Permit</td><td>Permit Staff</td></tr>
+<tr><td>3D Elevation</td><td>3D &amp; Interior</td><td>3D Staff</td></tr>
+<tr><td>Interior Design</td><td>3D &amp; Interior</td><td>3D Staff</td></tr>
+<tr><td>Working Drawings</td><td>Estimation &amp; Construction</td><td>Estimation Staff</td></tr>
+<tr><td>Estimation</td><td>Estimation &amp; Construction</td><td>Estimation Staff</td></tr>
+<tr><td>Construction Supervision</td><td>Estimation &amp; Construction</td><td>Estimation Staff</td></tr>
+<tr><td>Valuation Course</td><td>Estimation &amp; Construction</td><td>Estimation Staff</td></tr>
+</tbody></table>
+<p>Every selected service is followed by an <strong>Admin Review</strong> step. The last step is always <strong>Billing</strong>.</p>
+<h3>Acmmo Admin workflow buttons</h3>
+<table><thead><tr><th>Button</th><th>When</th><th>Result</th></tr></thead><tbody>
+<tr><td>Assign staff / team</td><td>Active work step (not during review)</td><td>Status <strong>Assigned</strong>; staff notified. Multiple people can be assigned on work steps.</td></tr>
+<tr><td>Approve &amp; assign next</td><td><strong>Pending Review</strong></td><td>Completes review; next work step becomes active</td></tr>
+<tr><td>Reject — correction required</td><td><strong>Pending Review</strong></td><td>Status <strong>Correction Required</strong>; feedback note stored</td></tr>
+<tr><td>Reassign</td><td><strong>Returned</strong></td><td>Sends the job back to section staff</td></tr>
+<tr><td>Move department</td><td>Override</td><td>Changes section; optional new assignee</td></tr>
+<tr><td>Update status</td><td>Override</td><td>Manual status + note in history</td></tr>
+<tr><td>Close project</td><td>Billing step <strong>and</strong> payment <strong>Paid</strong> (if amount &amp;gt; 0)</td><td>Status <strong>Closed</strong></td></tr>
+</tbody></table>
+<p>Office Admin <strong>cannot</strong> press these buttons; they still see the timeline and can edit project details until Closed.</p>
+<h3>Staff workflow buttons</h3>
+<table><thead><tr><th>Button</th><th>Allowed statuses</th><th>Result</th></tr></thead><tbody>
+<tr><td>Start work</td><td>Assigned, Correction Required</td><td>In Progress</td></tr>
+<tr><td>Mark work completed</td><td>Assigned, In Progress, Correction Required</td><td>Work Completed; office notified</td></tr>
+<tr><td>Submit for admin review</td><td>Work Completed, In Progress, Assigned</td><td>Current step completed; review step active; Pending Review</td></tr>
+<tr><td>Return project</td><td>While the project is editable</td><td>Returned, with reason and notes</td></tr>
+</tbody></table>
+<p>Checklist, KMAP, and files are <strong>not</strong> hard gates — the system does not block submit if they are incomplete. Complete them as office practice.</p>
+<h3>Return reasons</h3>
+<p>Missing Documents · Site Plan Missing · Aadhaar Missing · Tax Receipt Missing · Client Approval Pending · Clarification Required · Setback Issue · Room Size Issue · Other</p>
+<h3>Notifications sent automatically</h3>
+<ul>
+<li>Project assigned</li>
+<li>Section / step handoff</li>
+<li>Project returned</li>
+<li>Work completed / pending review (office)</li>
+</ul>
+<p>Use the bell in the header. Open <strong>Notifications</strong> to mark one or all as read.</p>
+<hr/>
+<h2 id="12-staff-portal">12. Staff portal</h2>
+<p><strong>Home:</strong> <code>/staff</code></p>
+<h3>Home boxes (all clickable)</h3>
+<table><thead><tr><th>Box</th><th>Filter on My Projects</th></tr></thead><tbody>
+<tr><td>My Assigned</td><td>assigned</td></tr>
+<tr><td>Awaiting Action</td><td>awaiting_action</td></tr>
+<tr><td>In Review</td><td>submitted_review</td></tr>
+<tr><td>Corrections</td><td>correction</td></tr>
+<tr><td>Overdue</td><td>overdue</td></tr>
+<tr><td>Completed</td><td>completed</td></tr>
+</tbody></table>
+<p>Pending and in-progress work is listed <strong>first</strong>. High priority is red. Overdue dates are red.</p>
+<p><strong>Department queue</strong> shows jobs in your department that are still awaiting assignment (read-only heads-up).</p>
+<h3>My Projects (<code>/staff/projects</code>)</h3>
+<ul>
+<li>Search</li>
+<li>Filter (same keys as the home boxes)</li>
+<li><strong>Grid view</strong> or <strong>Table view</strong></li>
+<li>Mobile-friendly layout</li>
+</ul>
+<h3>Opening a project</h3>
+<p>You can open a project if you <strong>own</strong> it (primary or team assignee) <strong>or</strong> you worked on it before.</p>
+<p>You can <strong>edit</strong> only when assigned and status is one of:</p>
+<p>Assigned · In Progress · Work Completed · Correction Required · Waiting for Documents · New · Awaiting Assignment</p>
+<p>Otherwise the page is view-only (returned, submitted, closed, past work).</p>
+<p>On the staff project page:</p>
+<ol>
+<li>Header (status, priority, section, progress)</li>
+<li>Actions <strong>or</strong> current status</li>
+<li>Drawing number (Planning Staff, while in Planning &amp; Design)</li>
+<li>KMAP</li>
+<li>Tabs: Checklist · Files · History / Activity</li>
+</ol>
+<h3>Attendance (<code>/staff/attendance</code>)</h3>
+<p>See <a href="#17-attendance">§17</a>.</p>
+<h3>Expenses (<code>/staff/expenses</code>)</h3>
+<p>Submit claims: Fuel, Travel, Food, Accommodation, Site Visit, Office Purchase. Link to a project when relevant. Track status: Submitted → Dept Review → Admin Approval → Finance Payment → Completed (or Rejected).</p>
+<h3>Profile (<code>/staff/profile</code>)</h3>
+<p>Name, avatar, and account details for yourself.</p>
+<hr/>
+<h2 id="13-plinth-level-inspection">13. Plinth-level inspection</h2>
+<p>Plinth-level inspection is a <strong>normal service</strong>, not a separate module.</p>
+<ol>
+<li>Include it at create time (Full Project, or Custom Services → Plinth-Level Inspection), <strong>or</strong> add it later as an add-on.</li>
+<li>Acmmo Admin assigns Planning Staff (or the role linked to that service).</li>
+<li>Staff start work, attach:</li>
+</ol>
+<ul>
+<li class="nested">Plinth Photos</li>
+<li class="nested">Level Measurements</li>
+<li class="nested">Inspection Report</li>
+</ul>
+<ol>
+<li>Staff submit for review; Acmmo Admin approves like any other step.</li>
+</ol>
+<p>The dashboard <strong>Plinth level Inspection</strong> box lists projects currently on that service.</p>
+<hr/>
+<h2 id="14-documents-files-kmap-drawing-numbers">14. Documents, files, KMAP, drawing numbers</h2>
+<h3>Documents (checklist)</h3>
+<p>Suggested from the services on the project. Typical building-permit set includes Possession, Land Tax, Deed, sketches, Aadhaar, consent, permit, cess, and similar items. Mark items <strong>filed</strong> when the paper is in the office file.</p>
+<h3>Files</h3>
+<p>Store file <strong>name and type</strong> (PDF, DWG, JPG, PNG, Excel, ZIP, Other) under categories: Drawing, Permit Document, Photo, Estimate, Other.</p>
+<h3>KMAP (area capture)</h3>
+<p>Floor-wise <strong>plinth area</strong> and <strong>floor area</strong> in square feet. New projects start with Floor 1 and Floor 2. You can add floors up to 50. Totals are shown at the bottom.</p>
+<h3>Drawing number and MBook</h3>
+<ul>
+<li>Drawing number is unique when filled. Planning Staff can edit it in Planning &amp; Design.</li>
+<li>MBook (edge book) number is the measurement book reference.</li>
+</ul>
+<h3>Custom fields</h3>
+<p>Configured under <strong>Custom Fields</strong> (<code>/admin/requirements</code>). Types: text, number, date, yes/no, choice. They appear on create and on the project <strong>Custom Fields</strong> tab.</p>
+<h3>Notes and start date</h3>
+<p>Project notes and start date can be edited on the detail page (until Closed, except Acmmo Admin).</p>
+<hr/>
+<h2 id="15-billing-and-invoices">15. Billing and invoices</h2>
+<p><strong>Who:</strong> Acmmo Admin, Billing Staff (and Admin on the project Billing tab / finance)</p>
+<h3>Project billing tab</h3>
+<ul>
+<li>See project amount, advance received, balance</li>
+<li>Payment status updates automatically: <strong>Unpaid</strong> / <strong>Partially Paid</strong> / <strong>Paid</strong></li>
+<li>Record payments: Cash, Bank Transfer, UPI, Cheque, Card</li>
+<li>Linked invoices</li>
+</ul>
+<h3>Billing dashboard (<code>/admin/billing</code>)</h3>
+<p>Counts and lists for unpaid, partial, and paid work. Counts match the actual payment records.</p>
+<h3>Invoices (<code>/admin/invoices</code>)</h3>
+<ul>
+<li>Overview: total invoices, billed, collected, outstanding</li>
+<li><strong>New Invoice</strong> (<code>/admin/invoices/new</code>) — pick client/project, lines, discounts, terms</li>
+<li>Statuses: Draft, Sent, Pending, Partially Paid, Paid, Overdue, Cancelled</li>
+<li>PDF download; header <strong>company name</strong> matches Settings character-for-character</li>
+<li>Default terms: payment due within 15 days (editable in Settings)</li>
+</ul>
+<p>Billing Staff only see projects that have reached the <strong>Billing</strong> section.</p>
+<hr/>
+<h2 id="16-finance">16. Finance</h2>
+<p>Finance is split into two ledgers so project money and office money stay separate.</p>
+<p><strong>Hub:</strong> <code>/admin/finance</code></p>
+<h3>Project Finance (<code>/admin/finance/project</code>)</h3>
+<table><thead><tr><th>Page</th><th>Use</th></tr></thead><tbody>
+<tr><td>Dashboard</td><td>Totals, shortcuts</td></tr>
+<tr><td>Income</td><td>Advance, stage, final, consultation, drawing, permit, other</td></tr>
+<tr><td>Expenses</td><td>Project costs</td></tr>
+<tr><td>Budget</td><td>Planned vs actual</td></tr>
+<tr><td>Ledger</td><td>Full project ledger</td></tr>
+<tr><td>Profit Analysis</td><td>Income − expense, margin</td></tr>
+<tr><td>Reports</td><td>Charts + downloads</td></tr>
+</tbody></table>
+<p>From a project page, <strong>Add Income</strong> and <strong>Add Expense</strong> jump here with the project selected. You can pick an existing client or <strong>create a new client</strong> from the finance form.</p>
+<p>Income / expense statuses: Draft → Approved (or Cancelled). Expenses can also be Submitted, Rejected, Paid.</p>
+<h3>Office Finance (<code>/admin/finance/office</code>)</h3>
+<table><thead><tr><th>Page</th><th>Use</th></tr></thead><tbody>
+<tr><td>Dashboard</td><td>Office cash position</td></tr>
+<tr><td>Income / Expenses</td><td>Office operations</td></tr>
+<tr><td>Cash Book</td><td>Day book</td></tr>
+<tr><td>Accounts</td><td>Cash, petty, bank, UPI</td></tr>
+<tr><td>Vendors</td><td>Supplier records</td></tr>
+<tr><td>Staff Claims</td><td>Approve staff reimbursements</td></tr>
+<tr><td>Salary</td><td>Draft → Approved → Paid</td></tr>
+<tr><td>Reports</td><td>Office downloads</td></tr>
+<tr><td>Settings</td><td>Finance categories and options</td></tr>
+</tbody></table>
+<p><strong>Acmmo Admin and Office Admin</strong> can manage accounts, vendors, transfers, salary, and settings.  </p>
+<p><strong>Billing Staff</strong> can use dashboards, income, expenses, and reports only.</p>
+<h3>Report downloads (separate files)</h3>
+<p>On Project Reports:</p>
+<ul>
+<li>Monthly report</li>
+<li>Payment history</li>
+<li>Project income</li>
+<li>Project expenses</li>
+<li>Project profit</li>
+</ul>
+<p>On Office Reports:</p>
+<ul>
+<li>Monthly report</li>
+<li>Office income</li>
+<li>Office expenses</li>
+</ul>
+<p>Pick date range, client, and/or project where offered, then download Excel.</p>
+<hr/>
+<h2 id="17-attendance">17. Attendance</h2>
+<h3>Staff check-in / check-out</h3>
+<p><strong>Path:</strong> <code>/staff/attendance</code></p>
+<ol>
+<li>Allow location in the browser.</li>
+<li>Stand <strong>inside the office geofence</strong> (default <strong>300 metres</strong> from the office pin).</li>
+<li><strong>Check In</strong> once per day, <strong>Check Out</strong> when leaving.</li>
+<li>Duplicate punches on the same day are blocked.</li>
+<li>If you check in after office start + buffer (default <strong>09:30</strong> + <strong>10 minutes</strong>), status is <strong>Late Coming</strong> and a popup explains it.</li>
+</ol>
+<p>Statuses: <strong>Present</strong>, <strong>Late Coming</strong>, <strong>Absent</strong>.</p>
+<p>Check-in outside the radius is rejected with a distance message.</p>
+<h3>Acmmo Admin attendance (<code>/admin/attendance</code>)</h3>
+<ul>
+<li>Filter by date, month, staff, department</li>
+<li>Export <strong>CSV</strong> or <strong>Excel</strong>, or print</li>
+<li><strong>Manual mark</strong> for site visits and other out-of-office cases (still recorded with reason)</li>
+</ul>
+<p>Office coordinates, radius, start time, and buffer are stored in attendance settings (Acmmo Admin).</p>
+<hr/>
+<h2 id="18-departments-services-documents-custom-fields">18. Departments, services, documents, custom fields</h2>
+<p><strong>Who:</strong> Acmmo Admin</p>
+<h3>Departments (<code>/admin/departments</code>)</h3>
+<p>Office sections (Planning &amp; Design, Building Permit, 3D &amp; Interior, Estimation &amp; Construction, Billing, plus any you add). Each department maps to a staff role. Moving a project to a department uses this list.</p>
+<h3>Services (<code>/admin/services</code>)</h3>
+<p>The catalog used at project create. Inactive services are hidden from new projects but remain on old ones.</p>
+<h3>Documents (<code>/admin/documents</code>)</h3>
+<p>Templates per service (the checklist suggestions). Example for plinth: Plinth Photos, Level Measurements, Inspection Report.</p>
+<h3>Custom Fields (<code>/admin/requirements</code>)</h3>
+<p>Extra questions on every new project (or selected ones).</p>
+<hr/>
+<h2 id="19-staff-admins-and-users">19. Staff, admins, and users</h2>
+<p><strong>Who:</strong> Acmmo Admin (Staff page is Super Admin; Office Admin does not manage users)</p>
+<h3>Staff (<code>/admin/staff</code>)</h3>
+<p>Create department employees: name, username, password, role(s), avatar, active flag. Roles can be multiple.</p>
+<h3>Admin Management (<code>/admin/admins</code>)</h3>
+<p>Create and manage <strong>Admin</strong> (office manager) accounts.</p>
+<h3>User Management (<code>/admin/users</code>)</h3>
+<p>All accounts: activate / deactivate, review roles.</p>
+<p>Never share Acmmo Admin credentials. Passwords are stored hashed.</p>
+<hr/>
+<h2 id="20-notifications">20. Notifications</h2>
+<p>Bell icon (admin and staff). Unread count on the sidebar.</p>
+<p>Typical events: assigned, handoff, returned, work ready for review.</p>
+<p><strong>Notifications</strong> page (<code>/admin/notifications</code> for billing/admin): mark one or all read.</p>
+<hr/>
+<h2 id="21-reports-settings-security-audit">21. Reports, settings, security, audit</h2>
+<p><strong>Who:</strong> Acmmo Admin unless noted</p>
+<h3>Reports (<code>/admin/reports</code>)</h3>
+<p>Office-level project and performance reports.</p>
+<h3>Settings (<code>/admin/settings</code>)</h3>
+<p>Company profile used on invoices and PDFs:</p>
+<ul>
+<li>Company name (printed exactly as typed)</li>
+<li>GST, phone, email, website, address</li>
+<li>Tagline</li>
+<li>Invoice terms</li>
+<li>Bank name, account name, number, IFSC</li>
+<li>UPI ID and payment number / app</li>
+<li>Logo upload</li>
+</ul>
+<p>Links through to document templates and custom fields.</p>
+<h3>Security (<code>/admin/security</code>)</h3>
+<p>Change the Acmmo Admin password. Keep the new password private.</p>
+<h3>Audit Logs (<code>/admin/audit</code>)</h3>
+<p>Privileged actions: login, logout, clients, projects, settings, billing. Includes role and IP where recorded.</p>
+<hr/>
+<h2 id="22-status-dictionary">22. Status dictionary</h2>
+<table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>New</td><td>Just created (briefly, then Awaiting Assignment)</td></tr>
+<tr><td>Awaiting Assignment</td><td>Waiting for Acmmo Admin to assign staff</td></tr>
+<tr><td>Assigned</td><td>Staff assigned; work not started</td></tr>
+<tr><td>In Progress</td><td>Staff clicked Start work</td></tr>
+<tr><td>Work Completed</td><td>Staff finished the step; may still submit</td></tr>
+<tr><td>Pending Review</td><td>Waiting for Acmmo Admin approve / reject</td></tr>
+<tr><td>Approved</td><td>Review accepted (then next step)</td></tr>
+<tr><td>Correction Required</td><td>Review rejected; staff must fix</td></tr>
+<tr><td>Returned</td><td>Staff sent the job back to the office</td></tr>
+<tr><td>Waiting for Client</td><td>Hold — client input</td></tr>
+<tr><td>Waiting for Documents</td><td>Hold — papers</td></tr>
+<tr><td>Waiting for Government Approval</td><td>Hold — authority</td></tr>
+<tr><td>Waiting for Payment</td><td>Hold — money</td></tr>
+<tr><td>On Hold</td><td>Manual hold</td></tr>
+<tr><td>Completed</td><td>Work finished (legacy / pipeline end)</td></tr>
+<tr><td>Closed</td><td>Officially closed after billing (Paid)</td></tr>
+<tr><td>Cancelled</td><td>Cancelled</td></tr>
+</tbody></table>
+<p><strong>Payment:</strong> Unpaid · Partially Paid · Paid  </p>
+<p><strong>Priority:</strong> Low · Medium · High  </p>
+<p><strong>Project types:</strong> Residential · Commercial · Industrial · Institutional · Renovation · Other  </p>
+<p><strong>Create-time flags (not statuses):</strong> Site visit pending · Under construction  </p>
+<hr/>
+<h2 id="23-daily-checklists">23. Daily checklists</h2>
+<h3>Acmmo Admin</h3>
+<ul>
+<li>Open Dashboard — clear <strong>Needs Attention</strong>, <strong>Pending Review</strong>, <strong>Returned</strong></li>
+<li>Assign new projects</li>
+<li>Approve or reject submitted work</li>
+<li>Check <strong>Site visit pending</strong>, <strong>Under construction</strong>, <strong>Plinth</strong> boxes</li>
+<li>Review delayed / overdue</li>
+<li>Close paid billing jobs</li>
+<li>Glance at attendance and notifications</li>
+</ul>
+<h3>Office Admin</h3>
+<ul>
+<li>Register new clients and projects</li>
+<li>Keep location, flags, documents, and notes accurate</li>
+<li>Record project income / expenses from the project page</li>
+<li>Follow up unpaid invoices with Billing</li>
+</ul>
+<h3>Billing Staff</h3>
+<ul>
+<li>Billing dashboard counts</li>
+<li>Create / send invoices</li>
+<li>Record payments</li>
+<li>Download payment history and monthly reports as needed</li>
+</ul>
+<h3>Department staff</h3>
+<ul>
+<li>Check in (GPS)</li>
+<li>Clear <strong>Awaiting Action</strong> first, then assigned work</li>
+<li>Update checklist and files before submit</li>
+<li>Submit for review the same day work is done</li>
+<li>Return immediately if documents are missing</li>
+<li>Check out; submit expense claims with receipts</li>
+</ul>
+<hr/>
+<h2 id="24-tips-and-common-questions">24. Tips and common questions</h2>
+<p><strong>Why can’t I assign staff?</strong>  </p>
+<p>Only <strong>Acmmo Admin</strong> assigns and reviews. Office Admin creates projects; Acmmo Admin assigns them.</p>
+<p><strong>Why is the project read-only?</strong>  </p>
+<p>It is Closed / Completed / Cancelled, or you are staff and not the current assignee. Acmmo Admin can still edit Closed jobs.</p>
+<p><strong>Where did my custom service go?</strong>  </p>
+<p>Custom package projects only show the services selected at create (plus later add-ons). Full package uses the whole active catalog.</p>
+<p><strong>Location did not change after edit?</strong>  </p>
+<p>Use <strong>Edit project</strong> on the project page and save. Location is stored on the project record and should update immediately after a successful save.</p>
+<p><strong>Dashboard box did nothing?</strong>  </p>
+<p>Each KPI is a link. Needs Attention goes to <code>/admin/projects?filter=attention</code>. If a card does not move, refresh and try the <strong>View all</strong> link in that section.</p>
+<p><strong>Staff home numbers vs list</strong>  </p>
+<p>Click the box — My Projects opens with the same filter.</p>
+<p><strong>Can I delete a project?</strong>  </p>
+<p>Acmmo Admin can delete. Related payments, invoices, assignments, and workflow data are removed together. The system may block delete if a hard dependency remains.</p>
+<p><strong>Attendance failed</strong>  </p>
+<p>Enable GPS, stand inside the radius, and avoid a second check-in the same day. For site visits, ask Acmmo Admin to <strong>mark attendance</strong> manually.</p>
+<p><strong>Finance vs Billing tab</strong>  </p>
+<p>Project <strong>Billing</strong> tab = client invoices and receipts against the project amount. <strong>Project Finance</strong> = full ledger (income types, expenses, profit). Use both: invoice the client, then log income in finance if that is office practice.</p>
+<p><strong>Phone already exists</strong>  </p>
+<p>Client phones must be unique. Search the directory and open the existing client instead of creating a duplicate.</p>
+<p><strong>High priority</strong>  </p>
+<p>Use High only when the job must jump the queue. It is visually loud on purpose (red row).</p>
+<p><strong>Tablet tables</strong>  </p>
+<p>Project and staff tables use the full width on tablet — scroll horizontally if columns overflow, there should be no unused gap on the right.</p>
+<hr/>
+<h2 id="appendix-a-routes-cheat-sheet">Appendix A — Routes cheat sheet</h2>
+<table><thead><tr><th>Page</th><th>URL</th></tr></thead><tbody>
+<tr><td>Login</td><td><code>/login</code></td></tr>
+<tr><td>Acmmo Admin dashboard</td><td><code>/admin</code></td></tr>
+<tr><td>Clients</td><td><code>/admin/clients</code></td></tr>
+<tr><td>Client detail</td><td><code>/admin/clients/[id]</code></td></tr>
+<tr><td>Projects</td><td><code>/admin/projects</code></td></tr>
+<tr><td>Project detail</td><td><code>/admin/projects/[id]</code></td></tr>
+<tr><td>Departments / Services / Documents / Custom Fields</td><td><code>/admin/departments</code> · <code>/admin/services</code> · <code>/admin/documents</code> · <code>/admin/requirements</code></td></tr>
+<tr><td>Staff / Attendance / Admins / Users</td><td><code>/admin/staff</code> · <code>/admin/attendance</code> · <code>/admin/admins</code> · <code>/admin/users</code></td></tr>
+<tr><td>Billing / Invoices</td><td><code>/admin/billing</code> · <code>/admin/invoices</code> · <code>/admin/invoices/new</code></td></tr>
+<tr><td>Finance hub</td><td><code>/admin/finance</code></td></tr>
+<tr><td>Project finance</td><td><code>/admin/finance/project</code> … <code>/income</code> <code>/expenses</code> <code>/budget</code> <code>/ledger</code> <code>/profit</code> <code>/reports</code></td></tr>
+<tr><td>Office finance</td><td><code>/admin/finance/office</code> … <code>/income</code> <code>/expenses</code> <code>/cash-book</code> <code>/accounts</code> <code>/vendors</code> <code>/claims</code> <code>/salary</code> <code>/reports</code> <code>/settings</code></td></tr>
+<tr><td>Reports / Notifications / Settings / Security / Audit</td><td><code>/admin/reports</code> · <code>/admin/notifications</code> · <code>/admin/settings</code> · <code>/admin/security</code> · <code>/admin/audit</code></td></tr>
+<tr><td>Staff home / projects / attendance / expenses / profile</td><td><code>/staff</code> · <code>/staff/projects</code> · <code>/staff/attendance</code> · <code>/staff/expenses</code> · <code>/staff/profile</code></td></tr>
+<tr><td>Staff project</td><td><code>/staff/projects/[id]</code></td></tr>
+</tbody></table>
+<hr/>
+<h2 id="appendix-b-who-does-each-step">Appendix B — Who does each step</h2>
+<table><thead><tr><th>Step</th><th>Actor</th></tr></thead><tbody>
+<tr><td>Create client / project, pick services and documents</td><td>Admin or Acmmo Admin</td></tr>
+<tr><td>Set Site visit pending / Under construction</td><td>Admin or Acmmo Admin</td></tr>
+<tr><td>Assign staff to current step</td><td>Acmmo Admin</td></tr>
+<tr><td>Start, complete, submit, return</td><td>Assigned staff</td></tr>
+<tr><td>Approve or reject review</td><td>Acmmo Admin</td></tr>
+<tr><td>Reassign returned work</td><td>Acmmo Admin</td></tr>
+<tr><td>Record invoices and payments</td><td>Acmmo Admin, Billing Staff, Admin (project billing)</td></tr>
+<tr><td>Add project income / expense</td><td>Admin, Acmmo Admin, Billing (within finance rights)</td></tr>
+<tr><td>Close project (Paid)</td><td>Acmmo Admin</td></tr>
+<tr><td>Edit a closed project</td><td>Acmmo Admin only</td></tr>
+<tr><td>Check in / out</td><td>Staff</td></tr>
+<tr><td>Manual attendance</td><td>Acmmo Admin</td></tr>
+<tr><td>Change company name / password</td><td>Acmmo Admin</td></tr>
+</tbody></table>
+<hr/>
+<p>*ACMMO Architects — Office System User Guide. For internal office use. Workflow and screens match the live website as of September 2026.*</p>
+<footer>ACMMO Architects — Office System User Guide · Internal use · September 2026 · Open this file in a browser and choose Print → Save as PDF.</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Named Cloudflare Tunnel for this Next.js app.
+#
+# Published origin: http://127.0.0.1:3000 only.
+# MySQL (3306) and every other local port are intentionally absent.
+# The final ingress rule rejects every other hostname.
+# Private network routing is off, so the tunnel cannot reach the LAN.
+#
+# One-time setup (PowerShell), then replace the two placeholders below:
+#   winget install --id Cloudflare.cloudflared
+#   cloudflared tunnel login
+#   cloudflared tunnel create architecture-office
+#   cloudflared tunnel route dns architecture-office app.yourdomain.com
+#
+# `tunnel create` prints a credentials JSON path. Put that UUID in
+# credentials-file. Put the DNS hostname you routed in hostname.
+
+tunnel: architecture-office
+credentials-file: ~/.cloudflared/93c85629-133b-4236-88e5-56647a03d8be.json
+
+warp-routing:
+  enabled: false
+
+ingress:
+  - hostname: musthakahammed.com
+    service: http://127.0.0.1:3000
+  - hostname: www.musthakahammed.com
+    service: http://127.0.0.1:3000
+  - hostname: app.musthakahammed.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404

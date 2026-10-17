@@ -179,7 +179,7 @@ export default async function AdminDashboard({
           value={stats.paymentsPending}
           icon="wallet"
           trend={stats.paymentsPending > 0 ? -2 : 0}
-          href="/admin/billing"
+          href="/admin/billing?tab=overview&payment=pending"
           delay={0.2}
         />
         <KpiCard

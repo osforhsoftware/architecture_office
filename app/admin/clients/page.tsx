@@ -12,7 +12,6 @@ export default async function ClientsPage({
     search?: string
     district?: string
     hasProjects?: string
-    source?: string
     page?: string
     pageSize?: string
   }>
@@ -21,14 +20,12 @@ export default async function ClientsPage({
   const search = params.search ?? ""
   const district = params.district ?? "all"
   const hasProjects = params.hasProjects ?? "all"
-  const source = params.source ?? "all"
 
   const [result, requirementTemplates] = await Promise.all([
     getClientsPaginated({
       search,
       district,
       hasProjects,
-      source,
       page: params.page,
       pageSize: params.pageSize,
     }),
@@ -39,8 +36,8 @@ export default async function ClientsPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="min-w-0">
           <h2 className="text-xl font-semibold">Clients</h2>
           <p className="text-sm text-muted-foreground">
             {result.total} client{result.total === 1 ? "" : "s"} in the directory.
@@ -60,7 +57,6 @@ export default async function ClientsPage({
           search={search}
           district={district}
           hasProjects={hasProjects}
-          source={source}
         />
       </Suspense>
     </div>

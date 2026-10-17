@@ -50,6 +50,7 @@ try {
   await addColumn("aadhaar_numbers", "JSON", "TEXT")
   await addColumn("linked_numbers", "JSON", "TEXT")
   await addColumn("source", "VARCHAR(20) NOT NULL DEFAULT 'office'", "VARCHAR(50) DEFAULT 'office'")
+  await addColumn("finance_linked", "TINYINT(1) NOT NULL DEFAULT 0", "TINYINT(1) DEFAULT 0")
   console.log("Client fields migration applied successfully.")
 } catch (error) {
   console.error("Failed to apply client fields migration:", error.message)

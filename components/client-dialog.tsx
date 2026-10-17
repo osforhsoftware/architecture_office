@@ -117,7 +117,7 @@ export function ClientDialog({
           isEdit
             ? "Update the client's contact details."
             : source === "finance"
-              ? "Add a finance client. A project is not required — they appear on the clients page under Finance."
+              ? "Add a client that exists only in Finance. They will not appear in the office Clients list."
               : "Add a new client to the office directory."
         }
       >

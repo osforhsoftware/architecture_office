@@ -44,31 +44,41 @@ function StaffTableInner({
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <UserAvatar
               name={row.original.name}
               avatarUrl={row.original.avatar_url}
-              className="size-8"
+              className="size-8 shrink-0"
             />
-            <span className="font-medium">{row.original.name}</span>
+            <span className="min-w-0 whitespace-normal break-words font-medium leading-snug" title={row.original.name}>
+              {row.original.name}
+            </span>
           </div>
         ),
       },
       {
         accessorKey: "username",
         header: "Username",
-        cell: ({ getValue }) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {getValue() as string}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const username = getValue() as string
+          return (
+            <span className="block min-w-0 truncate font-mono text-xs text-muted-foreground" title={username}>
+              {username}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "role",
         header: "Department Roles",
-        cell: ({ row }) => (
-          <span className="text-sm">{formatRolesLabel(row.original)}</span>
-        ),
+        cell: ({ row }) => {
+          const roles = formatRolesLabel(row.original)
+          return (
+            <span className="block whitespace-normal break-words text-sm leading-snug" title={roles}>
+              {roles}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "phone",
@@ -76,9 +86,9 @@ function StaffTableInner({
         cell: ({ getValue }) => {
           const phone = getValue() as string | null
           return phone ? (
-            <span className="inline-flex items-center gap-1.5 text-sm">
-              <Phone className="size-3.5 text-muted-foreground" />
-              {phone}
+            <span className="flex min-w-0 items-center gap-1.5 text-sm" title={phone}>
+              <Phone className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{phone}</span>
             </span>
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -91,9 +101,9 @@ function StaffTableInner({
         cell: ({ getValue }) => {
           const email = getValue() as string | null
           return email ? (
-            <span className="inline-flex max-w-[200px] items-center gap-1.5 truncate text-sm">
+            <span className="flex min-w-0 items-center gap-1.5 text-sm" title={email}>
               <Mail className="size-3.5 shrink-0 text-muted-foreground" />
-              {email}
+              <span className="min-w-0 flex-1 truncate">{email}</span>
             </span>
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -165,14 +175,24 @@ function StaffTableInner({
       <TableLoadingOverlay>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-premium">
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-0 table-fixed text-sm">
+            <table className="w-full min-w-[72rem] table-fixed text-sm">
+              <colgroup>
+                <col />
+                <col className="w-[8rem]" />
+                <col />
+                <col className="w-[11rem]" />
+                <col />
+                <col className="w-[7.25rem]" />
+                <col className="w-[6.5rem]" />
+                {canManageStaff ? <col className="w-[13rem]" /> : null}
+              </colgroup>
               <thead className="sticky top-0 z-10 border-b border-border bg-muted/50 backdrop-blur">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        className="overflow-hidden whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                       >
                         {header.isPlaceholder
                           ? null
@@ -194,7 +214,7 @@ function StaffTableInner({
                       }
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 py-3">
+                        <td key={cell.id} className="overflow-hidden px-4 py-3 align-middle">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}

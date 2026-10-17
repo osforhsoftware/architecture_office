@@ -45,5 +45,9 @@ export async function ensureClientExtraColumns() {
     () => sql`ALTER TABLE clients ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'office'`,
     () => sql`ALTER TABLE clients ADD COLUMN source VARCHAR(50) DEFAULT 'office'`,
   )
+  await addClientColumn(
+    () => sql`ALTER TABLE clients ADD COLUMN finance_linked TINYINT(1) NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE clients ADD COLUMN finance_linked TINYINT(1) DEFAULT 0`,
+  )
   clientExtraColumnsReady = true
 }

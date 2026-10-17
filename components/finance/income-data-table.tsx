@@ -22,6 +22,7 @@ import { TableLoadingOverlay } from "@/components/table-loading-overlay"
 import { TableQueryProvider } from "@/components/use-table-params"
 import { IncomeDialog, type IncomeDialogOptions } from "@/components/finance/income-dialog"
 import { ClientDialog } from "@/components/client-dialog"
+import { LinkFinanceClientDialog } from "@/components/link-finance-client-dialog"
 import { FinanceReportDownload } from "@/components/finance/finance-report-download"
 import { FinanceStatusBadge } from "@/components/finance/finance-status-badge"
 import { Button } from "@/components/ui/button"
@@ -106,9 +107,17 @@ interface IncomeDataTableProps {
   status: string
   scope?: LedgerScope
   dialogOptions: IncomeDialogOptions
+  linkableClients?: { id: number; name: string; phone?: string | null }[]
 }
 
-function IncomeTableInner({ result, search, status, scope = "project", dialogOptions }: IncomeDataTableProps) {
+function IncomeTableInner({
+  result,
+  search,
+  status,
+  scope = "project",
+  dialogOptions,
+  linkableClients = [],
+}: IncomeDataTableProps) {
   const [editIncome, setEditIncome] = useState<FinanceIncome | null>(null)
 
   const columns = useMemo<ColumnDef<FinanceIncome>[]>(
@@ -214,6 +223,7 @@ function IncomeTableInner({ result, search, status, scope = "project", dialogOpt
         <div className="flex flex-wrap gap-2">
           <FinanceReportDownload scope={scope} type="income" compact />
           {scope === "project" ? <ClientDialog source="finance" triggerLabel="Add Finance Client" /> : null}
+          {scope === "project" ? <LinkFinanceClientDialog clients={linkableClients} /> : null}
           <IncomeDialog {...dialogOptions} scope={scope} />
         </div>
       </div>

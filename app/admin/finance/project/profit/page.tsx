@@ -3,7 +3,7 @@ import { FinanceReportDownload } from "@/components/finance/finance-report-downl
 import { clientsToOptions, projectsToOptions } from "@/components/finance/finance-options"
 import { ProjectFinanceDataTable } from "@/components/finance/project-finance-data-table"
 import { getProjectFinanceList } from "@/lib/finance/server"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export default async function ProjectProfitPage({
   searchParams,
@@ -19,7 +19,7 @@ export default async function ProjectProfitPage({
       page: params.page,
       pageSize: params.pageSize,
     }),
-    getClients(),
+    getFinanceClients(),
     getProjectsForInvoiceSelect(),
   ])
 

@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
 }
 
 function titleForPath(pathname: string): string {
+  if (pathname.startsWith("/admin/finance/project/clients")) return "Finance Clients"
   if (pathname.startsWith("/admin/projects/")) return "Project Details"
   if (pathname.startsWith("/admin/clients/")) return "Client Details"
   if (pathname.startsWith("/admin/invoices/")) return "Invoice"

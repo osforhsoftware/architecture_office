@@ -68,6 +68,7 @@ function normalizeClient(client: Client): Client {
     aadhaar_numbers: parseJsonStringList(client.aadhaar_numbers),
     linked_numbers: parseJsonStringList(client.linked_numbers),
     source: parseClientSource(client.source),
+    finance_linked: Boolean(client.finance_linked),
     project_count: toSafeNumber(client.project_count),
   }
 }
@@ -82,6 +83,8 @@ export interface ProjectListFilters extends PaginationParams {
   priority?: string
   /** Dashboard filter — attention, delayed, site_visit_pending, etc. */
   filter?: string
+  /** Billing filter — pending | Unpaid | Partially Paid | Paid */
+  paymentStatus?: string
 }
 
 export interface DepartmentRow {
@@ -327,7 +330,8 @@ export async function getClients(search?: string): Promise<Client[]> {
       SELECT c.*,
         (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
       FROM clients c
-      WHERE c.name LIKE ${q} OR c.phone LIKE ${q} OR c.email LIKE ${q}
+      WHERE COALESCE(c.source, 'office') <> 'finance'
+        AND (c.name LIKE ${q} OR c.phone LIKE ${q} OR c.email LIKE ${q})
       ORDER BY c.created_at DESC
     `) as Client[],
     )
@@ -337,7 +341,109 @@ export async function getClients(search?: string): Promise<Client[]> {
     SELECT c.*,
       (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
     FROM clients c
+    WHERE COALESCE(c.source, 'office') <> 'finance'
     ORDER BY c.created_at DESC
+  `) as Client[],
+  )
+}
+
+/** Finance roster: created in Finance, or an office client explicitly linked in. */
+export async function getFinanceClients(search?: string): Promise<Client[]> {
+  await ensureClientExtraColumns()
+  if (search && search.trim()) {
+    const q = `%${search.trim()}%`
+    return normalizeClients(
+      (await sql`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+      FROM clients c
+      WHERE (COALESCE(c.source, 'office') = 'finance' OR COALESCE(c.finance_linked, 0) = 1)
+        AND (c.name LIKE ${q} OR c.phone LIKE ${q} OR c.email LIKE ${q})
+      ORDER BY c.name ASC
+    `) as Client[],
+    )
+  }
+  return normalizeClients(
+    (await sql`
+    SELECT c.*,
+      (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+    FROM clients c
+    WHERE COALESCE(c.source, 'office') = 'finance' OR COALESCE(c.finance_linked, 0) = 1
+    ORDER BY c.name ASC
+  `) as Client[],
+  )
+}
+
+export async function getFinanceClientsPaginated(
+  params: PaginationParams = {},
+): Promise<PaginatedResult<Client>> {
+  await ensureClientExtraColumns()
+  const requestedPage = parsePage(params.page)
+  const pageSize = parsePageSize(params.pageSize)
+  const search = buildSearchPattern(params.search)
+
+  const countRows = (await sql`
+    SELECT COUNT(*) AS count
+    FROM clients c
+    WHERE (COALESCE(c.source, 'office') = 'finance' OR COALESCE(c.finance_linked, 0) = 1)
+      AND (${search} IS NULL OR
+        c.name LIKE ${search} OR
+        c.phone LIKE ${search} OR
+        c.email LIKE ${search} OR
+        c.address LIKE ${search} OR
+        c.district LIKE ${search} OR
+        CAST(c.id AS CHAR) LIKE ${search})
+  `) as { count: number }[]
+  const total = toSafeNumber(countRows[0]?.count)
+  const page = clampPage(requestedPage, total, pageSize)
+  const offset = pageOffset(page, pageSize)
+
+  const rows =
+    pageSize === -1
+      ? ((await sql`
+          SELECT c.*,
+            (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+          FROM clients c
+          WHERE (COALESCE(c.source, 'office') = 'finance' OR COALESCE(c.finance_linked, 0) = 1)
+            AND (${search} IS NULL OR
+              c.name LIKE ${search} OR
+              c.phone LIKE ${search} OR
+              c.email LIKE ${search} OR
+              c.address LIKE ${search} OR
+              c.district LIKE ${search} OR
+              CAST(c.id AS CHAR) LIKE ${search})
+          ORDER BY c.name ASC
+        `) as Client[])
+      : ((await sql`
+          SELECT c.*,
+            (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+          FROM clients c
+          WHERE (COALESCE(c.source, 'office') = 'finance' OR COALESCE(c.finance_linked, 0) = 1)
+            AND (${search} IS NULL OR
+              c.name LIKE ${search} OR
+              c.phone LIKE ${search} OR
+              c.email LIKE ${search} OR
+              c.address LIKE ${search} OR
+              c.district LIKE ${search} OR
+              CAST(c.id AS CHAR) LIKE ${search})
+          ORDER BY c.name ASC
+          LIMIT ${pageSize} OFFSET ${offset}
+        `) as Client[])
+
+  return toPaginatedResult(normalizeClients(rows), total, page, pageSize)
+}
+
+/** Office clients that are not yet visible inside Finance. */
+export async function getLinkableOfficeClients(): Promise<Client[]> {
+  await ensureClientExtraColumns()
+  return normalizeClients(
+    (await sql`
+    SELECT c.*,
+      (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id) AS project_count
+    FROM clients c
+    WHERE COALESCE(c.source, 'office') <> 'finance'
+      AND COALESCE(c.finance_linked, 0) = 0
+    ORDER BY c.name ASC
   `) as Client[],
   )
 }
@@ -349,14 +455,17 @@ export async function getClient(id: number): Promise<Client | null> {
 }
 
 export async function getClientCount(): Promise<number> {
-  const rows = (await sql`SELECT COUNT(*) AS count FROM clients`) as { count: number }[]
+  await ensureClientExtraColumns()
+  const rows = (await sql`
+    SELECT COUNT(*) AS count FROM clients
+    WHERE COALESCE(source, 'office') <> 'finance'
+  `) as { count: number }[]
   return toSafeNumber(rows[0]?.count)
 }
 
 export interface ClientListFilters extends PaginationParams {
   district?: string
   hasProjects?: string
-  source?: string
 }
 
 export async function getClientsPaginated(
@@ -370,8 +479,6 @@ export async function getClientsPaginated(
     params.district && params.district !== "all" ? params.district : null
   const hasProjects =
     params.hasProjects === "with" ? "with" : params.hasProjects === "without" ? "without" : null
-  const source =
-    params.source === "finance" || params.source === "office" ? params.source : null
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
@@ -389,7 +496,7 @@ export async function getClientsPaginated(
         (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
         (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
       )
-      AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
+      AND COALESCE(c.source, 'office') <> 'finance'
   `) as { count: number }[]
   const total = toSafeNumber(countRows[0]?.count)
   const page = clampPage(requestedPage, total, pageSize)
@@ -414,7 +521,7 @@ export async function getClientsPaginated(
               (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
               (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
             )
-            AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
+            AND COALESCE(c.source, 'office') <> 'finance'
           ORDER BY c.created_at DESC
         `) as Client[])
       : ((await sql`
@@ -434,7 +541,7 @@ export async function getClientsPaginated(
               (${hasProjects} = 'with' AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)) OR
               (${hasProjects} = 'without' AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id))
             )
-            AND (${source} IS NULL OR COALESCE(c.source, 'office') = ${source})
+            AND COALESCE(c.source, 'office') <> 'finance'
           ORDER BY c.created_at DESC
           LIMIT ${pageSize} OFFSET ${offset}
         `) as Client[])
@@ -522,6 +629,8 @@ export async function getProjectsPaginated(
   const section = filters.section && filters.section !== "all" ? filters.section : null
   const priority = filters.priority && filters.priority !== "all" ? filters.priority : null
   const listFilter = filters.filter && filters.filter !== "all" ? filters.filter : null
+  const paymentStatus =
+    filters.paymentStatus && filters.paymentStatus !== "all" ? filters.paymentStatus : null
   const search = buildSearchPattern(filters.search)
 
   const countRows = (await sql`
@@ -531,6 +640,11 @@ export async function getProjectsPaginated(
     WHERE (${status} IS NULL OR p.status = ${status})
       AND (${section} IS NULL OR p.section = ${section})
       AND (${priority} IS NULL OR p.priority = ${priority})
+      AND (
+        ${paymentStatus} IS NULL OR
+        (${paymentStatus} = 'pending' AND p.payment_status IN ('Unpaid','Partially Paid') AND p.project_amount > 0) OR
+        (${paymentStatus} != 'pending' AND p.payment_status = ${paymentStatus})
+      )
       AND (
         ${listFilter} IS NULL OR
         (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
@@ -572,6 +686,11 @@ export async function getProjectsPaginated(
             AND (${section} IS NULL OR p.section = ${section})
             AND (${priority} IS NULL OR p.priority = ${priority})
             AND (
+              ${paymentStatus} IS NULL OR
+              (${paymentStatus} = 'pending' AND p.payment_status IN ('Unpaid','Partially Paid') AND p.project_amount > 0) OR
+              (${paymentStatus} != 'pending' AND p.payment_status = ${paymentStatus})
+            )
+            AND (
               ${listFilter} IS NULL OR
               (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
               (${listFilter} = 'active' AND p.status IN ('Assigned', 'In Progress', 'Correction Required', 'Work Completed')) OR
@@ -609,6 +728,11 @@ export async function getProjectsPaginated(
           WHERE (${status} IS NULL OR p.status = ${status})
             AND (${section} IS NULL OR p.section = ${section})
             AND (${priority} IS NULL OR p.priority = ${priority})
+            AND (
+              ${paymentStatus} IS NULL OR
+              (${paymentStatus} = 'pending' AND p.payment_status IN ('Unpaid','Partially Paid') AND p.project_amount > 0) OR
+              (${paymentStatus} != 'pending' AND p.payment_status = ${paymentStatus})
+            )
             AND (
               ${listFilter} IS NULL OR
               (${listFilter} = 'attention' AND p.status IN ('Returned', 'Pending Review', 'Correction Required', 'Awaiting Assignment')) OR
@@ -1121,17 +1245,45 @@ export async function getUnreadCount(userId: number): Promise<number> {
 // Payments
 // ---------------------------------------------------------------------------
 
+export type PaymentWithProject = Payment & {
+  project_name: string
+  project_code: string
+  client_name: string
+  invoice_id?: number | null
+  source?: "project" | "invoice"
+}
+
 export async function getRecentPayments(
   limitParam = 5,
-): Promise<(Payment & { project_name: string; project_code: string })[]> {
+): Promise<(Payment & { project_name: string; project_code: string; invoice_id?: number | null; source?: "project" | "invoice" })[]> {
   const limit = Number(limitParam) || 5
   return (await sql`
-    SELECT pay.*, p.name AS project_name, p.code AS project_code
-    FROM payments pay
-    JOIN projects p ON p.id = pay.project_id
-    ORDER BY pay.created_at DESC
+    SELECT * FROM (
+      SELECT
+        pay.id, pay.project_id, pay.amount, pay.method, pay.note, pay.recorded_by, pay.created_at,
+        p.name AS project_name, p.code AS project_code, c.name AS client_name,
+        CAST(NULL AS UNSIGNED) AS invoice_id, 'project' AS source
+      FROM payments pay
+      JOIN projects p ON p.id = pay.project_id
+      JOIN clients c ON c.id = p.client_id
+      UNION ALL
+      SELECT
+        ip.id, i.project_id, ip.amount, ip.method,
+        COALESCE(ip.notes, i.invoice_number) AS note, ip.recorded_by,
+        COALESCE(ip.created_at, ip.payment_date) AS created_at,
+        COALESCE(p.name, i.project_name, i.invoice_number) AS project_name,
+        COALESCE(p.code, i.invoice_number) AS project_code,
+        COALESCE(c.name, i.client_name) AS client_name,
+        i.id AS invoice_id, 'invoice' AS source
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      LEFT JOIN projects p ON p.id = i.project_id
+      LEFT JOIN clients c ON c.id = p.client_id
+      WHERE i.status != 'Cancelled'
+    ) unified_payments
+    ORDER BY created_at DESC
     LIMIT ${limit}
-  `) as (Payment & { project_name: string; project_code: string })[]
+  `) as (Payment & { project_name: string; project_code: string; invoice_id?: number | null; source?: "project" | "invoice" })[]
 }
 
 export async function getAllPayments(limitParam = 50): Promise<
@@ -1139,19 +1291,30 @@ export async function getAllPayments(limitParam = 50): Promise<
 > {
   const limit = Number(limitParam) || 50
   return (await sql`
-    SELECT pay.*, p.name AS project_name, p.code AS project_code, c.name AS client_name
-    FROM payments pay
-    JOIN projects p ON p.id = pay.project_id
-    JOIN clients c ON c.id = p.client_id
-    ORDER BY pay.created_at DESC
+    SELECT * FROM (
+      SELECT
+        pay.id, pay.project_id, pay.amount, pay.method, pay.note, pay.recorded_by, pay.created_at,
+        p.name AS project_name, p.code AS project_code, c.name AS client_name
+      FROM payments pay
+      JOIN projects p ON p.id = pay.project_id
+      JOIN clients c ON c.id = p.client_id
+      UNION ALL
+      SELECT
+        ip.id, i.project_id, ip.amount, ip.method,
+        COALESCE(ip.notes, i.invoice_number) AS note, ip.recorded_by,
+        COALESCE(ip.created_at, ip.payment_date) AS created_at,
+        COALESCE(p.name, i.project_name, i.invoice_number) AS project_name,
+        COALESCE(p.code, i.invoice_number) AS project_code,
+        COALESCE(c.name, i.client_name) AS client_name
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      LEFT JOIN projects p ON p.id = i.project_id
+      LEFT JOIN clients c ON c.id = p.client_id
+      WHERE i.status != 'Cancelled'
+    ) unified_payments
+    ORDER BY created_at DESC
     LIMIT ${limit}
   `) as (Payment & { project_name: string; project_code: string; client_name: string })[]
-}
-
-export type PaymentWithProject = Payment & {
-  project_name: string
-  project_code: string
-  client_name: string
 }
 
 export async function getPaymentsPaginated(
@@ -1163,19 +1326,40 @@ export async function getPaymentsPaginated(
 
   const countRows = (await sql`
     SELECT COUNT(*) AS count
-    FROM payments pay
-    JOIN projects p ON p.id = pay.project_id
-    JOIN clients c ON c.id = p.client_id
+    FROM (
+      SELECT
+        pay.id, p.name AS project_name, p.code AS project_code, c.name AS client_name,
+        c.phone AS client_phone, c.email AS client_email, pay.method, pay.note, pay.amount
+      FROM payments pay
+      JOIN projects p ON p.id = pay.project_id
+      JOIN clients c ON c.id = p.client_id
+      UNION ALL
+      SELECT
+        ip.id,
+        COALESCE(p.name, i.project_name, i.invoice_number) AS project_name,
+        COALESCE(p.code, i.invoice_number) AS project_code,
+        COALESCE(c.name, i.client_name) AS client_name,
+        COALESCE(c.phone, i.client_phone) AS client_phone,
+        COALESCE(c.email, i.client_email) AS client_email,
+        ip.method,
+        COALESCE(ip.notes, i.invoice_number) AS note,
+        ip.amount
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      LEFT JOIN projects p ON p.id = i.project_id
+      LEFT JOIN clients c ON c.id = p.client_id
+      WHERE i.status != 'Cancelled'
+    ) u
     WHERE (${search} IS NULL OR
-      p.name LIKE ${search} OR
-      p.code LIKE ${search} OR
-      c.name LIKE ${search} OR
-      c.phone LIKE ${search} OR
-      c.email LIKE ${search} OR
-      pay.method LIKE ${search} OR
-      pay.note LIKE ${search} OR
-      CAST(pay.id AS CHAR) LIKE ${search} OR
-      CAST(pay.amount AS CHAR) LIKE ${search})
+      u.project_name LIKE ${search} OR
+      u.project_code LIKE ${search} OR
+      u.client_name LIKE ${search} OR
+      u.client_phone LIKE ${search} OR
+      u.client_email LIKE ${search} OR
+      u.method LIKE ${search} OR
+      u.note LIKE ${search} OR
+      CAST(u.id AS CHAR) LIKE ${search} OR
+      CAST(u.amount AS CHAR) LIKE ${search})
   `) as { count: number }[]
   const total = toSafeNumber(countRows[0]?.count)
   const page = clampPage(requestedPage, total, pageSize)
@@ -1184,38 +1368,82 @@ export async function getPaymentsPaginated(
   const rows =
     pageSize === -1
       ? ((await sql`
-          SELECT pay.*, p.name AS project_name, p.code AS project_code, c.name AS client_name
-          FROM payments pay
-          JOIN projects p ON p.id = pay.project_id
-          JOIN clients c ON c.id = p.client_id
+          SELECT * FROM (
+            SELECT
+              pay.id, pay.project_id, pay.amount, pay.method, pay.note, pay.recorded_by, pay.created_at,
+              p.name AS project_name, p.code AS project_code, c.name AS client_name,
+              c.phone AS client_phone, c.email AS client_email,
+              CAST(NULL AS UNSIGNED) AS invoice_id, 'project' AS source
+            FROM payments pay
+            JOIN projects p ON p.id = pay.project_id
+            JOIN clients c ON c.id = p.client_id
+            UNION ALL
+            SELECT
+              ip.id, i.project_id, ip.amount, ip.method,
+              COALESCE(ip.notes, i.invoice_number) AS note, ip.recorded_by,
+              COALESCE(ip.created_at, ip.payment_date) AS created_at,
+              COALESCE(p.name, i.project_name, i.invoice_number) AS project_name,
+              COALESCE(p.code, i.invoice_number) AS project_code,
+              COALESCE(c.name, i.client_name) AS client_name,
+              COALESCE(c.phone, i.client_phone) AS client_phone,
+              COALESCE(c.email, i.client_email) AS client_email,
+              i.id AS invoice_id, 'invoice' AS source
+            FROM invoice_payments ip
+            JOIN invoices i ON i.id = ip.invoice_id
+            LEFT JOIN projects p ON p.id = i.project_id
+            LEFT JOIN clients c ON c.id = p.client_id
+            WHERE i.status != 'Cancelled'
+          ) u
           WHERE (${search} IS NULL OR
-            p.name LIKE ${search} OR
-            p.code LIKE ${search} OR
-            c.name LIKE ${search} OR
-            c.phone LIKE ${search} OR
-            c.email LIKE ${search} OR
-            pay.method LIKE ${search} OR
-            pay.note LIKE ${search} OR
-            CAST(pay.id AS CHAR) LIKE ${search} OR
-            CAST(pay.amount AS CHAR) LIKE ${search})
-          ORDER BY pay.created_at DESC
+            u.project_name LIKE ${search} OR
+            u.project_code LIKE ${search} OR
+            u.client_name LIKE ${search} OR
+            u.client_phone LIKE ${search} OR
+            u.client_email LIKE ${search} OR
+            u.method LIKE ${search} OR
+            u.note LIKE ${search} OR
+            CAST(u.id AS CHAR) LIKE ${search} OR
+            CAST(u.amount AS CHAR) LIKE ${search})
+          ORDER BY u.created_at DESC
         `) as PaymentWithProject[])
       : ((await sql`
-          SELECT pay.*, p.name AS project_name, p.code AS project_code, c.name AS client_name
-          FROM payments pay
-          JOIN projects p ON p.id = pay.project_id
-          JOIN clients c ON c.id = p.client_id
+          SELECT * FROM (
+            SELECT
+              pay.id, pay.project_id, pay.amount, pay.method, pay.note, pay.recorded_by, pay.created_at,
+              p.name AS project_name, p.code AS project_code, c.name AS client_name,
+              c.phone AS client_phone, c.email AS client_email,
+              CAST(NULL AS UNSIGNED) AS invoice_id, 'project' AS source
+            FROM payments pay
+            JOIN projects p ON p.id = pay.project_id
+            JOIN clients c ON c.id = p.client_id
+            UNION ALL
+            SELECT
+              ip.id, i.project_id, ip.amount, ip.method,
+              COALESCE(ip.notes, i.invoice_number) AS note, ip.recorded_by,
+              COALESCE(ip.created_at, ip.payment_date) AS created_at,
+              COALESCE(p.name, i.project_name, i.invoice_number) AS project_name,
+              COALESCE(p.code, i.invoice_number) AS project_code,
+              COALESCE(c.name, i.client_name) AS client_name,
+              COALESCE(c.phone, i.client_phone) AS client_phone,
+              COALESCE(c.email, i.client_email) AS client_email,
+              i.id AS invoice_id, 'invoice' AS source
+            FROM invoice_payments ip
+            JOIN invoices i ON i.id = ip.invoice_id
+            LEFT JOIN projects p ON p.id = i.project_id
+            LEFT JOIN clients c ON c.id = p.client_id
+            WHERE i.status != 'Cancelled'
+          ) u
           WHERE (${search} IS NULL OR
-            p.name LIKE ${search} OR
-            p.code LIKE ${search} OR
-            c.name LIKE ${search} OR
-            c.phone LIKE ${search} OR
-            c.email LIKE ${search} OR
-            pay.method LIKE ${search} OR
-            pay.note LIKE ${search} OR
-            CAST(pay.id AS CHAR) LIKE ${search} OR
-            CAST(pay.amount AS CHAR) LIKE ${search})
-          ORDER BY pay.created_at DESC
+            u.project_name LIKE ${search} OR
+            u.project_code LIKE ${search} OR
+            u.client_name LIKE ${search} OR
+            u.client_phone LIKE ${search} OR
+            u.client_email LIKE ${search} OR
+            u.method LIKE ${search} OR
+            u.note LIKE ${search} OR
+            CAST(u.id AS CHAR) LIKE ${search} OR
+            CAST(u.amount AS CHAR) LIKE ${search})
+          ORDER BY u.created_at DESC
           LIMIT ${pageSize} OFFSET ${offset}
         `) as PaymentWithProject[])
 
@@ -1319,10 +1547,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     FROM projects
   `) as Record<string, number>[]
 
+  const billingMoney = await getBillingOverview()
+
   const monthly = (await sql`
-    SELECT COALESCE(SUM(amount), 0) AS revenue
-    FROM payments
-    WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+    SELECT COALESCE(SUM(amount), 0) AS revenue FROM (
+      SELECT amount FROM payments
+      WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+      UNION ALL
+      SELECT ip.amount
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      WHERE i.status != 'Cancelled'
+        AND COALESCE(ip.payment_date, DATE(ip.created_at)) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+    ) m
   `) as { revenue: number }[]
 
   const bySection = (await sql`
@@ -1361,9 +1598,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     completed: toSafeNumber(t.completed),
     paymentsPending: toSafeNumber(t.payments_pending),
     todaysTasks: toSafeNumber(t.todays_tasks),
-    totalRevenue: toSafeNumber(t.total_revenue),
+    totalRevenue: billingMoney.advanceReceived,
     monthlyRevenue: toSafeNumber(monthly[0]?.revenue),
-    outstanding: toSafeNumber(t.outstanding),
+    outstanding: billingMoney.balanceDue,
     bySection: bySection.map((r) => ({
       section: r.section,
       count: toSafeNumber(r.count),
@@ -1396,8 +1633,16 @@ export async function getMonthlyRevenueTrend(
       COALESCE(SUM(pay.amount), 0)        AS revenue,
       COUNT(DISTINCT pay.project_id)      AS projects
     FROM month_series m
-    LEFT JOIN payments pay
-      ON DATE_FORMAT(pay.created_at, '%Y-%m-01') = m.month_start
+    LEFT JOIN (
+      SELECT amount, project_id, DATE_FORMAT(created_at, '%Y-%m-01') AS month_start
+      FROM payments
+      UNION ALL
+      SELECT ip.amount, i.project_id,
+        DATE_FORMAT(COALESCE(ip.payment_date, ip.created_at), '%Y-%m-01') AS month_start
+      FROM invoice_payments ip
+      JOIN invoices i ON i.id = ip.invoice_id
+      WHERE i.status != 'Cancelled'
+    ) pay ON pay.month_start = m.month_start
     GROUP BY m.month_start
     ORDER BY m.month_start
   `) as { month: string; revenue: number; projects: number }[]
@@ -1417,6 +1662,7 @@ export async function getKpiSparklines(): Promise<{
   projects: number[]
   revenue: number[]
 }> {
+  await ensureClientExtraColumns()
   const rows = (await sql`
     WITH RECURSIVE day_series (day) AS (
       SELECT DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '%Y-%m-%d')
@@ -1427,9 +1673,19 @@ export async function getKpiSparklines(): Promise<{
     )
     SELECT
       d.day,
-      (SELECT COUNT(*) FROM clients  WHERE DATE(created_at) <= d.day) AS client_count,
+      (SELECT COUNT(*) FROM clients WHERE DATE(created_at) <= d.day AND COALESCE(source, 'office') <> 'finance') AS client_count,
       (SELECT COUNT(*) FROM projects WHERE DATE(created_at) <= d.day AND status NOT IN ('Closed','Completed')) AS active_count,
-      (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = d.day)  AS daily_revenue
+      (
+        SELECT COALESCE(SUM(amount), 0) FROM (
+          SELECT amount FROM payments WHERE DATE(created_at) = d.day
+          UNION ALL
+          SELECT ip.amount
+          FROM invoice_payments ip
+          JOIN invoices i ON i.id = ip.invoice_id
+          WHERE i.status != 'Cancelled'
+            AND DATE(COALESCE(ip.payment_date, ip.created_at)) = d.day
+        ) daily_pay
+      ) AS daily_revenue
     FROM day_series d
     ORDER BY d.day
   `) as { day: string; client_count: number; active_count: number; daily_revenue: number }[]
@@ -1451,25 +1707,33 @@ export interface BillingOverview {
 }
 
 export async function getBillingOverview(): Promise<BillingOverview> {
-  const rows = (await sql`
+  const projectRows = (await sql`
     SELECT
-      COALESCE(SUM(project_amount), 0) AS total_amount,
-      COALESCE(SUM(advance_received), 0) AS advance_received,
-      COALESCE(SUM(project_amount - advance_received), 0) AS balance_due,
-      COALESCE(SUM(CASE WHEN payment_status = 'Paid'           THEN 1 ELSE 0 END), 0) AS paid_projects,
-      COALESCE(SUM(CASE WHEN payment_status = 'Partially Paid' THEN 1 ELSE 0 END), 0) AS partial_projects,
-      COALESCE(SUM(CASE WHEN payment_status = 'Unpaid'         THEN 1 ELSE 0 END), 0) AS unpaid_projects
-    FROM projects
-    WHERE project_amount > 0
+      COALESCE(SUM(p.project_amount), 0) AS total_amount,
+      COALESCE(SUM(p.advance_received), 0) AS advance_received,
+      COALESCE(SUM(p.project_amount - p.advance_received), 0) AS balance_due,
+      COALESCE(SUM(CASE WHEN p.payment_status = 'Paid'           THEN 1 ELSE 0 END), 0) AS paid_projects,
+      COALESCE(SUM(CASE WHEN p.payment_status = 'Partially Paid' THEN 1 ELSE 0 END), 0) AS partial_projects,
+      COALESCE(SUM(CASE WHEN p.payment_status = 'Unpaid'         THEN 1 ELSE 0 END), 0) AS unpaid_projects
+    FROM projects p
+    WHERE p.project_amount > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM invoices i
+        WHERE i.project_id = p.id AND i.status != 'Cancelled'
+      )
   `) as Record<string, number>[]
-  const r = rows[0] ?? {}
+
+  const invoice = await getInvoiceOverview()
+  const p = projectRows[0] ?? {}
+  const hasInvoices = invoice.totalInvoices > 0
+
   return {
-    totalAmount: toSafeNumber(r.total_amount),
-    advanceReceived: toSafeNumber(r.advance_received),
-    balanceDue: toSafeNumber(r.balance_due),
-    paidProjects: toSafeNumber(r.paid_projects),
-    partialProjects: toSafeNumber(r.partial_projects),
-    unpaidProjects: toSafeNumber(r.unpaid_projects),
+    totalAmount: toSafeNumber(p.total_amount) + invoice.totalBilled,
+    advanceReceived: toSafeNumber(p.advance_received) + invoice.totalCollected,
+    balanceDue: toSafeNumber(p.balance_due) + invoice.outstanding,
+    paidProjects: hasInvoices ? invoice.paidCount : toSafeNumber(p.paid_projects),
+    partialProjects: hasInvoices ? invoice.partialCount : toSafeNumber(p.partial_projects),
+    unpaidProjects: hasInvoices ? invoice.unpaidCount : toSafeNumber(p.unpaid_projects),
   }
 }
 

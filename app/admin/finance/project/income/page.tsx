@@ -11,7 +11,7 @@ import {
   getIncomeCategories,
   getIncomePaginated,
 } from "@/lib/finance/server"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getLinkableOfficeClients, getProjectsForInvoiceSelect } from "@/lib/queries"
 
 export default async function ProjectIncomePage({
   searchParams,
@@ -29,7 +29,7 @@ export default async function ProjectIncomePage({
   const status = params.status ?? ""
   const projectId = params.projectId ?? ""
 
-  const [result, clients, projects, categories, accounts] = await Promise.all([
+  const [result, clients, linkableClients, projects, categories, accounts] = await Promise.all([
     getIncomePaginated({
       scope: "project",
       search,
@@ -38,7 +38,8 @@ export default async function ProjectIncomePage({
       page: params.page,
       pageSize: params.pageSize,
     }),
-    getClients(),
+    getFinanceClients(),
+    getLinkableOfficeClients(),
     getProjectsForInvoiceSelect(),
     getIncomeCategories(true, "project"),
     getFinanceAccounts(true),
@@ -69,6 +70,7 @@ export default async function ProjectIncomePage({
             status={status}
             scope="project"
             dialogOptions={dialogOptions}
+            linkableClients={linkableClients}
           />
         </Suspense>
       </div>

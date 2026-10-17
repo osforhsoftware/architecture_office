@@ -2,7 +2,8 @@
 
 import { useMemo } from "react"
 import Link from "next/link"
-import { Download, FileSpreadsheet } from "lucide-react"
+import { Download, FileSpreadsheet, Plus } from "lucide-react"
+import { InvoiceDeleteDialog } from "@/components/invoice-delete-dialog"
 import {
   flexRender,
   getCoreRowModel,
@@ -12,7 +13,8 @@ import {
 import { DebouncedSearchInput } from "@/components/debounced-search-input"
 import { DataTablePagination } from "@/components/data-table-pagination"
 import { TableLoadingOverlay } from "@/components/table-loading-overlay"
-import { TableQueryProvider } from "@/components/use-table-params"
+import { TableQueryProvider, useTableParams } from "@/components/use-table-params"
+import { usePathname } from "next/navigation"
 import { InvoiceStatusBadge } from "@/components/status-badges"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -45,6 +47,8 @@ function buildExportUrl(search: string, status: string, type: "excel" | "pdf") {
 }
 
 function InvoicesTableInner({ result, search, status }: InvoicesDataTableProps) {
+  const { updateParams } = useTableParams()
+  const pathname = usePathname()
   const columns = useMemo<ColumnDef<InvoiceListRow>[]>(
     () => [
       {
@@ -116,15 +120,35 @@ function InvoicesTableInner({ result, search, status }: InvoicesDataTableProps) 
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <a
-            href={`${apiUrl(`/api/admin/invoices/${row.original.id}/pdf`)}?v=${encodeURIComponent(String(row.original.updated_at ?? ""))}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Download PDF"
-            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
-          >
-            <Download className="size-4" />
-          </a>
+          <div className="flex items-center justify-end gap-1">
+            <Link
+              href={`/admin/invoices/new?fromInvoice=${row.original.id}`}
+              title="Add invoice for same client"
+              className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+            >
+              <Plus className="size-4" />
+            </Link>
+            <a
+              href={`${apiUrl(`/api/admin/invoices/${row.original.id}/pdf`)}?v=${encodeURIComponent(String(row.original.updated_at ?? ""))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Download PDF"
+              className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+            >
+              <Download className="size-4" />
+            </a>
+            <InvoiceDeleteDialog
+              invoiceId={row.original.id}
+              invoiceNumber={row.original.invoice_number}
+              clientName={row.original.client_name}
+              total={row.original.total}
+              amountPaid={row.original.amount_paid}
+              redirectTo={null}
+              triggerVariant="ghost"
+              triggerSize="icon-sm"
+              iconOnly
+            />
+          </div>
         ),
       },
     ],
@@ -151,11 +175,13 @@ function InvoicesTableInner({ result, search, status }: InvoicesDataTableProps) 
             value={status || "all"}
             onValueChange={(v) => {
               if (!v) return
-              const url = new URL(window.location.href)
-              if (v === "all") url.searchParams.delete("status")
-              else url.searchParams.set("status", v)
-              url.searchParams.delete("page")
-              window.location.href = url.toString()
+              updateParams(
+                {
+                  status: v === "all" ? null : v,
+                  ...(pathname.startsWith("/admin/billing") ? { tab: "invoices" } : {}),
+                },
+                { resetPage: true },
+              )
             }}
           >
             <SelectTrigger className="w-[160px]">
@@ -163,7 +189,7 @@ function InvoicesTableInner({ result, search, status }: InvoicesDataTableProps) 
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              {INVOICE_STATUSES.map((s) => (
+              {["Unpaid", ...INVOICE_STATUSES].map((s) => (
                 <SelectItem key={s} value={s}>{s}</SelectItem>
               ))}
             </SelectContent>

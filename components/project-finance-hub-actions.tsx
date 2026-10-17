@@ -17,12 +17,14 @@ import {
   getFinanceAccounts,
   getIncomeCategories,
 } from "@/lib/finance/server"
-import { getClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { getFinanceClients, getLinkableOfficeClients, getProjectsForInvoiceSelect } from "@/lib/queries"
+import { LinkFinanceClientDialog } from "@/components/link-finance-client-dialog"
 
 export async function ProjectFinanceHubActions() {
-  const [clients, projects, incomeCategories, expenseCategories, accounts, vendors] =
+  const [clients, linkableClients, projects, incomeCategories, expenseCategories, accounts, vendors] =
     await Promise.all([
-      getClients(),
+      getFinanceClients(),
+      getLinkableOfficeClients(),
       getProjectsForInvoiceSelect(),
       getIncomeCategories(true, "project"),
       getExpenseCategories(true, "project"),
@@ -46,6 +48,7 @@ export async function ProjectFinanceHubActions() {
   return (
     <div className="flex flex-wrap gap-2">
       <ClientDialog source="finance" triggerLabel="Add Finance Client" />
+      <LinkFinanceClientDialog clients={linkableClients} />
       <IncomeDialog
         {...incomeOptions}
         scope="project"
