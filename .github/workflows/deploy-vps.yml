@@ -34,24 +34,32 @@ jobs:
             ls /etc/nginx/sites-enabled 2>/dev/null || true
             ls /etc/nginx/conf.d 2>/dev/null || true
 
+            # If production was renamed to *_broken while PM2 kept serving it, restore the path first.
+            if [ ! -d /var/www/architecture_office ] && [ -d /var/www/architecture_office_broken ]; then
+              echo "== restore /var/www/architecture_office from *_broken =="
+              if pm2 describe architecture_office >/dev/null 2>&1; then
+                pm2 stop architecture_office || true
+              fi
+              mv /var/www/architecture_office_broken /var/www/architecture_office
+            fi
+
             APP_DIR=""
-            # Production path is /var/www/architecture_office (do not prefer empty /root clone)
-            if [ -d /var/www/architecture_office ]; then
+            # Production path is /var/www/architecture_office (require .env; do not prefer empty /root clone)
+            if [ -d /var/www/architecture_office ] && [ -f /var/www/architecture_office/.env ]; then
               APP_DIR=/var/www/architecture_office
-            elif [ -d /root/architecture_office ]; then
+            elif [ -d /root/architecture_office ] && [ -f /root/architecture_office/.env ]; then
               APP_DIR=/root/architecture_office
             else
               CWD=$(pm2 jlist 2>/dev/null | node -e "let d='';try{const a=JSON.parse(require('fs').readFileSync(0,'utf8'));const p=a.find(x=>String(x.name||'').includes('architecture'));if(p&&p.pm2_env&&p.pm2_env.pm_cwd)d=p.pm2_env.pm_cwd}catch(e){}process.stdout.write(d)" || true)
-              if [ -n "${CWD:-}" ] && [ -d "$CWD" ]; then
+              if [ -n "${CWD:-}" ] && [ -d "$CWD" ] && [ -f "$CWD/.env" ]; then
                 APP_DIR="$CWD"
               fi
             fi
 
             if [ -z "${APP_DIR}" ]; then
-              echo "App directory not found; cloning into /root/architecture_office (isolated)"
-              mkdir -p /root
-              git clone https://github.com/osforhsoftware/architecture_office.git /root/architecture_office
-              APP_DIR=/root/architecture_office
+              echo "ERROR: production app dir with .env not found (refusing to clone into /root without secrets)"
+              ls -la /var/www || true
+              exit 1
             fi
 
             echo "APP_DIR=$APP_DIR"
@@ -64,10 +72,16 @@ jobs:
             fi
 
             echo "== git update =="
+            # Preserve production .env across hard reset
+            cp -a .env /tmp/architecture_office.env.deploybak
             git remote set-url origin https://github.com/osforhsoftware/architecture_office.git
             git fetch origin main
             git checkout main
             git reset --hard origin/main
+            if [ ! -f .env ]; then
+              cp -a /tmp/architecture_office.env.deploybak .env
+            fi
+            rm -f /tmp/architecture_office.env.deploybak
             echo "DEPLOYED_COMMIT=$(git rev-parse --short HEAD)"
 
             if [ ! -f .env ]; then

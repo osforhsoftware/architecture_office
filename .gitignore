@@ -20,3 +20,6 @@ node_modules
 cloudflared/*.json
 cloudflared/*.pid
 cloudflared/*.log
+
+# Local one-shot VPS helper scripts (never commit)
+scripts/_vps-*-once.mjs
